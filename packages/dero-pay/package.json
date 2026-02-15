@@ -1,0 +1,99 @@
+{
+  "name": "dero-pay",
+  "version": "0.1.0",
+  "description": "Payment processing SDK for DERO — Accept DERO payments with invoices, payment monitoring, webhooks, and a merchant dashboard.",
+  "type": "module",
+  "main": "./dist/core/index.js",
+  "types": "./dist/core/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./rpc": {
+      "types": "./dist/rpc/index.d.ts",
+      "import": "./dist/rpc/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./escrow": {
+      "types": "./dist/escrow/index.d.ts",
+      "import": "./dist/escrow/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "import": "./dist/next/index.js"
+    }
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DHEBP/dero-pay"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "dero",
+    "payment",
+    "gateway",
+    "cryptocurrency",
+    "privacy",
+    "invoice",
+    "merchant",
+    "web3",
+    "payment-processor"
+  ],
+  "author": "DHEBP",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "better-sqlite3": "^11.0.0",
+    "react": "^19.0.0",
+    "next": "^15.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "better-sqlite3": ">=9.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "next": ">=14.0.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    }
+  }
+}

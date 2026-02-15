@@ -1,7 +1,8 @@
 # Dependencies
 node_modules/
 
-# Next.js
+# Build output
+dist/
 .next/
 out/
 
@@ -12,13 +13,13 @@ content/docs/
 # Internal docs
 docs/
 
-# macOS
-.DS_Store
-
 # Environment
 .env
 .env.local
 .env.production
+
+# macOS
+.DS_Store
 
 # IDE
 .vscode/
@@ -26,3 +27,6 @@ docs/
 
 # Turbo
 .turbo/
+
+# Misc
+*.tsbuildinfo

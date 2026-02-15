@@ -1,0 +1,409 @@
+/**
+ * Next.js API route handlers for DeroPay.
+ *
+ * Provides ready-made handlers for invoice creation, status checking,
+ * and webhook reception.
+ *
+ * Usage in Next.js App Router:
+ * ```ts
+ * // app/api/pay/create/route.ts
+ * import { createPaymentHandlers } from "dero-pay/next";
+ *
+ * const { createInvoiceHandler } = createPaymentHandlers({
+ *   walletRpcUrl: "http://127.0.0.1:10103/json_rpc",
+ *   daemonRpcUrl: "http://127.0.0.1:10102/json_rpc",
+ *   webhookUrl: "https://mystore.com/webhooks/dero",
+ *   webhookSecret: process.env.WEBHOOK_SECRET!,
+ * });
+ *
+ * export const POST = createInvoiceHandler;
+ * ```
+ *
+ * ```ts
+ * // app/api/pay/status/route.ts
+ * const { statusHandler } = createPaymentHandlers({ ... });
+ * export const GET = statusHandler;
+ * ```
+ *
+ * ```ts
+ * // app/api/pay/webhook/route.ts
+ * const { webhookHandler } = createPaymentHandlers({ ... });
+ * export const POST = webhookHandler;
+ * ```
+ */
+
+import { InvoiceEngine } from "../server/invoice-engine.js";
+import { verifyWebhookSignature } from "../webhook/dispatcher.js";
+import type { DeroPayConfig, CreateInvoiceParams } from "../core/types.js";
+import type { InvoiceStore } from "../store/types.js";
+
+/** Configuration for the payment handlers */
+export type PaymentHandlersConfig = DeroPayConfig & {
+  /** Custom store implementation */
+  store?: InvoiceStore;
+  /** Whether to auto-start the engine (default: true) */
+  autoStart?: boolean;
+};
+
+// Singleton engine instance per configuration
+let engineInstance: InvoiceEngine | null = null;
+let engineStarting: Promise<void> | null = null;
+
+/**
+ * Get or create the singleton InvoiceEngine instance.
+ */
+async function getEngine(config: PaymentHandlersConfig): Promise<InvoiceEngine> {
+  if (!engineInstance) {
+    engineInstance = new InvoiceEngine(config);
+  }
+
+  if (config.autoStart !== false && !engineInstance.running) {
+    if (!engineStarting) {
+      engineStarting = engineInstance.start().then(() => {
+        engineStarting = null;
+      });
+    }
+    await engineStarting;
+  }
+
+  return engineInstance;
+}
+
+/**
+ * Create Next.js API route handlers for DeroPay.
+ */
+export function createPaymentHandlers(config: PaymentHandlersConfig) {
+  /**
+   * POST /api/pay/create
+   * Body: { name, description?, amount, ttlSeconds?, requiredConfirmations?, metadata? }
+   * Returns: Invoice
+   *
+   * `amount` should be a string representation of the BigInt atomic units.
+   */
+  async function createInvoiceHandler(request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+      const body = (await request.json()) as {
+        name?: string;
+        description?: string;
+        amount?: string | number;
+        ttlSeconds?: number;
+        requiredConfirmations?: number;
+        metadata?: Record<string, unknown>;
+        escrow?: {
+          sellerAddress?: string;
+          arbitratorAddress?: string;
+          feeBasisPoints?: number;
+          blockExpiration?: number;
+        };
+      };
+
+      if (!body.name) {
+        return Response.json({ error: "Missing name" }, { status: 400 });
+      }
+
+      if (!body.amount) {
+        return Response.json({ error: "Missing amount" }, { status: 400 });
+      }
+
+      const params: CreateInvoiceParams = {
+        name: body.name,
+        description: body.description,
+        amount: BigInt(body.amount),
+        ttlSeconds: body.ttlSeconds,
+        requiredConfirmations: body.requiredConfirmations,
+        metadata: body.metadata,
+      };
+
+      // Add escrow params if provided
+      if (body.escrow) {
+        if (!body.escrow.sellerAddress) {
+          return Response.json({ error: "Escrow requires sellerAddress" }, { status: 400 });
+        }
+        params.escrow = {
+          sellerAddress: body.escrow.sellerAddress,
+          arbitratorAddress: body.escrow.arbitratorAddress,
+          feeBasisPoints: body.escrow.feeBasisPoints,
+          blockExpiration: body.escrow.blockExpiration,
+        };
+      }
+
+      const invoice = await engine.createInvoice(params);
+
+      return Response.json(serializeInvoice(invoice));
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
+   * GET /api/pay/status?invoiceId=xxx
+   * Returns: Invoice
+   */
+  async function statusHandler(request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+      const url = new URL(request.url);
+      const invoiceId = url.searchParams.get("invoiceId");
+
+      if (!invoiceId) {
+        return Response.json(
+          { error: "Missing invoiceId query parameter" },
+          { status: 400 }
+        );
+      }
+
+      const invoice = await engine.getInvoice(invoiceId);
+
+      if (!invoice) {
+        return Response.json(
+          { error: "Invoice not found" },
+          { status: 404 }
+        );
+      }
+
+      return Response.json(serializeInvoice(invoice));
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
+   * GET /api/pay/invoices?status=pending&limit=50&offset=0
+   * Returns: Invoice[]
+   */
+  async function listInvoicesHandler(request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+      const url = new URL(request.url);
+
+      const status = url.searchParams.get("status") ?? undefined;
+      const limit = url.searchParams.get("limit");
+      const offset = url.searchParams.get("offset");
+
+      const invoices = await engine.listInvoices({
+        status: status as import("../core/types.js").InvoiceStatus | undefined,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined,
+      });
+
+      return Response.json(invoices.map(serializeInvoice));
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
+   * GET /api/pay/stats
+   * Returns: InvoiceStats
+   */
+  async function statsHandler(_request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+      const stats = await engine.getStats();
+
+      return Response.json({
+        ...stats,
+        totalAmountReceived: stats.totalAmountReceived.toString(),
+      });
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
+   * POST /api/pay/webhook
+   * Verifies the webhook signature and processes the event.
+   *
+   * This handler is for receiving webhooks FROM DeroPay (if you're
+   * running DeroPay as a separate service). Most setups won't need this.
+   */
+  async function webhookHandler(request: Request): Promise<Response> {
+    try {
+      if (!config.webhookSecret) {
+        return Response.json(
+          { error: "Webhook secret not configured" },
+          { status: 500 }
+        );
+      }
+
+      const signature = request.headers.get("X-DeroPay-Signature");
+      if (!signature) {
+        return Response.json(
+          { error: "Missing signature" },
+          { status: 401 }
+        );
+      }
+
+      const body = await request.text();
+
+      if (!verifyWebhookSignature(body, signature, config.webhookSecret)) {
+        return Response.json(
+          { error: "Invalid signature" },
+          { status: 401 }
+        );
+      }
+
+      // Signature valid — the caller can process the event
+      return Response.json({ received: true });
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
+   * GET /api/pay/health
+   * Returns connectivity status for wallet and daemon.
+   */
+  async function healthHandler(_request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+      const balance = await engine.getBalance();
+      const address = engine.getBaseAddress();
+
+      return Response.json({
+        status: "ok",
+        engine: engine.running ? "running" : "stopped",
+        wallet: {
+          address,
+          balance: balance.balance.toString(),
+          unlockedBalance: balance.unlockedBalance.toString(),
+        },
+      });
+    } catch (err) {
+      return Response.json(
+        {
+          status: "error",
+          error: err instanceof Error ? err.message : "Unknown error",
+        },
+        { status: 503 }
+      );
+    }
+  }
+
+  /**
+   * POST /api/pay/escrow
+   * Body: { invoiceId, action }
+   * Actions: "confirmDelivery" | "refundBuyer" | "dispute" | "claimAfterExpiry" | "arbitrateRelease" | "arbitrateRefund"
+   * Returns: { txid }
+   */
+  async function escrowActionHandler(request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+      const body = (await request.json()) as {
+        invoiceId?: string;
+        action?: string;
+      };
+
+      if (!body.invoiceId) {
+        return Response.json({ error: "Missing invoiceId" }, { status: 400 });
+      }
+
+      if (!body.action) {
+        return Response.json({ error: "Missing action" }, { status: 400 });
+      }
+
+      const validActions = [
+        "confirmDelivery",
+        "refundBuyer",
+        "dispute",
+        "claimAfterExpiry",
+        "arbitrateRelease",
+        "arbitrateRefund",
+      ];
+
+      if (!validActions.includes(body.action)) {
+        return Response.json(
+          { error: `Invalid action. Must be one of: ${validActions.join(", ")}` },
+          { status: 400 }
+        );
+      }
+
+      const txid = await engine.escrowAction(
+        body.invoiceId,
+        body.action as Parameters<typeof engine.escrowAction>[1]
+      );
+
+      return Response.json({ txid });
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
+   * GET /api/pay/escrows?status=funded&limit=50
+   * Returns: Invoice[] (only invoices with escrow data)
+   */
+  async function listEscrowsHandler(request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+      const url = new URL(request.url);
+
+      const limit = url.searchParams.get("limit");
+      const offset = url.searchParams.get("offset");
+
+      const allInvoices = await engine.listInvoices({
+        limit: limit ? parseInt(limit, 10) : 100,
+        offset: offset ? parseInt(offset, 10) : undefined,
+      });
+
+      // Filter to only escrow-backed invoices
+      const escrowInvoices = allInvoices.filter((inv) => inv.escrow !== null);
+
+      return Response.json(escrowInvoices.map(serializeInvoice));
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  return {
+    createInvoiceHandler,
+    statusHandler,
+    listInvoicesHandler,
+    statsHandler,
+    webhookHandler,
+    healthHandler,
+    escrowActionHandler,
+    listEscrowsHandler,
+    /** Access the underlying engine instance */
+    getEngine: () => getEngine(config),
+  };
+}
+
+/**
+ * Serialize an Invoice for JSON response (BigInt → string).
+ */
+function serializeInvoice(invoice: import("../core/types.js").Invoice): Record<string, unknown> {
+  return {
+    ...invoice,
+    amount: invoice.amount.toString(),
+    amountReceived: invoice.amountReceived.toString(),
+    paymentId: invoice.paymentId.toString(),
+    payments: invoice.payments.map((p) => ({
+      ...p,
+      amount: p.amount.toString(),
+      destinationPort: p.destinationPort.toString(),
+    })),
+  };
+}

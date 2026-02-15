@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Fumadocs generated
+.source/
+content/docs/
+
+# Internal docs
+docs/
+
+# macOS
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# Turbo
+.turbo/

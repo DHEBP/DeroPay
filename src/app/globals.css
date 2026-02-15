@@ -1,0 +1,146 @@
+@import "tailwindcss";
+@import "fumadocs-ui/style.css";
+
+@theme {
+  /* DeroPay Emerald Palette */
+  --color-background: #000000;
+  --color-surface: #0a0f0d;
+  --color-surface-hover: #111a16;
+  --color-border: #1e2a24;
+  --color-border-hover: #4a6356;
+
+  /* Text */
+  --color-text-primary: #f0fdf4;
+  --color-text-secondary: #6b7f75;
+  --color-text-tertiary: #4a6356;
+
+  /* Brand — Emerald */
+  --color-accent: #10b981;
+  --color-accent-hover: #059669;
+  --color-accent-dim: rgba(16, 185, 129, 0.14);
+
+  /* Compat aliases */
+  --color-accent-teal: #10b981;
+  --color-accent-blue: #10b981;
+  --color-accent-purple: #10b981;
+  --color-accent-gold: #10b981;
+}
+
+/* Base */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(16, 185, 129, 0.25);
+  color: #10b981;
+}
+
+/* Grid Background */
+.bg-grid-pattern {
+  background-image: linear-gradient(to right, #1e2a24 1px, transparent 1px),
+    linear-gradient(to bottom, #1e2a24 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at center, black 40%, transparent 80%);
+}
+
+/* Typography */
+.text-balance {
+  text-wrap: balance;
+}
+
+.text-pretty {
+  text-wrap: pretty;
+}
+
+/* =====================
+   BUTTONS
+   ===================== */
+
+/* Primary — light pill, dark text */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  background-color: #e2e8f0;
+  color: #0f1419;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: #cbd5e1;
+}
+
+/* Secondary — ghost outline */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: #f0fdf4;
+  border: 1px solid #1e2a24;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: rgba(16, 185, 129, 0.08);
+  border-color: #4a6356;
+}
+
+/* Accent — emerald pill, dark text */
+.btn-accent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  background-color: #10b981;
+  color: #000000;
+  transition: background-color 0.2s;
+}
+
+.btn-accent:hover {
+  background-color: #059669;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e2a24;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a6356;
+}

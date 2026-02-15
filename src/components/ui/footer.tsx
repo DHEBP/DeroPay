@@ -1,0 +1,114 @@
+import Link from "next/link";
+import { DeroIcon } from "@/components/icons/dero-icon";
+import { Github, Twitter, MessageCircle } from "lucide-react";
+
+export const Footer = () => (
+  <footer className="border-t border-[#1e2a24] bg-black">
+    <div className="mx-auto max-w-[1200px] px-6 lg:px-8">
+      {/* Main Grid */}
+      <div
+        className="py-16"
+        style={{
+          display: "grid",
+          gap: "48px 32px",
+          gridTemplateColumns: "repeat(2, 1fr)",
+        }}
+      >
+        {/* Brand */}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Link href="/" className="inline-flex items-center gap-2">
+            <DeroIcon size={24} className="text-[#10b981]" />
+            <span className="text-lg font-black text-[#f0fdf4]">DeroPay</span>
+          </Link>
+          <p className="mt-4 max-w-xs text-sm font-medium leading-relaxed text-[#6b7f75]">
+            The privacy-first payment stack for the DERO economy. Open source,
+            self-hosted, and built for developers.
+          </p>
+          <div className="mt-5 flex gap-5">
+            <a href="https://github.com/DHEBP" target="_blank" rel="noopener noreferrer" className="text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">
+              <Github size={20} />
+            </a>
+            <a href="https://twitter.com/deroproject" target="_blank" rel="noopener noreferrer" className="text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">
+              <Twitter size={20} />
+            </a>
+            <a href="#" className="text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">
+              <MessageCircle size={20} />
+            </a>
+          </div>
+        </div>
+
+        {/* Products */}
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-[#f0fdf4]">Products</h3>
+          <ul className="mt-4 space-y-3">
+            <li><Link href="/auth" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">DeroAuth</Link></li>
+            <li><Link href="/pay" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">DeroPay</Link></li>
+            <li><Link href="/escrow" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Escrow</Link></li>
+            <li><Link href="/dashboard" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Dashboard</Link></li>
+          </ul>
+        </div>
+
+        {/* Resources */}
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-[#f0fdf4]">Resources</h3>
+          <ul className="mt-4 space-y-3">
+            <li><Link href="/docs" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Documentation</Link></li>
+            <li><Link href="/docs" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">API Reference</Link></li>
+            <li><Link href="/docs" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Guides</Link></li>
+            <li><a href="https://github.com/DHEBP" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Examples</a></li>
+          </ul>
+        </div>
+
+        {/* Company */}
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-[#f0fdf4]">Company</h3>
+          <ul className="mt-4 space-y-3">
+            <li><Link href="/about" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">About</Link></li>
+            <li><Link href="/blog" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Blog</Link></li>
+            <li><Link href="/careers" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Careers</Link></li>
+            <li><Link href="/contact" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Contact</Link></li>
+          </ul>
+        </div>
+
+        {/* Legal */}
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-[#f0fdf4]">Legal</h3>
+          <ul className="mt-4 space-y-3">
+            <li><Link href="/privacy" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Privacy Policy</Link></li>
+            <li><Link href="/terms" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Terms of Service</Link></li>
+            <li><Link href="/cookies" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Cookie Policy</Link></li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Bottom Bar */}
+      <div className="flex flex-col items-center justify-between gap-4 border-t border-[#1e2a24] py-8 sm:flex-row">
+        <p className="text-xs font-medium text-[#4a6356]">
+          &copy; {new Date().getFullYear()} DHEBP. All rights reserved.
+        </p>
+        <div className="flex items-center gap-2 text-xs font-bold text-[#10b981]">
+          <div
+            className="h-2 w-2 rounded-full bg-[#10b981]"
+            style={{ animation: "pulse 2s infinite" }}
+          />
+          SYSTEMS OPERATIONAL
+        </div>
+      </div>
+    </div>
+
+    <style>{`
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      @media (min-width: 768px) {
+        footer > div > div:first-child {
+          grid-template-columns: 1.4fr repeat(4, 1fr) !important;
+        }
+        footer > div > div:first-child > div:first-child {
+          grid-column: 1 / 2 !important;
+        }
+      }
+    `}</style>
+  </footer>
+);

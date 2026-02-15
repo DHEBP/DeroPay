@@ -1,7 +1,7 @@
 // Full Escrow Smart Contract with Arbitrator Support
 //
 // Roles:
-//   - Owner: the DeroPay platform (deploys the contract)
+//   - Owner: the platform operator (deploys the contract)
 //   - Seller: the merchant receiving payment
 //   - Buyer: the customer making payment
 //   - Arbitrator: optional third party for dispute resolution
@@ -20,7 +20,6 @@
 //   2. Buyer deposits DERO
 //   3. Resolution: confirm, refund, expiry claim, or dispute -> arbitrate
 //
-// Deploy: curl --request POST --data-binary @escrow.bas http://127.0.0.1:40403/install_sc
 
 Function Initialize(sellerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64) Uint64
 10 IF EXISTS("owner") THEN GOTO 200

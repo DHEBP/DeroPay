@@ -96,7 +96,7 @@ export class InvoiceEngine {
       escrowFeeBasisPoints?: number;
       /** Default block expiration for escrow (default: 60) */
       escrowBlockExpiration?: number;
-      /** Enable escrow support (default: true if wallet/daemon URLs are set) */
+      /** Enable escrow support (default: false — must be explicitly opted into) */
       enableEscrow?: boolean;
     }
   ) {
@@ -137,8 +137,8 @@ export class InvoiceEngine {
       this.webhook = null;
     }
 
-    // Set up escrow manager
-    if (options.enableEscrow !== false) {
+    // Set up escrow manager (opt-in: must be explicitly enabled)
+    if (options.enableEscrow === true) {
       this.escrowManager = new EscrowManager({
         walletRpcUrl: options.walletRpcUrl,
         daemonRpcUrl: options.daemonRpcUrl,

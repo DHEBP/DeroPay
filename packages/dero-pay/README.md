@@ -181,4 +181,6 @@ const isValid = verifyWebhookSignature(
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE)
+
+DHEBP is not affiliated with or endorsed by the DERO Project or its core developers.

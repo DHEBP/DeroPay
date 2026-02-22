@@ -69,7 +69,7 @@ export const EscrowPageClient = () => (
             Deploy on-chain escrow contracts with arbitration, platform fees, and dispute resolution. Buyer protection backed by DERO's blockchain — not trust.
           </p>
           <div style={{ marginTop: "28px", display: "flex", justifyContent: "center", gap: "16px", flexWrap: "wrap" }}>
-            <Link href="/docs" className="btn-accent">Get Started <ArrowRight size={16} /></Link>
+            <a href="https://deropay.derod.org/escrow/overview" className="btn-accent">Get Started <ArrowRight size={16} /></a>
             <a href="https://github.com/DHEBP/dero-pay" target="_blank" rel="noopener noreferrer" className="btn-secondary">View Contracts</a>
           </div>
         </motion.div>

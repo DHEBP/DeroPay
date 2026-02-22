@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Image from "next/image";
 import {
   EyeOff,
   Server,
@@ -68,35 +67,6 @@ export const FeaturesGrid = () => (
       description="Every design decision optimizes for privacy, self-sovereignty, and developer experience."
     />
 
-    {/* Showcase Images Row */}
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.6 }}
-      style={{ display: "grid", gap: "16px", gridTemplateColumns: "1fr 1fr", marginBottom: "48px" }}
-      className="features-images-grid"
-    >
-      <div className="overflow-hidden rounded-2xl border border-[#1e2a24]" style={{ height: "240px" }}>
-        <Image
-          src="/mockups/verified.png"
-          alt="Verified merchants on DeroPay"
-          width={600}
-          height={360}
-          className="w-full h-full object-cover"
-        />
-      </div>
-      <div className="overflow-hidden rounded-2xl border border-[#1e2a24]" style={{ height: "240px" }}>
-        <Image
-          src="/mockups/discover.png"
-          alt="Discover merchants"
-          width={600}
-          height={360}
-          className="w-full h-full object-cover"
-        />
-      </div>
-    </motion.div>
-
     {/* Feature Cards */}
     <motion.div
       variants={container}
@@ -136,9 +106,6 @@ export const FeaturesGrid = () => (
 
     <style>{`
       @media (max-width: 767px) {
-        .features-images-grid {
-          grid-template-columns: 1fr !important;
-        }
         .features-cards-grid {
           grid-template-columns: 1fr !important;
         }

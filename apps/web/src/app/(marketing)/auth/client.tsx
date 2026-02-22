@@ -104,9 +104,9 @@ export const AuthPageClient = () => (
             transaction history.
           </p>
           <div style={{ marginTop: "28px", display: "flex", justifyContent: "center", gap: "16px", flexWrap: "wrap" }}>
-            <Link href="/docs" className="btn-accent">
+            <a href="https://deropay.derod.org/dero-auth/quick-start" className="btn-accent">
               Get Started <ArrowRight size={16} />
-            </Link>
+            </a>
             <a href="https://github.com/DHEBP/dero-auth" target="_blank" rel="noopener noreferrer" className="btn-secondary">
               View Source
             </a>

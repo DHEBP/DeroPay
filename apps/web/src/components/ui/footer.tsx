@@ -52,9 +52,9 @@ export const Footer = () => (
         <div>
           <h3 className="text-xs font-bold uppercase tracking-widest text-[#f0fdf4]">Resources</h3>
           <ul className="mt-4 space-y-3">
-            <li><Link href="/docs" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Documentation</Link></li>
-            <li><Link href="/docs" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">API Reference</Link></li>
-            <li><Link href="/docs" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Guides</Link></li>
+            <li><a href="https://deropay.derod.org" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Documentation</a></li>
+            <li><a href="https://deropay.derod.org/dero-pay/api-reference" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">API Reference</a></li>
+            <li><a href="https://deropay.derod.org/guides/prerequisites" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Guides</a></li>
             <li><a href="https://github.com/DHEBP" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Examples</a></li>
           </ul>
         </div>

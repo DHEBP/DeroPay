@@ -28,7 +28,7 @@ export const Hero = () => {
 
       <div
         className="hero-grid"
-        style={{ position: "relative", zIndex: 1, maxWidth: "1200px", margin: "0 auto", padding: "56px 24px 64px", display: "grid", gridTemplateColumns: "1fr", gap: "48px", alignItems: "center" }}
+        style={{ position: "relative", zIndex: 1, maxWidth: "1400px", margin: "0 auto", padding: "56px 24px 80px", display: "grid", gridTemplateColumns: "1fr", gap: "48px", alignItems: "center" }}
       >
         {/* Left: Text */}
         <div>
@@ -70,9 +70,9 @@ export const Hero = () => {
             transition={{ duration: 0.5, delay: 0.3 }}
             style={{ marginTop: "32px", display: "flex", flexWrap: "wrap", gap: "16px" }}
           >
-            <Link href="/docs" className="btn-accent" style={{ fontSize: "16px", padding: "14px 28px" }}>
+            <a href="https://deropay.derod.org" className="btn-accent" style={{ fontSize: "16px", padding: "14px 28px" }}>
               Start now <ArrowRight size={18} />
-            </Link>
+            </a>
             <Link href="https://github.com/DHEBP" className="btn-secondary" style={{ fontSize: "16px", padding: "14px 28px" }}>
               View Source
             </Link>
@@ -99,28 +99,67 @@ export const Hero = () => {
           </motion.div>
         </div>
 
-        {/* Right: Dashboard Screenshot */}
+        {/* Right: Hero Image — large, seamlessly integrated */}
         <motion.div
           initial={{ opacity: 0, x: 40 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, delay: 0.3 }}
-          style={{ position: "relative" }}
+          className="hero-image-wrapper"
+          style={{
+            position: "relative",
+            minHeight: "min(70vh, 520px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+          }}
         >
-          {/* Glow behind screenshot */}
+          {/* Ambient glow behind image */}
           <div style={{
-            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-            width: "120%", height: "130%",
-            background: "radial-gradient(ellipse, rgba(16,185,129,0.14) 0%, rgba(147,51,234,0.10) 40%, transparent 75%)",
-            filter: "blur(50px)", pointerEvents: "none",
+            position: "absolute", top: "50%", right: "0", transform: "translateY(-50%)",
+            width: "90%", height: "120%",
+            background: "radial-gradient(ellipse at 70% 50%, rgba(16,185,129,0.15) 0%, rgba(147,51,234,0.08) 35%, transparent 70%)",
+            filter: "blur(60px)", pointerEvents: "none",
           }} />
-          <div style={{ position: "relative", overflow: "hidden", borderRadius: "16px", border: "1px solid #1e2a24", boxShadow: "0 32px 80px -20px rgba(0,0,0,0.9)" }}>
+          {/* Image container — no border, edge fades blend into page */}
+          <div
+            className="hero-image-container"
+            style={{
+              position: "relative",
+              width: "100%",
+              aspectRatio: "3/2",
+              overflow: "hidden",
+            }}
+          >
             <Image
-              src="/mockups/dashboard-hero.png"
+              src="/images/hero_img.png"
               alt="DeroPay Dashboard"
-              width={960}
-              height={600}
-              className="w-full h-auto"
+              width={3072}
+              height={2048}
+              className="hero-image"
               priority
+              style={{ objectFit: "cover", objectPosition: "center" }}
+            />
+            {/* Gradient overlays — fade edges into page background for seamless blend */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: `
+                  linear-gradient(to right, #000 0%, transparent 18%),
+                  linear-gradient(to bottom, transparent 60%, #000 100%),
+                  linear-gradient(to right, transparent 85%, #000 100%)
+                `,
+                pointerEvents: "none",
+              }}
+            />
+            {/* Subtle emerald tint overlay for brand cohesion */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "linear-gradient(135deg, rgba(16,185,129,0.06) 0%, transparent 50%)",
+                pointerEvents: "none",
+              }}
             />
           </div>
         </motion.div>
@@ -129,8 +168,18 @@ export const Hero = () => {
       <style>{`
         @media (min-width: 768px) {
           .hero-grid {
-            grid-template-columns: 1fr 1.15fr !important;
+            grid-template-columns: 1fr 1.4fr !important;
+            gap: 64px !important;
           }
+        }
+        @media (min-width: 1024px) {
+          .hero-grid {
+            grid-template-columns: 1fr 1.6fr !important;
+          }
+        }
+        .hero-image {
+          width: 100%;
+          height: 100%;
         }
       `}</style>
     </section>

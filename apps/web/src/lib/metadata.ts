@@ -8,7 +8,7 @@ export const siteConfig = {
   ogImage: "https://deropay.com/og-image.png",
   links: {
     github: "https://github.com/DHEBP",
-    docs: "/docs",
+    docs: "https://deropay.derod.org",
   },
 };
 

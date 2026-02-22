@@ -136,7 +136,7 @@ export const DashboardPageClient = () => (
       <div style={{ textAlign: "center" }}>
         <p style={{ fontSize: "16px", color: "#6b7f75" }}>The dashboard is included in the dero-pay package and runs as a standalone Next.js app.</p>
         <div style={{ marginTop: "24px", display: "flex", justifyContent: "center" }}>
-          <Link href="/docs" className="btn-accent">Setup Guide <ArrowRight size={16} /></Link>
+          <a href="https://deropay.derod.org/guides/merchant-dashboard" className="btn-accent">Setup Guide <ArrowRight size={16} /></a>
         </div>
       </div>
     </section>

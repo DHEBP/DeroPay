@@ -11,7 +11,7 @@ const links = [
   { href: "/auth", label: "Auth" },
   { href: "/pay", label: "Pay" },
   { href: "/escrow", label: "Escrow" },
-  { href: "/docs", label: "Docs" },
+  { href: "https://deropay.derod.org", label: "Docs", external: true },
   { href: "https://github.com/DHEBP", label: "GitHub", external: true },
 ];
 
@@ -79,12 +79,12 @@ export const Navbar = () => {
           style={{ display: "var(--nav-display, none)" }}
         >
           <Link
-            href="/docs"
+            href="https://deropay.derod.org"
             className="whitespace-nowrap text-sm font-bold text-white hover:underline"
           >
             Log in
           </Link>
-          <Link href="/docs" className="btn-accent px-5 py-2 text-sm whitespace-nowrap">
+          <Link href="https://deropay.derod.org" className="btn-accent px-5 py-2 text-sm whitespace-nowrap">
             Sign up
           </Link>
         </div>
@@ -135,7 +135,7 @@ export const Navbar = () => {
               ))}
               <div className="h-px bg-[#1e2a24] my-4" />
               <Link
-                href="/docs"
+                href="https://deropay.derod.org"
                 className="btn-accent w-full text-center"
                 onClick={() => setMobileOpen(false)}
               >

@@ -10,21 +10,21 @@ const steps = [
     title: "Authenticate",
     description:
       "User signs in with their DERO wallet. A Schnorr signature proves ownership — no email, no password, no personal data exposed.",
-    image: "/mockups/security.png",
+    image: "/images/authenticate.png",
   },
   {
     number: "02",
     title: "Pay",
     description:
       "An invoice is created with a unique integrated address. The customer scans a QR code and sends DERO. The SDK monitors and confirms the payment.",
-    image: "/mockups/insights.png",
+    image: "/images/pay.png",
   },
   {
     number: "03",
     title: "Protect",
     description:
       "For high-value transactions, funds go into an on-chain escrow smart contract. Released on delivery, refunded on dispute, or arbitrated by a neutral party.",
-    image: "/mockups/radar.png",
+    image: "/images/protect.png",
   },
 ];
 

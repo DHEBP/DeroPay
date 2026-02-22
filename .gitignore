@@ -6,10 +6,6 @@ dist/
 .next/
 out/
 
-# Fumadocs generated
-.source/
-content/docs/
-
 # Internal docs
 docs/
 

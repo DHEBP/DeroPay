@@ -13,7 +13,7 @@ const products = [
     description:
       "Sign in with your DERO wallet. Schnorr signature verification, JWT sessions, React components, and Next.js middleware.",
     href: "/auth",
-    image: "/mockups/security.png",
+    image: "/images/auth.png",
   },
   {
     title: "DeroPay",
@@ -21,7 +21,7 @@ const products = [
     description:
       "Create invoices, generate integrated addresses, monitor payments in real time. Webhooks, pluggable storage, and a merchant dashboard.",
     href: "/pay",
-    image: "/mockups/analytics.png",
+    image: "/images/invoice.png",
   },
   {
     title: "Escrow",
@@ -29,7 +29,7 @@ const products = [
     description:
       "On-chain escrow with arbitration and platform fees. Deploy contracts, manage lifecycles, and resolve disputes through the SDK.",
     href: "/escrow",
-    image: "/mockups/radar.png",
+    image: "/images/escrow.png",
   },
 ];
 

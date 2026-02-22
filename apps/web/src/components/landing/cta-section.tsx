@@ -51,9 +51,9 @@ export const CTASection = () => (
         </p>
 
         <div style={{ marginTop: "48px", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "24px" }}>
-          <Link href="/docs" className="btn-accent" style={{ fontSize: "18px", padding: "16px 32px" }}>
+          <a href="https://deropay.derod.org" className="btn-accent" style={{ fontSize: "18px", padding: "16px 32px" }}>
             Get Started Now
-          </Link>
+          </a>
           <Link href="/pay" className="btn-secondary" style={{ fontSize: "18px", padding: "16px 32px" }}>
             View Documentation
           </Link>

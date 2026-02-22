@@ -68,7 +68,7 @@ export const PayPageClient = () => (
             Invoices, real-time payment monitoring, HMAC-signed webhooks, and a self-hosted merchant dashboard. Everything runs on your infrastructure.
           </p>
           <div style={{ marginTop: "28px", display: "flex", justifyContent: "center", gap: "16px", flexWrap: "wrap" }}>
-            <Link href="/docs" className="btn-accent">Get Started <ArrowRight size={16} /></Link>
+            <a href="https://deropay.derod.org/dero-pay/quick-start" className="btn-accent">Get Started <ArrowRight size={16} /></a>
             <a href="https://github.com/DHEBP/dero-pay" target="_blank" rel="noopener noreferrer" className="btn-secondary">View Source</a>
           </div>
         </motion.div>

@@ -268,8 +268,10 @@ export class WalletRpcClient {
   /**
    * Deploy a smart contract to the DERO blockchain.
    *
-   * Uses the wallet's `transfer` RPC method with the `sc` field containing
-   * the smart contract source code (base64 encoded automatically).
+   * Uses the wallet's `transfer` RPC method with the top-level `"sc"` field,
+   * which the wallet auto-decodes (base64 → raw source) before passing to the DVM.
+   * Do NOT put SC_CODE into sc_rpc manually — the wallet only base64-decodes
+   * from the `"sc"` field, not from sc_rpc entries.
    *
    * @param code - Smart contract source code (DVM-BASIC)
    * @param args - Optional SC_RPC arguments for the Initialize() function
@@ -281,16 +283,9 @@ export class WalletRpcClient {
     args?: ScRpcArg[],
     ringsize: number = 2
   ): Promise<string> {
-    const scCode = btoa(code); // base64 encode
-
-    const scRpc: ScRpcArg[] = [
-      { name: "SC_ACTION", datatype: "U", value: 1 }, // 1 = install
-      { name: "SC_CODE", datatype: "S", value: scCode },
-      ...(args ?? []),
-    ];
-
-    const params: TransferParams = {
-      sc_rpc: scRpc as unknown as PayloadRpcArg[],
+    const params: InstallScParams = {
+      sc: btoa(code), // wallet auto-decodes base64 → raw source for the DVM
+      sc_rpc: args ?? [],
       ringsize,
     };
 

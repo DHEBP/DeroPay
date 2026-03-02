@@ -171,15 +171,18 @@ export class DaemonRpcClient {
   }
 
   /**
-   * Convenience method to read a specific string variable from a smart contract.
+   * Convenience method to read a specific string-keyed variable from a smart contract.
+   * Uses the targeted `keysstring` query which only fetches the requested key.
    *
    * @param scid - Smart Contract ID
    * @param key - Variable name to read
-   * @returns The value, or undefined if not found
+   * @returns The raw string value from valuesstring[0], or undefined if not found
    */
-  async getScVariable(scid: string, key: string): Promise<unknown | undefined> {
-    const result = await this.getSc(scid, { variables: true });
-    return result.stringkeys?.[key];
+  async getScVariable(scid: string, key: string): Promise<string | undefined> {
+    const result = await this.getSc(scid, { keysstring: [key] });
+    const raw = result.valuesstring?.[0];
+    if (!raw || raw.startsWith("NOT AVAILABLE")) return undefined;
+    return raw;
   }
 
   /**

@@ -9,6 +9,22 @@ out/
 # Internal docs
 docs/
 
+# Test / scratch scripts
+test-escrow.ts
+scripts/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime data
+apps/dashboard/mainnet/
+apps/dashboard/datashards/
+
+# Next.js generated
+next-env.d.ts
+
 # Environment
 .env
 .env.local

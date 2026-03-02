@@ -206,6 +206,7 @@ export function EscrowInvoiceView({
         borderRadius: "12px",
         border: "1px solid #e5e7eb",
         backgroundColor: "#ffffff",
+        color: "#111827",
         fontFamily: "system-ui, -apple-system, sans-serif",
         ...style,
       }}
@@ -577,6 +578,7 @@ function DetailRow({
       <span style={{ color: "#6b7280" }}>{label}</span>
       <span
         style={{
+          color: "#111827",
           fontWeight: 500,
           fontFamily: mono ? "ui-monospace, monospace" : "inherit",
           fontSize: mono ? "0.7rem" : "0.75rem",

@@ -1,13 +1,13 @@
-/**
- * Shared DeroPay engine configuration for the dashboard.
- *
- * Creates a singleton InvoiceEngine instance used by all API routes
- * and server components.
- */
-
 import { createPaymentHandlers } from "dero-pay/next";
+import { SqliteInvoiceStore } from "dero-pay/server";
+import path from "path";
+
+// Use a shared sqlite database in the root of the project
+const dbPath = path.resolve(process.cwd(), "../../shared-deropay.db");
+const store = new SqliteInvoiceStore({ path: dbPath });
 
 const handlers = createPaymentHandlers({
+  store,
   walletRpcUrl: process.env.WALLET_RPC_URL ?? "http://127.0.0.1:10103/json_rpc",
   daemonRpcUrl: process.env.DAEMON_RPC_URL ?? "http://127.0.0.1:10102/json_rpc",
   rpcAuth: process.env.RPC_USERNAME

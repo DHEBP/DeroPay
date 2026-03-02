@@ -153,6 +153,7 @@ export function InvoiceView({
         borderRadius: "12px",
         border: "1px solid #e5e7eb",
         backgroundColor: "#ffffff",
+        color: "#111827",
         fontFamily: "system-ui, -apple-system, sans-serif",
         ...style,
       }}
@@ -241,6 +242,7 @@ export function InvoiceView({
                 flex: 1,
                 padding: "0.5rem",
                 backgroundColor: "#f3f4f6",
+                color: "#111827",
                 borderRadius: "6px",
                 fontSize: "0.7rem",
                 wordBreak: "break-all",

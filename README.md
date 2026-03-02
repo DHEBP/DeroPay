@@ -40,7 +40,7 @@ Payment processing SDK for DERO — invoices, payment monitoring, escrow, webhoo
 - `dero-pay/server` — Invoice engine (server-side)
 - `dero-pay/escrow` — Escrow contract manager
 - `dero-pay/client` — XSWD client for browser wallets
-- `dero-pay/react` — React components (PaymentButton, InvoiceView, etc.)
+- `dero-pay/react` — React components (PayWithDero, InvoiceView, etc.)
 - `dero-pay/next` — Next.js API route handlers and middleware
 
 ### `apps/web`

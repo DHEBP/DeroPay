@@ -83,27 +83,30 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
   async function createInvoiceHandler(request: Request): Promise<Response> {
     try {
       const engine = await getEngine(config);
-      const body = (await request.json()) as {
-        name?: string;
-        description?: string;
-        amount?: string | number;
-        ttlSeconds?: number;
-        requiredConfirmations?: number;
-        metadata?: Record<string, unknown>;
-        escrow?: {
-          sellerAddress?: string;
-          arbitratorAddress?: string;
-          feeBasisPoints?: number;
-          blockExpiration?: number;
-        };
-      };
+      
+      // Handle empty body or invalid JSON safely
+      let body;
+      try {
+        body = await request.json();
+      } catch (e) {
+        return Response.json({ error: "Invalid JSON body" }, { 
+          status: 400,
+          headers: { "Access-Control-Allow-Origin": "*" }
+        });
+      }
 
       if (!body.name) {
-        return Response.json({ error: "Missing name" }, { status: 400 });
+        return Response.json({ error: "Missing name" }, { 
+          status: 400,
+          headers: { "Access-Control-Allow-Origin": "*" }
+        });
       }
 
       if (!body.amount) {
-        return Response.json({ error: "Missing amount" }, { status: 400 });
+        return Response.json({ error: "Missing amount" }, { 
+          status: 400,
+          headers: { "Access-Control-Allow-Origin": "*" }
+        });
       }
 
       const params: CreateInvoiceParams = {
@@ -130,11 +133,20 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
 
       const invoice = await engine.createInvoice(params);
 
-      return Response.json(serializeInvoice(invoice));
+      return Response.json(serializeInvoice(invoice), {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        }
+      });
     } catch (err) {
       return Response.json(
         { error: err instanceof Error ? err.message : "Internal error" },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
       );
     }
   }
@@ -161,15 +173,29 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
       if (!invoice) {
         return Response.json(
           { error: "Invoice not found" },
-          { status: 404 }
+          { 
+            status: 404,
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+            }
+          }
         );
       }
 
-      return Response.json(serializeInvoice(invoice));
+      return Response.json(serializeInvoice(invoice), {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        }
+      });
     } catch (err) {
       return Response.json(
         { error: err instanceof Error ? err.message : "Internal error" },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
       );
     }
   }

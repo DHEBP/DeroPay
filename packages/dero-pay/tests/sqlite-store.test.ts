@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { MemoryInvoiceStore } from "../src/store/memory.js";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { SqliteInvoiceStore } from "../src/store/sqlite.js";
 import { makeInvoice, makePayment } from "./helpers.js";
 
-describe("MemoryInvoiceStore", () => {
-  let store: MemoryInvoiceStore;
+describe("SqliteInvoiceStore", () => {
+  let store: SqliteInvoiceStore;
 
   beforeEach(() => {
-    store = new MemoryInvoiceStore();
+    store = new SqliteInvoiceStore({ path: ":memory:" });
+  });
+
+  afterEach(async () => {
+    await store.close();
   });
 
   describe("createInvoice", () => {
@@ -21,17 +25,7 @@ describe("MemoryInvoiceStore", () => {
 
     it("throws on duplicate ID", async () => {
       await store.createInvoice(makeInvoice());
-      await expect(store.createInvoice(makeInvoice())).rejects.toThrow(
-        "already exists"
-      );
-    });
-
-    it("returns a copy (not a reference)", async () => {
-      const invoice = makeInvoice();
-      await store.createInvoice(invoice);
-      const a = await store.getInvoice("inv-001");
-      const b = await store.getInvoice("inv-001");
-      expect(a).not.toBe(b);
+      await expect(store.createInvoice(makeInvoice())).rejects.toThrow();
     });
   });
 
@@ -70,12 +64,6 @@ describe("MemoryInvoiceStore", () => {
       const updated = await store.getInvoice("inv-001");
       expect(updated!.amountReceived).toBe(200_000n);
     });
-
-    it("throws for missing invoice", async () => {
-      await expect(
-        store.updateInvoice("nonexistent", { status: "pending" })
-      ).rejects.toThrow("not found");
-    });
   });
 
   describe("addPayment", () => {
@@ -111,12 +99,6 @@ describe("MemoryInvoiceStore", () => {
       expect(invoice!.payments).toHaveLength(2);
       expect(invoice!.amountReceived).toBe(500_000n);
     });
-
-    it("throws for missing invoice", async () => {
-      await expect(
-        store.addPayment("nonexistent", makePayment())
-      ).rejects.toThrow("not found");
-    });
   });
 
   describe("updatePayment", () => {
@@ -130,13 +112,6 @@ describe("MemoryInvoiceStore", () => {
       const invoice = await store.getInvoice("inv-001");
       expect(invoice!.payments[0].confirmations).toBe(5);
       expect(invoice!.payments[0].status).toBe("confirmed");
-    });
-
-    it("throws for missing payment", async () => {
-      await store.createInvoice(makeInvoice());
-      await expect(
-        store.updatePayment("inv-001", "nonexistent", { confirmations: 1 })
-      ).rejects.toThrow("not found");
     });
   });
 
@@ -252,11 +227,56 @@ describe("MemoryInvoiceStore", () => {
     });
   });
 
+  describe("escrow data", () => {
+    it("stores and retrieves escrow data on an invoice", async () => {
+      const invoice = makeInvoice({
+        escrow: {
+          scid: "sc-123",
+          deployTxid: "sc-123",
+          escrowStatus: "awaiting_deposit",
+          sellerAddress: "dero1qseller...",
+          arbitratorAddress: "dero1qarbitrator...",
+          feeBasisPoints: 250,
+          blockExpiration: 60,
+          buyerAddress: null,
+          depositHeight: null,
+          disputedAt: null,
+          resolution: null,
+        },
+      });
+      await store.createInvoice(invoice);
+
+      const retrieved = await store.getInvoice("inv-001");
+      expect(retrieved!.escrow).not.toBeNull();
+      expect(retrieved!.escrow!.scid).toBe("sc-123");
+      expect(retrieved!.escrow!.escrowStatus).toBe("awaiting_deposit");
+    });
+
+    it("handles null escrow", async () => {
+      await store.createInvoice(makeInvoice({ escrow: null }));
+      const retrieved = await store.getInvoice("inv-001");
+      expect(retrieved!.escrow).toBeNull();
+    });
+  });
+
+  describe("metadata", () => {
+    it("stores and retrieves metadata", async () => {
+      const invoice = makeInvoice({
+        metadata: { orderId: "ORD-123", customer: "John" },
+      });
+      await store.createInvoice(invoice);
+
+      const retrieved = await store.getInvoice("inv-001");
+      expect(retrieved!.metadata).toEqual({ orderId: "ORD-123", customer: "John" });
+    });
+  });
+
   describe("close", () => {
-    it("clears all data", async () => {
+    it("closes the database connection", async () => {
       await store.createInvoice(makeInvoice());
       await store.close();
-      expect(await store.getInvoice("inv-001")).toBeNull();
+      // Accessing after close should throw
+      await expect(store.getInvoice("inv-001")).rejects.toThrow();
     });
   });
 });

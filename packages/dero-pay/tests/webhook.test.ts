@@ -4,29 +4,7 @@ import {
   signWebhookPayload,
   verifyWebhookSignature,
 } from "../src/webhook/dispatcher.js";
-import type { Invoice } from "../src/core/types.js";
-
-function makeInvoice(): Invoice {
-  return {
-    id: "inv-001",
-    name: "Test",
-    description: "",
-    amount: 5_000_000_000_000n,
-    status: "completed",
-    paymentId: 12345n,
-    integratedAddress: "deti1q...",
-    baseAddress: "dero1q...",
-    ttlSeconds: 900,
-    requiredConfirmations: 3,
-    createdAt: "2026-02-15T00:00:00.000Z",
-    expiresAt: "2026-02-15T00:15:00.000Z",
-    completedAt: "2026-02-15T00:05:00.000Z",
-    amountReceived: 5_000_000_000_000n,
-    payments: [],
-    metadata: {},
-    escrow: null,
-  };
-}
+import { makeInvoice } from "./helpers.js";
 
 describe("createWebhookEvent", () => {
   it("creates an event with correct type", () => {
@@ -40,7 +18,7 @@ describe("createWebhookEvent", () => {
   it("includes payment when provided", () => {
     const payment = {
       txid: "tx-1",
-      amount: 5_000_000_000_000n,
+      amount: 500_000n,
       height: 100,
       topoHeight: 100,
       confirmations: 3,
@@ -50,7 +28,7 @@ describe("createWebhookEvent", () => {
     };
     const event = createWebhookEvent(
       "payment.confirmed",
-      makeInvoice(),
+      makeInvoice({ status: "completed", amountReceived: 500_000n }),
       payment
     );
     expect(event.payment).toBeDefined();

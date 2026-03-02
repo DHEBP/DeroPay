@@ -1,15 +1,15 @@
 /**
  * Amount conversion utilities for DERO.
  *
- * DERO uses 12 decimal places (like piconero for Monero).
- * 1 DERO = 1,000,000,000,000 atomic units (1e12).
+ * DERO uses 5 decimal places.
+ * 1 DERO = 100,000 atomic units (1e5).
  */
 
 /** Number of atomic units per DERO */
-export const ATOMIC_UNITS_PER_DERO = 1_000_000_000_000n;
+export const ATOMIC_UNITS_PER_DERO = 100_000n;
 
 /** Number of decimal places */
-export const DERO_DECIMALS = 12;
+export const DERO_DECIMALS = 5;
 
 /**
  * Convert a human-readable DERO amount to atomic units.
@@ -19,9 +19,9 @@ export const DERO_DECIMALS = 12;
  *
  * @example
  * ```ts
- * deroToAtomic("1.0")   // 1_000_000_000_000n
- * deroToAtomic("0.001") // 1_000_000_000n
- * deroToAtomic(25)       // 25_000_000_000_000n
+ * deroToAtomic("1.0")   // 100_000n
+ * deroToAtomic("0.001") // 100n
+ * deroToAtomic(25)      // 2_500_000n
  * ```
  */
 export function deroToAtomic(dero: string | number): bigint {
@@ -50,10 +50,10 @@ export function deroToAtomic(dero: string | number): bigint {
  *
  * @example
  * ```ts
- * atomicToDero(1_000_000_000_000n)    // "1.00000"
- * atomicToDero(1_500_000_000_000n)    // "1.50000"
- * atomicToDero(25_000_000_000_000n)   // "25.00000"
- * atomicToDero(100_000_000n, 2)       // "0.00"
+ * atomicToDero(100_000n)    // "1.00000"
+ * atomicToDero(150_000n)    // "1.50000"
+ * atomicToDero(2_500_000n)  // "25.00000"
+ * atomicToDero(10n, 2)      // "0.00"
  * ```
  */
 export function atomicToDero(atomic: bigint, maxDecimals: number = 5): string {
@@ -74,7 +74,7 @@ export function atomicToDero(atomic: bigint, maxDecimals: number = 5): string {
  *
  * @example
  * ```ts
- * formatDero(1_500_000_000_000n) // "1.50000 DERO"
+ * formatDero(150_000n) // "1.50000 DERO"
  * ```
  */
 export function formatDero(atomic: bigint, maxDecimals: number = 5): string {

@@ -35,7 +35,7 @@ export default function CartPage() {
                     <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="font-medium">{formatDero(item.price * BigInt(item.quantity))} DERO</span>
+                    <span className="font-medium">{formatDero(item.price * BigInt(item.quantity))}</span>
                     <button
                       onClick={() => removeItem(item.id)}
                       className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 active:bg-red-100 dark:active:bg-red-950/50 active:scale-90 rounded-lg transition-all"
@@ -51,7 +51,7 @@ export default function CartPage() {
               <h2 className="text-xl font-bold mb-4">Order Summary</h2>
               <div className="flex justify-between mb-4 text-lg">
                 <span className="text-gray-600 dark:text-gray-400">Total</span>
-                <span className="font-bold">{formatDero(totalPrice)} DERO</span>
+                <span className="font-bold">{formatDero(totalPrice)}</span>
               </div>
               <Link
                 href="/checkout"

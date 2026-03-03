@@ -117,14 +117,14 @@ export default function CheckoutPage() {
                       {item.quantity}× {item.name}
                     </span>
                     <span className="font-medium">
-                      {formatDero(item.price * BigInt(item.quantity))} DERO
+                      {formatDero(item.price * BigInt(item.quantity))}
                     </span>
                   </div>
                 ))}
               </div>
               <div className="border-t border-gray-100 dark:border-gray-800 pt-4 flex justify-between font-bold text-lg">
                 <span>Total</span>
-                <span>{formatDero(totalPrice)} DERO</span>
+                <span>{formatDero(totalPrice)}</span>
               </div>
             </div>
 

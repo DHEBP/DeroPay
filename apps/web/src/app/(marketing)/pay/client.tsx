@@ -10,6 +10,10 @@ import {
   Database,
   QrCode,
   ArrowRight,
+  ShoppingCart,
+  Code2,
+  Link2,
+  Store,
 } from "lucide-react";
 import { FeatureCard } from "@/components/ui/feature-card";
 import { PaymentFlowDemo } from "@/components/demos/payment-flow";
@@ -111,6 +115,70 @@ export const PayPageClient = () => (
       </div>
     </section>
 
+    {/* Distribution Channels */}
+    <section style={{ background: "#000", padding: "80px 24px", borderBottom: "1px solid #1e2a24" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: "48px" }}>
+          <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>Accept DERO Everywhere</p>
+          <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>Four ways to get paid</h2>
+          <p style={{ marginTop: "12px", fontSize: "16px", color: "#6b7f75", maxWidth: "560px", margin: "12px auto 0" }}>
+            One gateway server, multiple distribution channels. Pick the one that fits your business — or use them all.
+          </p>
+        </div>
+        <div style={{ display: "grid", gap: "16px", gridTemplateColumns: "repeat(2, 1fr)" }} className="channels-grid">
+          {[
+            {
+              icon: <Link2 size={20} />,
+              title: "Payment Links",
+              description: "No website needed. Create an invoice, get a link, share it anywhere — email, social media, QR poster, text message. The hosted checkout page handles the rest.",
+              href: "https://deropay.derod.org/guides/payment-links",
+            },
+            {
+              icon: <Code2 size={20} />,
+              title: "Embeddable Widget",
+              description: "Drop a single <script> tag on any website. A 13KB JavaScript file renders a \"Pay with DERO\" button with a full payment modal. Zero dependencies.",
+              href: "https://deropay.derod.org/guides/embeddable-widget",
+            },
+            {
+              icon: <ShoppingCart size={20} />,
+              title: "WooCommerce Plugin",
+              description: "Accept DERO in the world's largest ecommerce platform. Thin PHP adapter connects your WooCommerce checkout to the gateway's REST API.",
+              href: "https://deropay.derod.org/guides/woocommerce",
+            },
+            {
+              icon: <Store size={20} />,
+              title: "Medusa.js Plugin",
+              description: "TypeScript-native payment provider for Medusa v2. Extends AbstractPaymentProvider with automatic fiat-to-DERO conversion and webhook handling.",
+              href: "https://deropay.derod.org/guides/medusa-plugin",
+            },
+          ].map((channel) => (
+            <a
+              key={channel.title}
+              href={channel.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "block",
+                padding: "24px",
+                background: "#0a0f0d",
+                border: "1px solid #1e2a24",
+                borderRadius: "12px",
+                textDecoration: "none",
+                transition: "border-color 0.2s, transform 0.2s",
+              }}
+              className="channel-card"
+            >
+              <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(16,185,129,0.14)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", marginBottom: "16px" }}>
+                {channel.icon}
+              </div>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4", marginBottom: "8px" }}>{channel.title}</h3>
+              <p style={{ fontSize: "14px", lineHeight: 1.6, color: "#6b7f75" }}>{channel.description}</p>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+
     {/* Code example */}
     <section style={{ background: "#000", padding: "80px 24px" }}>
       <div style={{ maxWidth: "720px", margin: "0 auto" }}>
@@ -135,8 +203,17 @@ export const PayPageClient = () => (
     </section>
 
     <style>{`
-      @media (max-width: 767px) { .product-features-grid { grid-template-columns: 1fr !important; } }
-      @media (min-width: 768px) and (max-width: 1023px) { .product-features-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+      @media (max-width: 767px) {
+        .product-features-grid { grid-template-columns: 1fr !important; }
+        .channels-grid { grid-template-columns: 1fr !important; }
+      }
+      @media (min-width: 768px) and (max-width: 1023px) {
+        .product-features-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      }
+      .channel-card:hover {
+        border-color: #4a6356 !important;
+        transform: translateY(-2px);
+      }
     `}</style>
   </>
 );

@@ -5,42 +5,42 @@ import {
   EyeOff,
   Server,
   Code2,
-  Component,
+  Link2,
   FileCode2,
-  Webhook,
+  ShoppingCart,
 } from "lucide-react";
 import { Section, SectionHeader } from "@/components/ui/section";
 
 const features = [
   {
     icon: <EyeOff size={22} />,
-    title: "Privacy-Preserving",
-    description: "Built for DERO's encrypted blockchain. Payments are confidential by default.",
+    title: "Private by Default",
+    description: "Built for DERO's encrypted blockchain. Every transaction is confidential. No on-chain surveillance possible.",
   },
   {
     icon: <Server size={22} />,
-    title: "Self-Hosted",
-    description: "No third-party services. Everything runs on your infrastructure.",
+    title: "Self-Hosted Gateway",
+    description: "BTCPay Server model — you run the gateway, you control the wallet. No third-party custody, no intermediaries.",
+  },
+  {
+    icon: <Link2 size={22} />,
+    title: "Payment Links",
+    description: "No website needed. Create an invoice, share a link via email, social, or QR poster. Customers pay from any device.",
   },
   {
     icon: <Code2 size={22} />,
-    title: "TypeScript-Native",
-    description: "Full type safety from wallet RPC to React component props.",
+    title: "Embeddable Widget",
+    description: "One script tag, any website. A 13KB JavaScript file adds a \"Pay with DERO\" button with full checkout modal.",
   },
   {
-    icon: <Component size={22} />,
-    title: "React & Next.js Ready",
-    description: "Drop-in components, context providers, and hooks out of the box.",
+    icon: <ShoppingCart size={22} />,
+    title: "Ecommerce Plugins",
+    description: "WooCommerce and Medusa.js plugins ready to go. Thin adapters that connect your store to the gateway's REST API.",
   },
   {
     icon: <FileCode2 size={22} />,
     title: "Smart Contract Escrow",
-    description: "On-chain escrow with arbitration, fees, and dispute resolution.",
-  },
-  {
-    icon: <Webhook size={22} />,
-    title: "Webhook-First",
-    description: "HMAC-signed notifications on every payment state change.",
+    description: "On-chain escrow with arbitration, fee splitting, and dispute resolution. Mainnet tested.",
   },
 ];
 

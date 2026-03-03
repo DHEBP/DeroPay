@@ -1,0 +1,19 @@
+{
+  "name": "deropay-widget",
+  "version": "0.1.0",
+  "description": "Embeddable payment widget for DERO — drop a script tag on any website to accept DERO payments.",
+  "type": "module",
+  "main": "./dist/widget.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/widget.ts --format iife --global-name DeroPay --minify --out-dir dist --no-splitting",
+    "dev": "tsup src/widget.ts --format iife --global-name DeroPay --out-dir dist --no-splitting --watch"
+  },
+  "keywords": ["dero", "payment", "widget", "crypto", "checkout"],
+  "author": "DHEBP",
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  }
+}

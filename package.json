@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "plugins/*"
   ],
   "scripts": {
     "dev:web": "bun run --cwd apps/web dev",
@@ -14,6 +15,10 @@
     "dev:gateway": "bun run --cwd apps/gateway dev",
     "build:gateway": "bun run --cwd apps/gateway build",
     "start:gateway": "bun run --cwd apps/gateway start",
+    "dev:checkout": "bun run --cwd apps/checkout dev",
+    "build:checkout": "bun run --cwd apps/checkout build",
+    "build:widget": "bun run --cwd packages/deropay-widget build",
+    "build:medusa": "bun run --cwd plugins/medusa-payment-deropay build",
     "typecheck": "bun run --cwd packages/dero-pay typecheck"
   },
   "packageManager": "bun"

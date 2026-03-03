@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pay with DERO — DeroPay Checkout</title>
+  <meta name="description" content="Complete your DERO payment securely." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💎</text></svg>" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="checkout-app">
+    <div class="checkout-card">
+      <div class="checkout-header">
+        <div class="logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          <span>DeroPay</span>
+        </div>
+      </div>
+
+      <div id="loading-state" class="state">
+        <div class="spinner"></div>
+        <p>Loading invoice...</p>
+      </div>
+
+      <div id="payment-state" class="state hidden">
+        <div class="invoice-name" id="invoice-name"></div>
+        <div class="invoice-description" id="invoice-description"></div>
+
+        <div class="qr-container">
+          <div id="qr-code"></div>
+        </div>
+
+        <div class="amount-display">
+          <span class="amount-value" id="dero-amount"></span>
+          <span class="amount-label">DERO</span>
+        </div>
+        <div class="fiat-amount" id="fiat-amount"></div>
+
+        <div class="address-container">
+          <label>Send to this address:</label>
+          <div class="address-box">
+            <code id="payment-address"></code>
+            <button id="copy-btn" class="copy-btn" title="Copy address">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="status-bar">
+          <div class="status-icon" id="status-icon">⏳</div>
+          <div class="status-text" id="status-text">Waiting for payment...</div>
+        </div>
+
+        <div class="countdown" id="countdown"></div>
+      </div>
+
+      <div id="success-state" class="state hidden">
+        <div class="success-icon">✓</div>
+        <h2>Payment Confirmed</h2>
+        <p class="success-detail" id="success-detail"></p>
+      </div>
+
+      <div id="expired-state" class="state hidden">
+        <div class="expired-icon">⏰</div>
+        <h2>Invoice Expired</h2>
+        <p>This payment link has expired. Please request a new one from the merchant.</p>
+      </div>
+
+      <div id="error-state" class="state hidden">
+        <div class="error-icon">⚠</div>
+        <h2>Error</h2>
+        <p id="error-message"></p>
+      </div>
+
+      <div class="checkout-footer">
+        Powered by <a href="https://deropay.com" target="_blank" rel="noopener">DeroPay</a> — Private payments on DERO
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./checkout.ts"></script>
+</body>
+</html>

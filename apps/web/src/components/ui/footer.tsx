@@ -55,18 +55,7 @@ export const Footer = () => (
             <li><a href="https://deropay.derod.org" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Documentation</a></li>
             <li><a href="https://deropay.derod.org/dero-pay/api-reference" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">API Reference</a></li>
             <li><a href="https://deropay.derod.org/guides/prerequisites" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Guides</a></li>
-            <li><a href="https://github.com/DHEBP" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Examples</a></li>
-          </ul>
-        </div>
-
-        {/* Company */}
-        <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-[#f0fdf4]">Company</h3>
-          <ul className="mt-4 space-y-3">
             <li><Link href="/about" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">About</Link></li>
-            <li><Link href="/blog" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Blog</Link></li>
-            <li><Link href="/careers" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Careers</Link></li>
-            <li><Link href="/contact" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Contact</Link></li>
           </ul>
         </div>
 
@@ -76,7 +65,6 @@ export const Footer = () => (
           <ul className="mt-4 space-y-3">
             <li><Link href="/privacy" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Privacy Policy</Link></li>
             <li><Link href="/terms" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Terms of Service</Link></li>
-            <li><Link href="/cookies" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Cookie Policy</Link></li>
           </ul>
         </div>
       </div>
@@ -103,7 +91,7 @@ export const Footer = () => (
       }
       @media (min-width: 768px) {
         footer > div > div:first-child {
-          grid-template-columns: 1.4fr repeat(4, 1fr) !important;
+          grid-template-columns: 1.6fr repeat(3, 1fr) !important;
         }
         footer > div > div:first-child > div:first-child {
           grid-column: 1 / 2 !important;

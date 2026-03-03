@@ -75,17 +75,11 @@ export const Navbar = () => {
 
         {/* Right CTA - hidden on small screens */}
         <div
-          className="flex items-center gap-5 shrink-0 ml-auto"
+          className="flex items-center shrink-0 ml-auto"
           style={{ display: "var(--nav-display, none)" }}
         >
-          <Link
-            href="https://deropay.derod.org"
-            className="whitespace-nowrap text-sm font-bold text-white hover:underline"
-          >
-            Log in
-          </Link>
           <Link href="https://deropay.derod.org" className="btn-accent px-5 py-2 text-sm whitespace-nowrap">
-            Sign up
+            Get Started
           </Link>
         </div>
 

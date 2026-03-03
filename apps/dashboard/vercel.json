@@ -2,5 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "cd ../.. && bun install",
-  "buildCommand": "cd ../.. && NEXT_PUBLIC_DEMO_MODE=true bun run --cwd apps/dashboard build"
+  "buildCommand": "cd ../.. && bun run build:sdk && NEXT_PUBLIC_DEMO_MODE=true bun run --cwd apps/dashboard build"
 }

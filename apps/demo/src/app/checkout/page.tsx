@@ -78,22 +78,24 @@ export default function CheckoutPage() {
   };
 
   const simulatePayment = async () => {
-    if (!currentInvoice) {
+    if (!invoiceId) {
       info("Not ready", "Invoice is still loading — try again in a moment.");
       return;
     }
     setIsSimulating(true);
     try {
-      const res = await fetch(
-        `http://localhost:30103/mock-payment?payment_id=${currentInvoice.paymentId}&amount=${currentInvoice.amount}`
-      );
+      const res = await fetch("/api/pay/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId }),
+      });
       if (res.ok) {
-        success("Mock payment sent!", "The invoice will update within a few seconds.");
+        success("Payment simulated!", "The invoice will update within a few seconds.");
       } else {
-        error("Mock payment failed", `Server responded: ${res.status}`);
+        error("Simulation failed", `Server responded: ${res.status}`);
       }
     } catch (err) {
-      error("Cannot reach mock wallet", "Is the mock RPC server running on port 30103?");
+      error("Simulation error", err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsSimulating(false);
     }

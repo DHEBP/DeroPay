@@ -10,7 +10,7 @@ import { ConsoleFilter } from "@/components/console-filter";
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <DeroAuthProvider xswdUrl="ws://127.0.0.1:44326/xswd">
-      <DeroPayProvider xswdUrl="ws://127.0.0.1:44326/xswd" statusEndpoint="http://localhost:3100/api/pay/status">
+      <DeroPayProvider statusEndpoint="/api/pay/status">
         <CartProvider>
           <ToastProvider>
             <ConsoleFilter />

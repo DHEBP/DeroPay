@@ -1,8 +1,12 @@
 import { createAuthHandlers } from "dero-auth/next";
 
-const { GET, POST } = createAuthHandlers({
+const secret = process.env.JWT_SECRET || "demo-secret-not-for-production-use!";
+
+const { challengeHandler, verifyHandler } = createAuthHandlers({
   domain: "demo.deropay.com",
-  jwtSecret: process.env.JWT_SECRET || "fallback-secret-for-demo-only",
+  uri: "https://demo.deropay.com",
+  jwtSecret: secret,
 });
 
-export { GET, POST };
+export const GET = challengeHandler;
+export const POST = verifyHandler;

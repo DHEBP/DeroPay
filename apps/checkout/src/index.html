@@ -11,6 +11,7 @@
 <body>
   <div id="checkout-app">
     <div class="checkout-card">
+      <div id="demo-banner" class="demo-banner hidden">Simulation — no real DERO is transferred</div>
       <div class="checkout-header">
         <div class="logo">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
@@ -53,6 +54,8 @@
         </div>
 
         <div class="countdown" id="countdown"></div>
+
+        <button id="simulate-btn" class="simulate-btn hidden">Simulate Payment</button>
       </div>
 
       <div id="success-state" class="state hidden">

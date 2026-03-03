@@ -45,6 +45,8 @@ export const Footer = () => (
             <li><Link href="/pay" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">DeroPay</Link></li>
             <li><Link href="/escrow" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Escrow</Link></li>
             <li><Link href="/dashboard" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Dashboard</Link></li>
+            <li><a href="https://demo.deropay.com" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Live Demo</a></li>
+            <li><Link href="/playground" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Widget Playground</Link></li>
           </ul>
         </div>
 
@@ -55,6 +57,8 @@ export const Footer = () => (
             <li><a href="https://deropay.derod.org" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Documentation</a></li>
             <li><a href="https://deropay.derod.org/dero-pay/api-reference" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">API Reference</a></li>
             <li><a href="https://deropay.derod.org/guides/prerequisites" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Guides</a></li>
+            <li><a href="https://checkout.deropay.com?demo=true" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Checkout Page</a></li>
+            <li><a href="https://dashboard.deropay.com" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Merchant Dashboard</a></li>
             <li><Link href="/about" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">About</Link></li>
           </ul>
         </div>

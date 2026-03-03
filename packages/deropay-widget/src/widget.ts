@@ -1,5 +1,5 @@
 import { CSS } from "./styles.js";
-import { createInvoice } from "./api.js";
+import { createInvoice, createDemoInvoice } from "./api.js";
 import { createModal } from "./modal.js";
 
 type WidgetConfig = {
@@ -10,11 +10,13 @@ type WidgetConfig = {
   currency?: string;
   name?: string;
   callbackUrl?: string;
+  demo?: boolean;
 };
 
 function parseConfig(el: HTMLElement): WidgetConfig | null {
-  const gateway = el.dataset.gateway;
-  const apiKey = el.dataset.apiKey;
+  const demo = el.dataset.demo === "true";
+  const gateway = el.dataset.gateway || (demo ? "https://demo.deropay.com" : "");
+  const apiKey = el.dataset.apiKey || (demo ? "demo" : "");
   if (!gateway || !apiKey) return null;
 
   return {
@@ -25,8 +27,11 @@ function parseConfig(el: HTMLElement): WidgetConfig | null {
     currency: el.dataset.currency,
     name: el.dataset.name,
     callbackUrl: el.dataset.callbackUrl,
+    demo,
   };
 }
+
+const BTN_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`;
 
 function initElement(el: HTMLElement): void {
   const config = parseConfig(el);
@@ -43,14 +48,7 @@ function initElement(el: HTMLElement): void {
 
   const btn = document.createElement("button");
   btn.className = "dp-btn";
-  btn.innerHTML = `
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-      <path d="M2 17l10 5 10-5"/>
-      <path d="M2 12l10 5 10-5"/>
-    </svg>
-    Pay with DERO
-  `;
+  btn.innerHTML = `${BTN_SVG} Pay with DERO`;
   shadow.appendChild(btn);
 
   let loading = false;
@@ -61,22 +59,24 @@ function initElement(el: HTMLElement): void {
     btn.textContent = "Loading...";
 
     try {
-      const invoice = await createInvoice({
-        gateway: config.gateway,
-        apiKey: config.apiKey,
-        amount: config.amount,
-        fiatAmount: config.fiatAmount,
-        currency: config.currency,
-        name: config.name,
-        callbackUrl: config.callbackUrl,
-      });
+      const invoice = config.demo
+        ? createDemoInvoice(config.amount, config.name)
+        : await createInvoice({
+            gateway: config.gateway,
+            apiKey: config.apiKey,
+            amount: config.amount,
+            fiatAmount: config.fiatAmount,
+            currency: config.currency,
+            name: config.name,
+            callbackUrl: config.callbackUrl,
+          });
 
       createModal(invoice, config.gateway, shadow, () => {
         el.dispatchEvent(new CustomEvent("deropay:completed", {
           bubbles: true,
           detail: { invoiceId: invoice.id, amount: invoice.amount },
         }));
-      });
+      }, config.demo);
     } catch (err) {
       console.error("[DeroPay] Failed to create invoice:", err);
       const errDiv = document.createElement("div");
@@ -97,14 +97,7 @@ function initElement(el: HTMLElement): void {
       errDiv.addEventListener("click", (e) => { if (e.target === errDiv) errDiv.remove(); });
     } finally {
       loading = false;
-      btn.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
-        </svg>
-        Pay with DERO
-      `;
+      btn.innerHTML = `${BTN_SVG} Pay with DERO`;
     }
   });
 }

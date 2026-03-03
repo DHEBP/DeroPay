@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/pay",
     "/escrow",
     "/dashboard",
+    "/playground",
   ];
 
   return routes.map((route) => ({

@@ -15,16 +15,20 @@ type InvoiceData = {
 
 const POLL_INTERVAL_MS = 4000;
 const ATOMIC_UNITS_PER_DERO = 100_000;
+const DEMO_ADDRESS =
+  "deri1qy0ehnqcg0rr4qlsgkfgpv3cx6fmk9pq0a95rfhssmacxvhfvz2yqg2wpnee0gf5qmet0e8w4gp3sxm6t7ycx5qd6w5kfzlsq9ycx0z3qsadmn5k";
 
 const $ = (id: string) => document.getElementById(id)!;
 
-function getParams(): { gateway: string; invoiceId: string } | null {
+function getParams(): { gateway: string; invoiceId: string; demo: boolean } | null {
   const params = new URLSearchParams(window.location.search);
+  const demo = params.get("demo") === "true";
   const gateway = params.get("gateway");
   const invoiceId = params.get("invoiceId") || params.get("id");
 
-  if (!gateway || !invoiceId) return null;
-  return { gateway: gateway.replace(/\/$/, ""), invoiceId };
+  if (demo) return { gateway: "", invoiceId: "", demo: true };
+  if (!gateway || !invoiceId) return demo ? { gateway: "", invoiceId: "", demo: true } : null;
+  return { gateway: gateway.replace(/\/$/, ""), invoiceId, demo: false };
 }
 
 function formatDero(atomicStr: string): string {
@@ -46,6 +50,21 @@ async function fetchInvoice(gateway: string, invoiceId: string): Promise<Invoice
     throw new Error((body as any).error || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+function createDemoInvoice(): InvoiceData {
+  return {
+    id: "inv_demo_checkout",
+    name: "Premium Plan",
+    description: "Monthly subscription",
+    status: "pending",
+    amount: "2500000",
+    amountReceived: "0",
+    integratedAddress: DEMO_ADDRESS,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(),
+    payments: [],
+  };
 }
 
 function renderPayment(invoice: InvoiceData): void {
@@ -112,12 +131,48 @@ function updateCountdown(expiresAt: string): void {
 
 let countdownTimer: number | null = null;
 
+function runDemoMode(): void {
+  $("demo-banner").classList.remove("hidden");
+
+  const invoice = createDemoInvoice();
+  renderPayment(invoice);
+
+  const simBtn = $("simulate-btn");
+  simBtn.classList.remove("hidden");
+
+  countdownTimer = window.setInterval(() => {
+    updateCountdown(invoice.expiresAt);
+  }, 1000);
+
+  simBtn.addEventListener("click", () => {
+    simBtn.setAttribute("disabled", "true");
+    simBtn.textContent = "Sending...";
+
+    invoice.status = "confirming";
+    invoice.amountReceived = invoice.amount;
+    updateStatus(invoice);
+
+    setTimeout(() => {
+      invoice.status = "completed";
+      updateStatus(invoice);
+      if (countdownTimer) clearInterval(countdownTimer);
+      setTimeout(() => {
+        $("success-detail").textContent = `${formatDero(invoice.amount)} DERO received`;
+        showState("success-state");
+      }, 1500);
+    }, 3000);
+  });
+}
+
 async function main(): Promise<void> {
   const params = getParams();
   if (!params) {
-    $("error-message").textContent =
-      "Missing required URL parameters. Use: ?gateway=https://...&invoiceId=...";
-    showState("error-state");
+    runDemoMode();
+    return;
+  }
+
+  if (params.demo) {
+    runDemoMode();
     return;
   }
 

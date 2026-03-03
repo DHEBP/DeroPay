@@ -22,6 +22,23 @@ export type CreateInvoiceParams = {
   callbackUrl?: string;
 };
 
+const DEMO_ADDRESS = "deri1qy0ehnqcg0rr4qlsgkfgpv3cx6fmk9pq0a95rfhssmacxvhfvz2yqg2wpnee0gf5qmet0e8w4gp3sxm6t7ycx5qd6w5kfzlsq9ycx0z3qsadmn5k";
+
+export function createDemoInvoice(amount?: number, name?: string): InvoiceResponse {
+  const id = `inv_demo_${Math.random().toString(36).slice(2, 10)}`;
+  return {
+    id,
+    name: name || "Demo Payment",
+    status: "pending",
+    amount: String(amount || 2500000),
+    amountReceived: "0",
+    integratedAddress: DEMO_ADDRESS,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(),
+    payments: [],
+  };
+}
+
 export async function createInvoice(params: CreateInvoiceParams): Promise<InvoiceResponse> {
   const body: Record<string, unknown> = {};
 

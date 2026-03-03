@@ -13,6 +13,7 @@ export function createModal(
   gateway: string,
   root: ShadowRoot,
   onComplete?: () => void,
+  demo?: boolean,
 ): { destroy: () => void } {
   const overlay = document.createElement("div");
   overlay.className = "dp-overlay";
@@ -89,6 +90,8 @@ export function createModal(
 
   let pollTimer: number | null = null;
   let countdownTimer: number | null = null;
+  let demoTimer1: number | null = null;
+  let demoTimer2: number | null = null;
   let destroyed = false;
 
   function updateCountdown(): void {
@@ -117,25 +120,27 @@ export function createModal(
     }));
   }
 
+  function setStatus(status: string, icon: string, text: string, cls?: string): void {
+    statusBar.className = cls ? `dp-status ${cls}` : "dp-status";
+    statusBar.innerHTML = `<span>${icon}</span><span class="dp-status-text">${text}</span>`;
+  }
+
   async function poll(): Promise<void> {
     if (destroyed) return;
     try {
       const data = await getStatus(gateway, invoice.id);
       Object.assign(invoice, data);
 
-      statusBar.className = "dp-status";
       if (data.status === "confirming") {
-        statusBar.className = "dp-status confirming";
-        statusBar.innerHTML = `<span>⛏</span><span class="dp-status-text">Payment detected — confirming...</span>`;
+        setStatus("confirming", "⛏", "Payment detected — confirming...", "confirming");
       } else if (data.status === "completed") {
-        statusBar.className = "dp-status completed";
-        statusBar.innerHTML = `<span>✓</span><span class="dp-status-text">Payment confirmed!</span>`;
-        stopPolling();
+        setStatus("completed", "✓", "Payment confirmed!", "completed");
+        stopTimers();
         setTimeout(showSuccess, 1200);
         return;
       } else if (data.status === "expired") {
-        statusBar.innerHTML = `<span>⏰</span><span class="dp-status-text">Invoice expired</span>`;
-        stopPolling();
+        setStatus("expired", "⏰", "Invoice expired");
+        stopTimers();
         return;
       }
     } catch { /* keep polling */ }
@@ -143,20 +148,40 @@ export function createModal(
     pollTimer = window.setTimeout(poll, POLL_MS);
   }
 
-  function stopPolling(): void {
+  function runDemoSequence(): void {
+    demoTimer1 = window.setTimeout(() => {
+      if (destroyed) return;
+      setStatus("confirming", "⛏", "Payment detected — confirming...", "confirming");
+      demoTimer2 = window.setTimeout(() => {
+        if (destroyed) return;
+        setStatus("completed", "✓", "Payment confirmed!", "completed");
+        stopTimers();
+        setTimeout(showSuccess, 1200);
+      }, 3000);
+    }, 4000);
+  }
+
+  function stopTimers(): void {
     if (pollTimer) clearTimeout(pollTimer);
     if (countdownTimer) clearInterval(countdownTimer);
+    if (demoTimer1) clearTimeout(demoTimer1);
+    if (demoTimer2) clearTimeout(demoTimer2);
   }
 
   function destroy(): void {
     destroyed = true;
-    stopPolling();
+    stopTimers();
     overlay.remove();
   }
 
   updateCountdown();
   countdownTimer = window.setInterval(updateCountdown, 1000);
-  pollTimer = window.setTimeout(poll, POLL_MS);
+
+  if (demo) {
+    runDemoSequence();
+  } else {
+    pollTimer = window.setTimeout(poll, POLL_MS);
+  }
 
   return { destroy };
 }

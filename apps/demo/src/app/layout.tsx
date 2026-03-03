@@ -29,6 +29,17 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
+          <div className="bg-emerald-600 text-white text-center text-xs font-semibold py-1.5 px-4">
+            Simulation mode — no real DERO is transferred.{" "}
+            <a
+              href="https://deropay.com/pay"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-emerald-100"
+            >
+              Learn more →
+            </a>
+          </div>
           {children}
         </Providers>
       </body>

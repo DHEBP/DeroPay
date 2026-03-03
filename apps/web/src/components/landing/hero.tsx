@@ -70,12 +70,12 @@ export const Hero = () => {
             transition={{ duration: 0.5, delay: 0.3 }}
             style={{ marginTop: "32px", display: "flex", flexWrap: "wrap", gap: "16px" }}
           >
-            <a href="https://deropay.derod.org" className="btn-accent" style={{ fontSize: "16px", padding: "14px 28px" }}>
-              Start now <ArrowRight size={18} />
-            </a>
-            <Link href="https://github.com/DHEBP" className="btn-secondary" style={{ fontSize: "16px", padding: "14px 28px" }}>
-              View Source
+            <Link href="/playground" className="btn-accent" style={{ fontSize: "16px", padding: "14px 28px" }}>
+              Try it now <ArrowRight size={18} />
             </Link>
+            <a href="https://deropay.derod.org" className="btn-secondary" style={{ fontSize: "16px", padding: "14px 28px" }}>
+              Documentation
+            </a>
           </motion.div>
 
           <motion.div

@@ -132,12 +132,14 @@ export const PayPageClient = () => (
               title: "Payment Links",
               description: "No website needed. Create an invoice, get a link, share it anywhere — email, social media, QR poster, text message. The hosted checkout page handles the rest.",
               href: "https://deropay.derod.org/guides/payment-links",
+              demoHref: "https://checkout.deropay.com?demo=true",
             },
             {
               icon: <Code2 size={20} />,
               title: "Embeddable Widget",
               description: "Drop a single <script> tag on any website. A 13KB JavaScript file renders a \"Pay with DERO\" button with a full payment modal. Zero dependencies.",
               href: "https://deropay.derod.org/guides/embeddable-widget",
+              demoHref: "/playground",
             },
             {
               icon: <ShoppingCart size={20} />,
@@ -152,18 +154,13 @@ export const PayPageClient = () => (
               href: "https://deropay.derod.org/guides/medusa-plugin",
             },
           ].map((channel) => (
-            <a
+            <div
               key={channel.title}
-              href={channel.href}
-              target="_blank"
-              rel="noopener noreferrer"
               style={{
-                display: "block",
                 padding: "24px",
                 background: "#0a0f0d",
                 border: "1px solid #1e2a24",
                 borderRadius: "12px",
-                textDecoration: "none",
                 transition: "border-color 0.2s, transform 0.2s",
               }}
               className="channel-card"
@@ -172,8 +169,14 @@ export const PayPageClient = () => (
                 {channel.icon}
               </div>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4", marginBottom: "8px" }}>{channel.title}</h3>
-              <p style={{ fontSize: "14px", lineHeight: 1.6, color: "#6b7f75" }}>{channel.description}</p>
-            </a>
+              <p style={{ fontSize: "14px", lineHeight: 1.6, color: "#6b7f75", marginBottom: "16px" }}>{channel.description}</p>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <a href={channel.href} target="_blank" rel="noopener noreferrer" style={{ fontSize: "13px", fontWeight: 600, color: "#6b7f75", textDecoration: "none", transition: "color 0.15s" }} className="channel-link">Docs →</a>
+                {"demoHref" in channel && channel.demoHref && (
+                  <a href={channel.demoHref} target={channel.demoHref.startsWith("/") ? undefined : "_blank"} rel={channel.demoHref.startsWith("/") ? undefined : "noopener noreferrer"} style={{ fontSize: "13px", fontWeight: 600, color: "#10b981", textDecoration: "none" }}>Try demo →</a>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       </div>

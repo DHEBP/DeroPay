@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { InvoiceEngine } from "dero-pay/server";
 import type { CreateInvoiceParams, Invoice, InvoiceStatus } from "dero-pay";
 import { loadConfig } from "./config.js";
+import { getDeroPrice, fiatToDeroAtomic } from "./price-feed.js";
 
 const config = loadConfig();
 
@@ -127,6 +128,42 @@ app.get("/health", async (c) => {
   }
 });
 
+// Current DERO price — public, no auth
+app.get("/price", async (c) => {
+  try {
+    const price = await getDeroPrice();
+    return c.json(price);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Price feed unavailable" },
+      503
+    );
+  }
+});
+
+// Convert fiat to DERO — public, no auth
+app.get("/convert", async (c) => {
+  try {
+    const amountStr = c.req.query("amount");
+    const currency = c.req.query("currency") ?? "usd";
+
+    if (!amountStr) return c.json({ error: "Missing amount query parameter" }, 400);
+
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      return c.json({ error: "Invalid amount" }, 400);
+    }
+
+    const result = await fiatToDeroAtomic(amount, currency);
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Conversion failed" },
+      500
+    );
+  }
+});
+
 // Create invoice
 app.post("/invoices", async (c) => {
   try {
@@ -134,12 +171,29 @@ app.post("/invoices", async (c) => {
     const body = await c.req.json();
 
     if (!body.name) return c.json({ error: "Missing name" }, 400);
-    if (!body.amount) return c.json({ error: "Missing amount" }, 400);
+
+    // Support both direct atomic amounts and fiat conversion
+    let atomicAmount: bigint;
+
+    if (body.amount) {
+      atomicAmount = BigInt(body.amount);
+    } else if (body.fiatAmount && body.currency) {
+      const converted = await fiatToDeroAtomic(
+        parseFloat(body.fiatAmount),
+        body.currency
+      );
+      atomicAmount = BigInt(converted.atomicUnits);
+    } else {
+      return c.json(
+        { error: "Provide either amount (atomic units) or fiatAmount + currency" },
+        400
+      );
+    }
 
     const params: CreateInvoiceParams = {
       name: body.name,
       description: body.description,
-      amount: BigInt(body.amount),
+      amount: atomicAmount,
       ttlSeconds: body.ttlSeconds,
       requiredConfirmations: body.requiredConfirmations,
       metadata: body.metadata,

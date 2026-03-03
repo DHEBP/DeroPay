@@ -1,0 +1,54 @@
+services:
+  gateway:
+    build:
+      context: ../../
+      dockerfile: apps/gateway/Dockerfile
+    ports:
+      - "3080:3080"
+    environment:
+      - DERO_WALLET_RPC_URL=http://wallet:10103/json_rpc
+      - DERO_DAEMON_RPC_URL=http://daemon:10102/json_rpc
+      - DEROPAY_STORE=sqlite
+      - DEROPAY_SQLITE_PATH=/app/data/deropay.db
+      - DEROPAY_API_KEY=${DEROPAY_API_KEY}
+      - DEROPAY_WEBHOOK_URL=${DEROPAY_WEBHOOK_URL:-}
+      - DEROPAY_WEBHOOK_SECRET=${DEROPAY_WEBHOOK_SECRET:-}
+    volumes:
+      - gateway-data:/app/data
+    depends_on:
+      - wallet
+    restart: unless-stopped
+
+  # DERO daemon — syncs the blockchain
+  daemon:
+    image: deroproject/derod:latest
+    command: ["--rpc-bind=0.0.0.0:10102"]
+    ports:
+      - "10102:10102"
+      - "10101:10101"
+    volumes:
+      - daemon-data:/root/.dero
+    restart: unless-stopped
+
+  # DERO wallet — receives payments
+  # You must create a wallet first, then mount it here.
+  # See README for wallet setup instructions.
+  wallet:
+    image: deroproject/dero-wallet-cli:latest
+    command:
+      [
+        "--wallet-file=/wallet/merchant.db",
+        "--rpc-server",
+        "--rpc-bind=0.0.0.0:10103",
+        "--daemon-address=daemon:10102",
+      ]
+    volumes:
+      - wallet-data:/wallet
+    depends_on:
+      - daemon
+    restart: unless-stopped
+
+volumes:
+  gateway-data:
+  daemon-data:
+  wallet-data:

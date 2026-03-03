@@ -1,0 +1,180 @@
+# DeroPay Gateway Server
+
+A standalone payment gateway that lets any merchant accept DERO. Connects to a DERO wallet, creates invoices, monitors payments, fires webhooks, and manages escrow — all via a clean REST API.
+
+**Self-host it for free, or let Default Privacy run it for you.**
+
+## Quick Start
+
+### 1. Generate an API key
+
+```bash
+bun run generate-key
+```
+
+### 2. Configure
+
+```bash
+cp .env.example .env
+# Edit .env with your wallet RPC URL and API key
+```
+
+### 3. Run
+
+**Development (local wallet):**
+
+```bash
+bun install
+bun run dev
+```
+
+**Production (Docker):**
+
+```bash
+docker compose up -d
+```
+
+The gateway starts on `http://localhost:3080`.
+
+## API Reference
+
+All endpoints except `/health` and `/status` require the `X-DeroPay-ApiKey` header.
+
+### Health Check
+
+```
+GET /health
+```
+
+Returns wallet connectivity, address, and balance. No auth required.
+
+### Create Invoice
+
+```
+POST /invoices
+Content-Type: application/json
+X-DeroPay-ApiKey: your-key
+
+{
+  "name": "Order #1234",
+  "amount": "500000",
+  "description": "2 widgets",
+  "metadata": { "orderId": "1234" }
+}
+```
+
+`amount` is in atomic units (1 DERO = 100,000 atomic units).
+
+Returns the invoice with an `integratedAddress` — show this to the customer as a QR code or payment link.
+
+### Check Invoice Status
+
+```
+GET /invoices/:id
+X-DeroPay-ApiKey: your-key
+```
+
+Or for simple polling from a checkout widget (no auth):
+
+```
+GET /status?invoiceId=xxx
+```
+
+### List Invoices
+
+```
+GET /invoices?status=completed&limit=50&offset=0
+X-DeroPay-ApiKey: your-key
+```
+
+### Stats
+
+```
+GET /stats
+X-DeroPay-ApiKey: your-key
+```
+
+### Escrow Actions
+
+```
+POST /escrow/:invoiceId/:action
+X-DeroPay-ApiKey: your-key
+```
+
+Actions: `confirmDelivery`, `refundBuyer`, `dispute`, `claimAfterExpiry`, `arbitrateRelease`, `arbitrateRefund`
+
+### List Escrow Invoices
+
+```
+GET /escrows?limit=50
+X-DeroPay-ApiKey: your-key
+```
+
+## Payment Flow
+
+```
+1. Your store calls POST /invoices with the order amount
+2. Gateway returns an invoice with a DERO integrated address
+3. Show the address + QR code to the customer
+4. Customer sends DERO from their wallet
+5. Gateway detects the payment (~5 second polling)
+6. After 3 confirmations (~54 seconds), invoice status → "completed"
+7. Gateway fires a webhook to your store's callback URL
+8. Your store fulfills the order
+```
+
+## Webhooks
+
+Configure `DEROPAY_WEBHOOK_URL` and `DEROPAY_WEBHOOK_SECRET` in your `.env`.
+
+The gateway sends HMAC-SHA256 signed POST requests to your webhook URL on every status change. Verify the signature using the `X-DeroPay-Signature` header.
+
+Event types: `invoice.created`, `invoice.pending`, `invoice.confirming`, `invoice.completed`, `invoice.expired`, `invoice.partial`, `payment.detected`, `payment.confirmed`, `escrow.*`
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                Your Server                       │
+│                                                  │
+│  ┌──────────────┐     ┌──────────────────────┐  │
+│  │ DERO Wallet  │◄────│  DeroPay Gateway     │  │
+│  │ (RPC)        │     │  (this server)       │  │
+│  └──────────────┘     └──────────┬───────────┘  │
+│                                  │               │
+│  ┌──────────────┐               │               │
+│  │ DERO Daemon  │◄──────────────┘               │
+│  │ (RPC)        │                                │
+│  └──────────────┘                                │
+└──────────────────────────────────────────────────┘
+         ▲ REST API
+         │
+┌────────┴──────────────┐
+│  WooCommerce / Shopify │
+│  / Medusa / custom app │
+└────────────────────────┘
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3080` | Server port |
+| `DERO_WALLET_RPC_URL` | `http://127.0.0.1:10103/json_rpc` | Wallet RPC endpoint |
+| `DERO_DAEMON_RPC_URL` | `http://127.0.0.1:10102/json_rpc` | Daemon RPC endpoint |
+| `DERO_RPC_USERNAME` | — | RPC basic auth username |
+| `DERO_RPC_PASSWORD` | — | RPC basic auth password |
+| `DEROPAY_API_KEY` | — | API key(s), comma-separated |
+| `DEROPAY_WEBHOOK_URL` | — | Webhook callback URL |
+| `DEROPAY_WEBHOOK_SECRET` | — | Webhook HMAC signing secret |
+| `DEROPAY_STORE` | `memory` | `memory` or `sqlite` |
+| `DEROPAY_SQLITE_PATH` | `./data/deropay.db` | SQLite database path |
+| `DEROPAY_ENABLE_ESCROW` | `false` | Enable escrow smart contracts |
+| `DEROPAY_DEFAULT_TTL` | `900` | Invoice TTL in seconds |
+| `DEROPAY_DEFAULT_CONFIRMATIONS` | `3` | Required block confirmations |
+| `DEROPAY_POLL_INTERVAL_MS` | `5000` | Wallet polling interval |
+| `DEROPAY_CORS_ORIGIN` | `*` | CORS allowed origin |
+
+## License
+
+MIT — DHEBP

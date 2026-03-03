@@ -11,6 +11,9 @@
     "dev:dashboard": "bun run --cwd apps/dashboard dev",
     "dev:demo": "bun run --cwd apps/demo dev --port 3002",
     "build:sdk": "bun run --cwd packages/dero-pay build",
+    "dev:gateway": "bun run --cwd apps/gateway dev",
+    "build:gateway": "bun run --cwd apps/gateway build",
+    "start:gateway": "bun run --cwd apps/gateway start",
     "typecheck": "bun run --cwd packages/dero-pay typecheck"
   },
   "packageManager": "bun"

@@ -13,6 +13,7 @@ export type GatewayConfig = {
   enableEscrow: boolean;
   escrowFeeBasisPoints: number;
   escrowBlockExpiration: number;
+  enableRouter: boolean;
   defaultTtlSeconds: number;
   defaultRequiredConfirmations: number;
   pollIntervalMs: number;
@@ -45,6 +46,7 @@ export function loadConfig(): GatewayConfig {
     enableEscrow: env.DEROPAY_ENABLE_ESCROW === "true",
     escrowFeeBasisPoints: parseInt(env.DEROPAY_ESCROW_FEE_BPS ?? "250", 10),
     escrowBlockExpiration: parseInt(env.DEROPAY_ESCROW_BLOCK_EXPIRATION ?? "60", 10),
+    enableRouter: env.DEROPAY_ENABLE_ROUTER === "true",
     defaultTtlSeconds: parseInt(env.DEROPAY_DEFAULT_TTL ?? "900", 10),
     defaultRequiredConfirmations: parseInt(env.DEROPAY_DEFAULT_CONFIRMATIONS ?? "3", 10),
     pollIntervalMs: parseInt(env.DEROPAY_POLL_INTERVAL_MS ?? "5000", 10),

@@ -6,6 +6,7 @@ export default defineConfig({
     "rpc/index": "src/rpc/index.ts",
     "server/index": "src/server/index.ts",
     "escrow/index": "src/escrow/index.ts",
+    "router/index": "src/router/index.ts",
     "client/index": "src/client/index.ts",
     "react/index": "src/react/index.ts",
     "next/index": "src/next/index.ts",

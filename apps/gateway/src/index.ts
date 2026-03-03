@@ -14,6 +14,7 @@ console.log(`
   Daemon RPC: ${config.daemonRpcUrl}
   Store:      ${config.store}
   Escrow:     ${config.enableEscrow ? "enabled" : "disabled"}
+  Router:     ${config.enableRouter ? "enabled" : "disabled"}
   Webhook:    ${config.webhookUrl || "not configured"}
 `);
 

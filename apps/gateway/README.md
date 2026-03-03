@@ -1,8 +1,8 @@
 # DeroPay Gateway Server
 
-A standalone payment gateway that lets any merchant accept DERO. Connects to a DERO wallet, creates invoices, monitors payments, fires webhooks, and manages escrow — all via a clean REST API.
+A standalone, self-hosted payment gateway that lets any merchant accept DERO. Connects to your DERO wallet, creates invoices, monitors payments, fires webhooks, and manages escrow and instant payment routing — all via a clean REST API.
 
-**Self-host it for free, or let Default Privacy run it for you.**
+Like BTCPay Server, but for DERO. Free, open-source, self-hosted. You control everything.
 
 ## Quick Start
 
@@ -38,7 +38,7 @@ The gateway starts on `http://localhost:3080`.
 
 ## API Reference
 
-All endpoints except `/health` and `/status` require the `X-DeroPay-ApiKey` header.
+All endpoints except `/health`, `/status`, `/price`, and `/convert` require the `X-DeroPay-ApiKey` header.
 
 ### Health Check
 
@@ -110,6 +110,71 @@ GET /escrows?limit=50
 X-DeroPay-ApiKey: your-key
 ```
 
+### Deploy a Payment Router
+
+Requires `DEROPAY_ENABLE_ROUTER=true`.
+
+```
+POST /router/deploy
+Content-Type: application/json
+X-DeroPay-ApiKey: your-key
+
+{
+  "feeBasisPoints": 0
+}
+```
+
+Deploy with no fee (merchant keeps 100%), or set `feeBasisPoints` and `feeRecipientAddress` for a split. The deploying wallet becomes the merchant.
+
+Returns the SCID (Smart Contract ID) — save this for future payments.
+
+### Send Payment Through Router
+
+```
+POST /router/:scid/pay
+Content-Type: application/json
+X-DeroPay-ApiKey: your-key
+
+{
+  "invoiceId": "inv_abc123",
+  "amount": "50000"
+}
+```
+
+Also supports `fiatAmount` + `currency` instead of `amount`. The contract instantly splits the payment between merchant and fee recipient.
+
+### Get Router State
+
+```
+GET /router/:scid
+X-DeroPay-ApiKey: your-key
+```
+
+Returns on-chain state: merchant address, fee config, total processed, total fees, payment count.
+
+### Update Merchant Address
+
+```
+POST /router/:scid/update-merchant
+Content-Type: application/json
+X-DeroPay-ApiKey: your-key
+
+{
+  "newAddress": "dero1q..."
+}
+```
+
+Only the current merchant can update the address.
+
+### List Routers
+
+```
+GET /routers
+X-DeroPay-ApiKey: your-key
+```
+
+Lists all locally tracked router contracts.
+
 ## Payment Flow
 
 ```
@@ -170,6 +235,7 @@ Event types: `invoice.created`, `invoice.pending`, `invoice.confirming`, `invoic
 | `DEROPAY_STORE` | `memory` | `memory` or `sqlite` |
 | `DEROPAY_SQLITE_PATH` | `./data/deropay.db` | SQLite database path |
 | `DEROPAY_ENABLE_ESCROW` | `false` | Enable escrow smart contracts |
+| `DEROPAY_ENABLE_ROUTER` | `false` | Enable payment router smart contracts |
 | `DEROPAY_DEFAULT_TTL` | `900` | Invoice TTL in seconds |
 | `DEROPAY_DEFAULT_CONFIRMATIONS` | `3` | Required block confirmations |
 | `DEROPAY_POLL_INTERVAL_MS` | `5000` | Wallet polling interval |

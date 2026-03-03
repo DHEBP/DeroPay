@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { InvoiceEngine } from "dero-pay/server";
+import { RouterManager } from "dero-pay/router";
 import type { CreateInvoiceParams, Invoice, InvoiceStatus } from "dero-pay";
 import { loadConfig } from "./config.js";
 import { getDeroPrice, fiatToDeroAtomic } from "./price-feed.js";
@@ -50,6 +51,33 @@ async function getEngine(): Promise<InvoiceEngine> {
 }
 
 // ---------------------------------------------------------------------------
+// Router manager singleton (optional — enabled via DEROPAY_ENABLE_ROUTER)
+// ---------------------------------------------------------------------------
+
+let routerManager: RouterManager | null = null;
+
+function getRouterManager(): RouterManager {
+  if (!config.enableRouter) {
+    throw new Error("Payment router is not enabled. Set DEROPAY_ENABLE_ROUTER=true");
+  }
+
+  if (!routerManager) {
+    const rpcAuth =
+      config.rpcUsername && config.rpcPassword
+        ? { username: config.rpcUsername, password: config.rpcPassword }
+        : undefined;
+
+    routerManager = new RouterManager({
+      walletRpcUrl: config.walletRpcUrl,
+      daemonRpcUrl: config.daemonRpcUrl,
+      rpcAuth,
+    });
+  }
+
+  return routerManager;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -81,6 +109,8 @@ app.use("/invoices", apiKeyAuth);
 app.use("/stats", apiKeyAuth);
 app.use("/escrow/*", apiKeyAuth);
 app.use("/escrows", apiKeyAuth);
+app.use("/router/*", apiKeyAuth);
+app.use("/routers", apiKeyAuth);
 
 async function apiKeyAuth(c: any, next: any) {
   if (config.apiKeys.length === 0) {
@@ -358,6 +388,149 @@ app.get("/escrows", async (c) => {
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// Payment Router routes
+// ---------------------------------------------------------------------------
+
+// Deploy a new payment router contract
+app.post("/router/deploy", async (c) => {
+  try {
+    const manager = getRouterManager();
+    const body = await c.req.json().catch(() => ({}));
+
+    const router = await manager.deployRouter({
+      feeRecipientAddress: body.feeRecipientAddress,
+      feeBasisPoints: body.feeBasisPoints ? parseInt(body.feeBasisPoints, 10) : 0,
+    });
+
+    return c.json(
+      {
+        id: router.id,
+        scid: router.scid,
+        status: router.status,
+        feeBasisPoints: router.feeBasisPoints,
+        feeRecipientAddress: router.feeRecipientAddress,
+        createdAt: router.createdAt,
+      },
+      201
+    );
+  } catch (err) {
+    const status = err instanceof Error && err.message.includes("not enabled") ? 400 : 500;
+    return c.json(
+      { error: err instanceof Error ? err.message : "Internal error" },
+      status
+    );
+  }
+});
+
+// Send a payment through a router contract
+app.post("/router/:scid/pay", async (c) => {
+  try {
+    const manager = getRouterManager();
+    const { scid } = c.req.param();
+    const body = await c.req.json();
+
+    if (!body.invoiceId) return c.json({ error: "Missing invoiceId" }, 400);
+
+    let atomicAmount: bigint;
+
+    if (body.amount) {
+      atomicAmount = BigInt(body.amount);
+    } else if (body.fiatAmount && body.currency) {
+      const converted = await fiatToDeroAtomic(
+        parseFloat(body.fiatAmount),
+        body.currency
+      );
+      atomicAmount = BigInt(converted.atomicUnits);
+    } else {
+      return c.json(
+        { error: "Provide either amount (atomic units) or fiatAmount + currency" },
+        400
+      );
+    }
+
+    const txid = await manager.pay(scid, body.invoiceId, atomicAmount);
+    return c.json({ txid, scid, invoiceId: body.invoiceId });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Internal error" },
+      500
+    );
+  }
+});
+
+// Get on-chain state of a router contract
+app.get("/router/:scid", async (c) => {
+  try {
+    const manager = getRouterManager();
+    const { scid } = c.req.param();
+    const state = await manager.getOnChainState(scid);
+
+    return c.json({
+      scid: state.scid,
+      merchant: state.merchant,
+      feeRecipient: state.feeRecipient,
+      feeBasisPoints: state.feeBasisPoints,
+      totalProcessed: state.totalProcessed.toString(),
+      totalFees: state.totalFees.toString(),
+      paymentCount: state.paymentCount,
+      scBalance: state.scBalance,
+    });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Internal error" },
+      500
+    );
+  }
+});
+
+// Update merchant address on a router contract
+app.post("/router/:scid/update-merchant", async (c) => {
+  try {
+    const manager = getRouterManager();
+    const { scid } = c.req.param();
+    const body = await c.req.json();
+
+    if (!body.newAddress) return c.json({ error: "Missing newAddress" }, 400);
+
+    const txid = await manager.updateMerchant(scid, body.newAddress);
+    return c.json({ txid, scid });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Internal error" },
+      500
+    );
+  }
+});
+
+// List all locally tracked routers
+app.get("/routers", async (c) => {
+  try {
+    const manager = getRouterManager();
+    const routers = manager.listRouters();
+
+    return c.json(
+      routers.map((r) => ({
+        id: r.id,
+        scid: r.scid,
+        status: r.status,
+        feeBasisPoints: r.feeBasisPoints,
+        feeRecipientAddress: r.feeRecipientAddress,
+        createdAt: r.createdAt,
+      }))
+    );
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Internal error" },
+      500
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Webhook routes
+// ---------------------------------------------------------------------------
 
 // Webhook verification endpoint (for external services to verify signatures)
 app.post("/webhooks/verify", async (c) => {

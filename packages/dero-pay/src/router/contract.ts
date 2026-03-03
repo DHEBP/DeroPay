@@ -11,45 +11,80 @@ import type { ScRpcArg } from "../rpc/types.js";
 import type { RouterOnChainState } from "./types.js";
 
 const PAYMENT_ROUTER_SOURCE = `Function Initialize(feeRecipientAddress String, feeBasisPoints Uint64) Uint64
-10 IF EXISTS("merchant") THEN GOTO 200
-20 STORE("merchant", SIGNER())
-30 IF feeBasisPoints > 0 THEN GOTO 50
-40 STORE("feeRecipient", SIGNER())
-45 GOTO 60
-50 STORE("feeRecipient", ADDRESS_RAW(feeRecipientAddress))
-60 STORE("feeBasisPoints", feeBasisPoints)
-70 STORE("totalProcessed", 0)
-80 STORE("totalFees", 0)
-90 STORE("paymentCount", 0)
-100 RETURN 0
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF EXISTS("merchant") THEN GOTO 200
+30 IF feeBasisPoints > 10000 THEN GOTO 200
+40 STORE("merchant", SIGNER())
+50 IF feeBasisPoints > 0 THEN GOTO 70
+60 STORE("feeRecipient", SIGNER())
+65 GOTO 80
+70 STORE("feeRecipient", ADDRESS_RAW(feeRecipientAddress))
+75 IF LOAD("feeRecipient") == LOAD("merchant") THEN GOTO 200
+80 STORE("feeBasisPoints", feeBasisPoints)
+90 STORE("totalProcessed", 0)
+100 STORE("totalFees", 0)
+110 STORE("paymentCount", 0)
+120 STORE("paused", 0)
+130 RETURN 0
 200 RETURN 1
 End Function
 
 Function Pay(invoiceId String) Uint64
 10 IF DEROVALUE() == 0 THEN GOTO 200
-20 DIM amount, fee, payout AS Uint64
-30 LET amount = DEROVALUE()
-40 LET fee = amount * LOAD("feeBasisPoints") / 10000
-50 LET payout = amount - fee
-60 SEND_DERO_TO_ADDRESS(LOAD("merchant"), payout)
-70 IF fee > 0 THEN GOTO 80 ELSE GOTO 90
-80 SEND_DERO_TO_ADDRESS(LOAD("feeRecipient"), fee)
-90 STORE("totalProcessed", LOAD("totalProcessed") + amount)
-100 STORE("totalFees", LOAD("totalFees") + fee)
-110 STORE("paymentCount", LOAD("paymentCount") + 1)
-120 RETURN 0
+20 IF LOAD("paused") == 1 THEN GOTO 200
+30 DIM amount, fee, payout AS Uint64
+40 LET amount = DEROVALUE()
+50 LET fee = amount * LOAD("feeBasisPoints") / 10000
+60 LET payout = amount - fee
+70 IF payout > 0 THEN GOTO 80 ELSE GOTO 90
+80 SEND_DERO_TO_ADDRESS(LOAD("merchant"), payout)
+90 IF fee > 0 THEN GOTO 100 ELSE GOTO 110
+100 SEND_DERO_TO_ADDRESS(LOAD("feeRecipient"), fee)
+110 STORE("totalProcessed", LOAD("totalProcessed") + amount)
+120 STORE("totalFees", LOAD("totalFees") + fee)
+130 STORE("paymentCount", LOAD("paymentCount") + 1)
+140 RETURN 0
 200 RETURN 1
 End Function
 
 Function UpdateMerchant(newAddress String) Uint64
-10 IF SIGNER() != LOAD("merchant") THEN GOTO 200
-20 STORE("merchant", ADDRESS_RAW(newAddress))
-30 RETURN 0
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("merchant") THEN GOTO 200
+25 IF LOAD("feeBasisPoints") > 0 THEN GOTO 27 ELSE GOTO 30
+27 IF ADDRESS_RAW(newAddress) == LOAD("feeRecipient") THEN GOTO 200
+30 STORE("merchant", ADDRESS_RAW(newAddress))
+40 RETURN 0
+200 RETURN 1
+End Function
+
+Function Pause() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("merchant") THEN GOTO 200
+30 STORE("paused", 1)
+40 RETURN 0
+200 RETURN 1
+End Function
+
+Function Resume() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("merchant") THEN GOTO 200
+30 STORE("paused", 0)
+40 RETURN 0
+200 RETURN 1
+End Function
+
+Function WithdrawTrapped(amount Uint64) Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("merchant") THEN GOTO 200
+30 SEND_DERO_TO_ADDRESS(LOAD("merchant"), amount)
+40 RETURN 0
 200 RETURN 1
 End Function
 
 Function GetStats() Uint64
-10 RETURN LOAD("totalProcessed")
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 RETURN LOAD("totalProcessed")
+200 RETURN 1
 End Function`;
 
 /**
@@ -123,6 +158,34 @@ export class RouterContract {
   }
 
   /**
+   * Pause the router (merchant-only). Rejects new payments until resumed.
+   */
+  async pause(scid: string): Promise<string> {
+    return this.walletRpc.invokeSc(scid, "Pause");
+  }
+
+  /**
+   * Resume a paused router (merchant-only).
+   */
+  async resume(scid: string): Promise<string> {
+    return this.walletRpc.invokeSc(scid, "Resume");
+  }
+
+  /**
+   * Withdraw any DERO trapped in the SC balance (merchant-only).
+   * This recovers funds that were accidentally sent to non-Pay functions.
+   *
+   * @param scid - Smart Contract ID
+   * @param amount - Amount in atomic units to withdraw
+   */
+  async withdrawTrapped(scid: string, amount: bigint): Promise<string> {
+    const args: ScRpcArg[] = [
+      { name: "amount", datatype: "U", value: Number(amount) },
+    ];
+    return this.walletRpc.invokeSc(scid, "WithdrawTrapped", args);
+  }
+
+  /**
    * Query the full on-chain state of a payment router contract.
    *
    * @param scid - Smart Contract ID
@@ -144,6 +207,7 @@ export class RouterContract {
       totalProcessed: BigInt(Number(vars["totalProcessed"]) || 0),
       totalFees: BigInt(Number(vars["totalFees"]) || 0),
       paymentCount: Number(vars["paymentCount"]) || 0,
+      paused: Number(vars["paused"]) === 1,
       scBalance: result.balance ?? 0,
     };
   }

@@ -27,6 +27,8 @@ export type RouterOnChainState = {
   totalFees: bigint;
   /** Number of payments processed */
   paymentCount: number;
+  /** Whether the router is paused (merchant can pause/resume) */
+  paused: boolean;
   /** DERO balance held by the SC (should always be 0 for a healthy router) */
   scBalance: number;
 };

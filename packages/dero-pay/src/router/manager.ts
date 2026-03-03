@@ -182,6 +182,30 @@ export class RouterManager {
     return this.contract.updateMerchant(scid, newAddress);
   }
 
+  /**
+   * Pause a router (merchant-only). Rejects new payments until resumed.
+   */
+  async pause(scidOrId: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.pause(scid);
+  }
+
+  /**
+   * Resume a paused router (merchant-only).
+   */
+  async resume(scidOrId: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.resume(scid);
+  }
+
+  /**
+   * Withdraw any DERO trapped in the SC balance (merchant-only).
+   */
+  async withdrawTrapped(scidOrId: string, amount: bigint): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.withdrawTrapped(scid, amount);
+  }
+
   // -------------------------------------------------------------------------
   // Queries
   // -------------------------------------------------------------------------

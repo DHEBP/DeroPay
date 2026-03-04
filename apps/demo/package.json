@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
-    "dero-auth": "^0.1.0",
+    "dero-auth": "^0.2.0",
     "dero-pay": "workspace:*",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.575.0",

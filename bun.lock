@@ -35,7 +35,7 @@
       "version": "0.1.0",
       "dependencies": {
         "better-sqlite3": "^12.6.2",
-        "dero-auth": "^0.1.0",
+        "dero-auth": "^0.2.0",
         "dero-pay": "workspace:*",
         "framer-motion": "^12.34.3",
         "lucide-react": "^0.575.0",
@@ -1195,7 +1195,7 @@
 
     "dequal": ["dequal@2.0.3", "", {}, "sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA=="],
 
-    "dero-auth": ["dero-auth@0.1.0", "", { "dependencies": { "@noble/curves": "^2.0.0", "@noble/hashes": "^2.0.0", "jose": "^6.0.0" }, "peerDependencies": { "next": ">=14.0.0", "react": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["next", "react"] }, "sha512-DzZ20Ticb1NM3DYfbyoFDyIoQBqCl21C20DAJbb/dmP6xclzddnhnlCi4giUNEqp4Sd976iMG61Tzxc9hMqPgQ=="],
+    "dero-auth": ["dero-auth@0.2.0", "", { "dependencies": { "@noble/curves": "^2.0.0", "@noble/hashes": "^2.0.0", "jose": "^6.0.0" }, "peerDependencies": { "next": ">=14.0.0", "react": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["next", "react"] }, "sha512-M9ZrqyV+6uiRoKtd5OEAA7Fz50sF+DZa4JkNO5y1UxSHEAB/w+aAMQSOLAJCTD70lDYvOiaPJN6RHOfWAWmiiQ=="],
 
     "dero-pay": ["dero-pay@workspace:packages/dero-pay"],
 

@@ -36,11 +36,12 @@ export function Sidebar() {
         <h1
           style={{
             fontSize: "1.25rem",
-            fontWeight: 700,
+            fontWeight: 900,
             letterSpacing: "-0.025em",
             display: "flex",
             alignItems: "center",
             gap: "0.5rem",
+            color: "var(--text-primary)",
           }}
         >
           <svg
@@ -67,9 +68,7 @@ export function Sidebar() {
               fill="var(--bg-secondary)"
             />
           </svg>
-          <span>
-            <span style={{ color: "var(--accent)" }}>Dero</span>Pay
-          </span>
+          DeroPay
         </h1>
         <p
           style={{

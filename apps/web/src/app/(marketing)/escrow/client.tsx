@@ -66,7 +66,7 @@ export const EscrowPageClient = () => (
             Trustless payments with<br /><span style={{ color: "#10b981" }}>smart contract escrow</span>
           </h1>
           <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
-            Deploy on-chain escrow contracts with arbitration, platform fees, and dispute resolution. Buyer protection backed by DERO's blockchain — not trust.
+            Each transaction deploys a fresh smart contract — isolated state, buyer protection, arbitration, and dispute resolution. One contract per deal, no shared risk.
           </p>
           <div style={{ marginTop: "28px", display: "flex", justifyContent: "center", gap: "16px", flexWrap: "wrap" }}>
             <a href="https://deropay.derod.org/escrow/overview" className="btn-accent">Get Started <ArrowRight size={16} /></a>
@@ -80,9 +80,9 @@ export const EscrowPageClient = () => (
     <section style={{ background: "#000", padding: "80px 24px", borderBottom: "1px solid #1e2a24" }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: "40px" }}>
-          <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>The escrow lifecycle</h2>
+          <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>One contract per transaction</h2>
           <p style={{ marginTop: "12px", fontSize: "16px", color: "#6b7f75", maxWidth: "560px", margin: "12px auto 0" }}>
-            Deploy, deposit, and resolve — watch the full escrow flow from contract creation to fund release.
+            Each escrow deploys a fresh smart contract with its own SCID. No shared state between deals. Deploy, deposit, and resolve — isolated and trustless.
           </p>
         </div>
         <div style={{ maxWidth: "480px", margin: "0 auto", position: "relative" }}>
@@ -145,6 +145,20 @@ export const EscrowPageClient = () => (
             <code>{codeExample}</code>
           </pre>
         </div>
+      </div>
+    </section>
+
+    {/* Escrow vs Router callout */}
+    <section style={{ background: "#000", padding: "48px 24px 80px" }}>
+      <div style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center", padding: "32px 24px", borderRadius: "16px", border: "1px solid #1e2a24", background: "#0a0f0d" }}>
+        <p style={{ fontSize: "14px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "#10b981", marginBottom: "12px" }}>Need faster payments?</p>
+        <h3 style={{ fontSize: "22px", fontWeight: 800, color: "#f0fdf4", marginBottom: "12px" }}>Escrow vs. Payment Router</h3>
+        <p style={{ fontSize: "15px", lineHeight: 1.6, color: "#6b7f75", marginBottom: "20px", maxWidth: "500px", marginLeft: "auto", marginRight: "auto" }}>
+          Escrow deploys a fresh contract per transaction for buyer protection. The Payment Router deploys once and handles unlimited instant payments. Use both, or pick the one that fits.
+        </p>
+        <a href="https://deropay.derod.org/payment-router/escrow-vs-router" className="btn-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+          Compare the two <ArrowRight size={14} />
+        </a>
       </div>
     </section>
 

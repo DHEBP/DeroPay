@@ -72,9 +72,10 @@ export default function TermsPage() {
 
           <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#f0fdf4", marginBottom: "16px" }}>Escrow Module</h2>
           <p style={{ marginBottom: "12px" }}>
-            The optional escrow module provides smart contract source code and TypeScript bindings for on-chain escrow functionality. If you choose to deploy and operate escrow contracts:
+            The optional escrow module provides smart contract source code and TypeScript bindings for on-chain escrow functionality. Each escrow transaction deploys a <strong>fresh smart contract instance</strong> with isolated state &mdash; there is no shared contract between different escrows. If you choose to deploy and operate escrow contracts:
           </p>
           <ul style={{ paddingLeft: "24px", marginBottom: "12px", listStyle: "disc" }}>
+            <li style={{ marginBottom: "8px" }}>Each transaction deploys a new contract (one SCID per escrow)</li>
             <li style={{ marginBottom: "8px" }}>You deploy the contract from your wallet</li>
             <li style={{ marginBottom: "8px" }}>You are the contract owner and operator</li>
             <li style={{ marginBottom: "8px" }}>You set the fee structure (including zero fees)</li>
@@ -87,12 +88,12 @@ export default function TermsPage() {
 
           <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#f0fdf4", marginBottom: "16px" }}>Payment Router Module</h2>
           <p style={{ marginBottom: "12px" }}>
-            The optional payment router module provides smart contract source code and TypeScript bindings for on-chain instant payment splitting. If you choose to deploy and operate payment router contracts:
+            The optional payment router module provides smart contract source code and TypeScript bindings for on-chain instant payment splitting. Unlike the escrow module, the payment router is deployed <strong>once per merchant</strong> and reused for unlimited payments through the same contract (one persistent SCID). If you choose to deploy and operate a payment router contract:
           </p>
           <ul style={{ paddingLeft: "24px", marginBottom: "12px", listStyle: "disc" }}>
-            <li style={{ marginBottom: "8px" }}>You deploy the contract from your wallet</li>
+            <li style={{ marginBottom: "8px" }}>You deploy the contract once from your wallet and reuse it for every payment</li>
             <li style={{ marginBottom: "8px" }}>You are the merchant and payment recipient</li>
-            <li style={{ marginBottom: "8px" }}>You configure the fee structure (including zero fees) and fee recipient</li>
+            <li style={{ marginBottom: "8px" }}>You configure the fee structure (including zero fees) and fee recipient at deployment &mdash; immutable after deploy</li>
             <li>You are responsible for regulatory compliance related to payment processing in your jurisdiction</li>
           </ul>
           <p style={{ marginBottom: "32px" }}>

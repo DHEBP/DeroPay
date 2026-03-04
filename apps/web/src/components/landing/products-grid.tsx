@@ -24,10 +24,18 @@ const products = [
     image: "/images/invoice.png",
   },
   {
+    title: "Payment Router",
+    tagline: "INSTANT ON-CHAIN SETTLEMENT",
+    description:
+      "Deploy once, accept unlimited payments. A single smart contract splits funds instantly between merchant and fee recipient in one transaction.",
+    href: "https://deropay.derod.org/payment-router/overview",
+    image: "/images/invoice.png",
+  },
+  {
     title: "Escrow",
     tagline: "SMART CONTRACT PROTECTION",
     description:
-      "On-chain escrow with arbitration and platform fees. Deploy contracts, manage lifecycles, and resolve disputes through the SDK.",
+      "One contract per transaction with arbitration, platform fees, and dispute resolution. Buyer protection backed by DERO\u2019s blockchain.",
     href: "/escrow",
     image: "/images/escrow.png",
   },
@@ -56,7 +64,7 @@ export const ProductsGrid = () => (
       initial="hidden"
       whileInView="show"
       viewport={{ once: true, margin: "-100px" }}
-      style={{ display: "grid", gap: "24px", gridTemplateColumns: "repeat(3, 1fr)" }}
+      style={{ display: "grid", gap: "24px", gridTemplateColumns: "repeat(2, 1fr)" }}
       className="products-outer-grid"
     >
       {products.map((product) => (

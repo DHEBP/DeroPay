@@ -47,6 +47,7 @@ export const Footer = () => (
             <li><Link href="/dashboard" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Dashboard</Link></li>
             <li><a href="https://demo.deropay.com" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Live Demo</a></li>
             <li><Link href="/playground" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Widget Playground</Link></li>
+            <li><Link href="/services" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Merchant Services</Link></li>
           </ul>
         </div>
 

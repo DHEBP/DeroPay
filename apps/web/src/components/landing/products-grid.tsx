@@ -6,7 +6,16 @@ import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import { Section, SectionHeader } from "@/components/ui/section";
 
-const products = [
+type Product = {
+  title: string;
+  tagline: string;
+  description: string;
+  href: string;
+  image: string;
+  purpleGlow?: string;
+};
+
+const products: Product[] = [
   {
     title: "DeroAuth",
     tagline: "WALLET-BASED AUTHENTICATION",
@@ -14,6 +23,7 @@ const products = [
       "Sign in with your DERO wallet. Schnorr signature verification, JWT sessions, React components, and Next.js middleware.",
     href: "/auth",
     image: "/images/auth.png",
+    purpleGlow: "bottom left",
   },
   {
     title: "DeroPay",
@@ -22,6 +32,7 @@ const products = [
       "Create invoices, generate integrated addresses, monitor payments in real time. Webhooks, pluggable storage, and a merchant dashboard.",
     href: "/pay",
     image: "/images/invoice.png",
+    purpleGlow: "bottom right",
   },
   {
     title: "Payment Router",
@@ -30,6 +41,7 @@ const products = [
       "Deploy once, accept unlimited payments. A single smart contract splits funds instantly between merchant and fee recipient in one transaction.",
     href: "https://deropay.derod.org/payment-router/overview",
     image: "/images/router.png",
+    purpleGlow: "top right",
   },
   {
     title: "Escrow",
@@ -38,6 +50,7 @@ const products = [
       "One contract per transaction with arbitration, platform fees, and dispute resolution. Buyer protection backed by DERO\u2019s blockchain.",
     href: "/escrow",
     image: "/images/escrow.png",
+    purpleGlow: "top left",
   },
 ];
 
@@ -80,6 +93,14 @@ export const ProductsGrid = () => (
                 fill
                 className="object-cover"
               />
+              {product.purpleGlow && (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background: `radial-gradient(circle at ${product.purpleGlow}, rgba(147,51,234,0.07) 0%, transparent 60%)`,
+                  }}
+                />
+              )}
             </div>
 
             {/* Content */}

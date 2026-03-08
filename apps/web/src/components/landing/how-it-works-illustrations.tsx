@@ -114,13 +114,15 @@ export const PayIllustration = () => (
         strokeWidth="1.5"
         fill="none"
       />
-      <polygon
-        points="250,94 268,103 268,130 250,139 232,130 232,103"
-        stroke={C}
-        strokeWidth="0.6"
-        fill="none"
-        opacity="0.35"
-      />
+      <g transform="translate(250,116.5) scale(1.05) translate(-50,-47.6)">
+        <path
+          d="M58.3,54.8v-9.6l-8.3-4.8-8.3,4.8v9.6l4.6,2.7c-.2,1.4-2.3,15-2.4,15.8l6.1,3.5,6.2-3.6c-.1-.7-2.2-14.4-2.4-15.8l4.5-2.6Z"
+          stroke={C}
+          strokeWidth="1.2"
+          fill="none"
+          opacity="0.6"
+        />
+      </g>
     </g>
 
     <Waveform />

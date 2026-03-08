@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { DeroIcon } from "@/components/icons/dero-icon";
-import { Github, Twitter, MessageCircle } from "lucide-react";
 
 export const Footer = () => (
   <footer className="border-t border-[#1e2a24] bg-black">
@@ -24,17 +23,6 @@ export const Footer = () => (
             The privacy-first payment stack for the DERO economy. Open source,
             self-hosted, and built for developers.
           </p>
-          <div className="mt-5 flex gap-5">
-            <a href="https://github.com/DHEBP" target="_blank" rel="noopener noreferrer" className="text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">
-              <Github size={20} />
-            </a>
-            <a href="https://twitter.com/deroproject" target="_blank" rel="noopener noreferrer" className="text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">
-              <Twitter size={20} />
-            </a>
-            <a href="#" className="text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">
-              <MessageCircle size={20} />
-            </a>
-          </div>
         </div>
 
         {/* Products */}

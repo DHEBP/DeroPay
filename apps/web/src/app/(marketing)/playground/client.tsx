@@ -184,7 +184,9 @@ export const PlaygroundClient = () => {
               style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
               className="demo-card"
             >
-              <Store size={18} style={{ color: "#10b981", marginBottom: "8px" }} />
+              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#10b981" }}>
+                <Store size={22} />
+              </div>
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Demo Store</h3>
               <p style={{ fontSize: "12px", color: "#6b7f75" }}>Browse, cart, checkout</p>
             </a>
@@ -195,7 +197,9 @@ export const PlaygroundClient = () => {
               style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
               className="demo-card"
             >
-              <ArrowRight size={18} style={{ color: "#10b981", marginBottom: "8px" }} />
+              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#10b981" }}>
+                <ArrowRight size={22} />
+              </div>
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Checkout Page</h3>
               <p style={{ fontSize: "12px", color: "#6b7f75" }}>Hosted payment link</p>
             </a>
@@ -206,7 +210,9 @@ export const PlaygroundClient = () => {
               style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
               className="demo-card"
             >
-              <BookOpen size={18} style={{ color: "#10b981", marginBottom: "8px" }} />
+              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#10b981" }}>
+                <BookOpen size={22} />
+              </div>
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Dashboard</h3>
               <p style={{ fontSize: "12px", color: "#6b7f75" }}>Merchant admin panel</p>
             </a>

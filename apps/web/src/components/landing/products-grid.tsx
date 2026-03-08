@@ -29,7 +29,7 @@ const products = [
     description:
       "Deploy once, accept unlimited payments. A single smart contract splits funds instantly between merchant and fee recipient in one transaction.",
     href: "https://deropay.derod.org/payment-router/overview",
-    image: "/images/invoice.png",
+    image: "/images/router.png",
   },
   {
     title: "Escrow",
@@ -73,14 +73,12 @@ export const ProductsGrid = () => (
             href={product.href}
             className="group flex flex-col h-full overflow-hidden rounded-2xl border border-[#1e2a24] bg-black transition-all hover:border-[#4a6356]"
           >
-            {/* Image - fixed height, contained */}
-            <div className="relative overflow-hidden bg-[#0a0f0d]" style={{ height: "200px" }}>
+            <div className="relative overflow-hidden bg-[#0a0f0d] aspect-[16/10]">
               <Image
                 src={product.image}
                 alt={product.title}
-                width={400}
-                height={250}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                fill
+                className="object-cover"
               />
             </div>
 

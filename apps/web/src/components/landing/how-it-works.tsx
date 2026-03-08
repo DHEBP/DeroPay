@@ -1,30 +1,35 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Image from "next/image";
 import { Section, SectionHeader } from "@/components/ui/section";
+import {
+  AuthenticateIllustration,
+  PayIllustration,
+  ProtectIllustration,
+} from "./how-it-works-illustrations";
+import type { ReactNode } from "react";
 
-const steps = [
+const steps: { number: string; title: string; description: string; illustration: ReactNode }[] = [
   {
     number: "01",
     title: "Authenticate",
     description:
       "User signs in with their DERO wallet. A Schnorr signature proves ownership — no email, no password, no personal data exposed.",
-    image: "/images/authenticate.png",
+    illustration: <AuthenticateIllustration />,
   },
   {
     number: "02",
     title: "Pay",
     description:
       "An invoice is created with a unique integrated address. The customer scans a QR code and sends DERO. The SDK monitors and confirms the payment.",
-    image: "/images/pay.png",
+    illustration: <PayIllustration />,
   },
   {
     number: "03",
     title: "Protect",
     description:
       "For high-value transactions, funds go into an on-chain escrow smart contract. Released on delivery, refunded on dispute, or arbitrated by a neutral party.",
-    image: "/images/protect.png",
+    illustration: <ProtectIllustration />,
   },
 ];
 
@@ -73,18 +78,11 @@ export const HowItWorks = () => (
             </p>
           </div>
 
-          {/* Image - constrained */}
           <div
-            className="overflow-hidden rounded-2xl border border-[#1e2a24]"
-            style={{ order: i % 2 === 0 ? 2 : 1, maxHeight: "320px" }}
+            className="overflow-hidden rounded-2xl border border-[#1e2a24] bg-[#060b09]"
+            style={{ order: i % 2 === 0 ? 2 : 1 }}
           >
-            <Image
-              src={step.image}
-              alt={step.title}
-              width={500}
-              height={320}
-              className="w-full h-full object-cover"
-            />
+            {step.illustration}
           </div>
         </motion.div>
       ))}

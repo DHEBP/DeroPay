@@ -46,7 +46,7 @@ export const Navbar = () => {
         </Link>
 
         {/* Desktop Nav Links - inline, always rendered, hidden on small screens via CSS */}
-        <div className="flex-1" style={{ display: "var(--nav-display, none)" }}>
+        <div className="flex-1 justify-end" style={{ display: "var(--nav-display, none)" }}>
           <div className="flex items-center gap-7">
             {links.map((link) => {
               const isActive =
@@ -77,7 +77,7 @@ export const Navbar = () => {
 
         {/* Right CTA - hidden on small screens */}
         <div
-          className="flex items-center shrink-0 ml-auto"
+          className="flex items-center shrink-0 ml-8"
           style={{ display: "var(--nav-display, none)" }}
         >
           <Link href="https://deropay.derod.org" className="btn-accent px-5 py-2 text-sm whitespace-nowrap">

@@ -9,7 +9,10 @@
  * Requirements:
  *   - dero-wallet-cli running with --rpc-server (port 10103)
  *   - DERO daemon running (daemon RPC port 10102)
- *   - ~0.01 DERO for gas + 0.1 DERO for the test payment
+ *   - ~0.01 DERO for gas + 0.15 DERO for the test payments
+ *
+ * Mainnet needs ~60s between chained TXs (change outputs must reach stableheight).
+ * Total runtime: ~5 min.
  */
 
 import { RouterManager } from "dero-pay/router";
@@ -62,10 +65,10 @@ if (router.status === "deploy_failed" || !router.scid) {
 
 console.log("✅ Router deployed!");
 console.log("   SCID:", router.scid);
-console.log("   Fee:", router.feeBasisPoints, "basis points (2.5%)");
+console.log("   Fee:", router.feeBasisPoints, "basis points");
 
-console.log("   Waiting ~45s for deploy TX to reach stableheight...\n");
-await sleep(45_000);
+console.log("   Waiting ~60s for deploy TX to reach stableheight...\n");
+await sleep(60_000);
 
 // ---------------------------------------------------------------------------
 // 2. Query initial on-chain state
@@ -90,8 +93,8 @@ const testAmount = 10_000n; // 0.1 DERO
 console.log(`Sending test payment of ${formatDero(testAmount)} DERO...`);
 const payTxid = await manager.pay(router.scid, "test_inv_001", testAmount);
 console.log("✅ Payment broadcast — TXID:", payTxid);
-console.log("   Waiting ~45s for confirmation...\n");
-await sleep(45_000);
+console.log("   Waiting ~60s for confirmation...\n");
+await sleep(60_000);
 
 // ---------------------------------------------------------------------------
 // 4. Verify fee splitting
@@ -132,11 +135,11 @@ console.log();
 // ---------------------------------------------------------------------------
 
 console.log("Sending second test payment (0.05 DERO = 5,000 atomic)...");
-await sleep(10_000);
+await sleep(60_000); // Same as between other TXs — DERO needs ~60s between chained transactions
 const payTxid2 = await manager.pay(router.scid, "test_inv_002", 5_000n);
 console.log("✅ Payment 2 broadcast — TXID:", payTxid2);
-console.log("   Waiting ~45s for confirmation...\n");
-await sleep(45_000);
+console.log("   Waiting ~60s for confirmation...\n");
+await sleep(60_000);
 
 const afterPay2 = await manager.getOnChainState(router.scid);
 const totalExpected = testAmount + 5_000n;

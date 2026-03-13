@@ -33,6 +33,7 @@ services:
   # DERO wallet — receives payments
   # You must create a wallet first, then mount it here.
   # See README for wallet setup instructions.
+  # Port 10103 exposed so test-router.ts can connect from host.
   wallet:
     image: deroproject/dero-wallet-cli:latest
     command:
@@ -42,6 +43,8 @@ services:
         "--rpc-bind=0.0.0.0:10103",
         "--daemon-address=daemon:10102",
       ]
+    ports:
+      - "10103:10103"
     volumes:
       - wallet-data:/wallet
     depends_on:

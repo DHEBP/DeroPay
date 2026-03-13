@@ -163,7 +163,11 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
         $status_url = add_query_arg('wc-api', 'deropay_status', home_url('/'));
 
         ?>
-        <div id="deropay-payment" class="deropay-payment-box" data-invoice-id="<?php echo esc_attr($invoice_id); ?>" data-status-url="<?php echo esc_url($status_url); ?>" data-expires="<?php echo esc_attr($expires_at); ?>">
+        <?php
+            $qr_data      = 'dero:' . $address . '?amount=' . rawurlencode($amount);
+            $status_nonce = wp_create_nonce('deropay_check_status');
+        ?>
+        <div id="deropay-payment" class="deropay-payment-box" data-invoice-id="<?php echo esc_attr($invoice_id); ?>" data-status-url="<?php echo esc_url($status_url); ?>" data-expires="<?php echo esc_attr($expires_at); ?>" data-qr="<?php echo esc_attr($qr_data); ?>" data-nonce="<?php echo esc_attr($status_nonce); ?>">
             <h2>Pay with DERO</h2>
             <?php
                 $dero_display = number_format((float)$amount / 100000, 5);
@@ -180,7 +184,7 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
                 <button type="button" class="button deropay-copy-btn" onclick="navigator.clipboard.writeText('<?php echo esc_js($address); ?>')">Copy</button>
             </div>
             <div class="deropay-qr">
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=<?php echo urlencode('dero:' . $address . '?amount=' . $amount); ?>" alt="DERO payment QR code" width="200" height="200" />
+                <canvas id="deropay-qr-canvas" width="200" height="200" aria-label="DERO payment QR code"></canvas>
             </div>
             <div class="deropay-status">
                 <p id="deropay-status-text">Waiting for payment...</p>
@@ -200,54 +204,169 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
         </style>
         <script>
         (function() {
-            const box = document.getElementById('deropay-payment');
+            // ----------------------------------------------------------------
+            // Self-contained QR code generator (canvas-based, no external calls)
+            // Ported from apps/checkout/src/qr.ts
+            // ----------------------------------------------------------------
+            function renderQR(canvas, text, size) {
+                var modules = generateQR(text);
+                var n = modules.length;
+                canvas.width = size; canvas.height = size;
+                var ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size);
+                ctx.fillStyle = '#000000';
+                var cell = size / n;
+                for (var r = 0; r < n; r++) for (var c = 0; c < n; c++)
+                    if (modules[r][c]) ctx.fillRect(c * cell, r * cell, cell + 0.5, cell + 0.5);
+            }
+            function generateQR(text) {
+                var data = new TextEncoder().encode(text);
+                var ver = getMinVersion(data.length);
+                var s = ver * 4 + 17;
+                var m = Array.from({length:s}, function(){ return Array(s).fill(false); });
+                var res = Array.from({length:s}, function(){ return Array(s).fill(false); });
+                addFinderPatterns(m, res, s);
+                addAlignmentPatterns(m, res, ver, s);
+                addTimingPatterns(m, res, s);
+                res[8][s-8] = true; m[8][s-8] = true;
+                var bits = encodeData(data, ver);
+                placeBits(m, res, bits, s);
+                applyMask(m, res, s);
+                addFormatInfo(m, s);
+                return m;
+            }
+            function getMinVersion(len) {
+                var caps = [0,17,32,53,78,106,134,154,192,230,271,321,367,425,458,520,586,644,718,792,858];
+                for (var v = 1; v <= 20; v++) if (len <= caps[v]) return v;
+                return 20;
+            }
+            function addFinderPatterns(m, r, s) {
+                [[0,0],[0,s-7],[s-7,0]].forEach(function(p) {
+                    for (var dr = -1; dr <= 7; dr++) for (var dc = -1; dc <= 7; dc++) {
+                        var rr = p[0]+dr, cc = p[1]+dc;
+                        if (rr<0||rr>=s||cc<0||cc>=s) continue;
+                        r[rr][cc] = true;
+                        m[rr][cc] = (dr>=0&&dr<=6&&dc>=0&&dc<=6) && (dr===0||dr===6||dc===0||dc===6||dr>=2&&dr<=4&&dc>=2&&dc<=4);
+                    }
+                });
+            }
+            function addAlignmentPatterns(m, r, v, s) {
+                if (v < 2) return;
+                getAlignmentPositions(v).forEach(function(row) {
+                    getAlignmentPositions(v).forEach(function(col) {
+                        if (r[row][col]) return;
+                        for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++) {
+                            r[row+dr][col+dc] = true;
+                            m[row+dr][col+dc] = Math.abs(dr)===2||Math.abs(dc)===2||(dr===0&&dc===0);
+                        }
+                    });
+                });
+            }
+            function getAlignmentPositions(v) {
+                if (v===1) return [];
+                var last = v*4+10;
+                if (v<=6) return [6,last];
+                var count = Math.floor(v/7)+2;
+                var step = Math.ceil((last-6)/(count-1)/2)*2;
+                var result = [6];
+                for (var i = last; result.length < count; i -= step) result.splice(1, 0, i);
+                return result;
+            }
+            function addTimingPatterns(m, r, s) {
+                for (var i = 8; i < s-8; i++) {
+                    if (!r[6][i]) { r[6][i]=true; m[6][i]=i%2===0; }
+                    if (!r[i][6]) { r[i][6]=true; m[i][6]=i%2===0; }
+                }
+            }
+            function encodeData(data, ver) {
+                var total = getDataCapacityBits(ver), bits = [];
+                push(bits, 0b0100, 4);
+                push(bits, data.length, ver<=9 ? 8 : 16);
+                for (var i=0;i<data.length;i++) push(bits, data[i], 8);
+                push(bits, 0, Math.min(4, total-bits.length));
+                while (bits.length%8!==0) bits.push(0);
+                var pad=[0b11101100,0b00010001], pi=0;
+                while (bits.length<total) { push(bits, pad[pi%2], 8); pi++; }
+                return bits;
+            }
+            function getDataCapacityBits(v) {
+                var caps=[0,152,272,440,640,864,1088,1248,1552,1856,2192,2592,2960,3424,3688,4184,4712,5176,5768,6360,6888];
+                return caps[v]||caps[20];
+            }
+            function push(bits, value, length) {
+                for (var i=length-1;i>=0;i--) bits.push((value>>i)&1);
+            }
+            function placeBits(m, r, bits, s) {
+                var bi=0;
+                for (var right=s-1;right>=1;right-=2) {
+                    if (right===6) right=5;
+                    for (var vert=0;vert<s;vert++) for (var j=0;j<2;j++) {
+                        var col=right-j, row=((right+1)&2)===0 ? s-1-vert : vert;
+                        if (r[row][col]) continue;
+                        m[row][col] = bi<bits.length ? bits[bi]===1 : false; bi++;
+                    }
+                }
+            }
+            function applyMask(m, r, s) {
+                for (var row=0;row<s;row++) for (var col=0;col<s;col++)
+                    if (!r[row][col] && (row+col)%2===0) m[row][col]=!m[row][col];
+            }
+            function addFormatInfo(m, s) {
+                var fb=0b101010000010010;
+                for (var i=0;i<15;i++) {
+                    var bit=((fb>>(14-i))&1)===1;
+                    if (i<6) m[8][i]=bit; else if (i===6) m[8][7]=bit; else if (i===7) m[8][8]=bit; else if (i===8) m[7][8]=bit; else m[14-i][8]=bit;
+                    if (i<8) m[s-1-i][8]=bit; else m[8][s-15+i]=bit;
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // Payment page logic
+            // ----------------------------------------------------------------
+            var box = document.getElementById('deropay-payment');
             if (!box) return;
 
-            const invoiceId = box.dataset.invoiceId;
-            const statusUrl = box.dataset.statusUrl;
-            const expiresAt = new Date(box.dataset.expires);
-            const statusText = document.getElementById('deropay-status-text');
-            const countdown = document.getElementById('deropay-countdown');
-            const statusBox = box.querySelector('.deropay-status');
-            let polling = true;
+            var invoiceId = box.dataset.invoiceId;
+            var statusUrl = box.dataset.statusUrl;
+            var qrData    = box.dataset.qr;
+            var nonce     = box.dataset.nonce;
+            var expiresAt = new Date(box.dataset.expires);
+            var statusText = document.getElementById('deropay-status-text');
+            var countdown  = document.getElementById('deropay-countdown');
+            var statusBox  = box.querySelector('.deropay-status');
+            var polling = true;
+
+            // Render QR code locally — no external request
+            var canvas = document.getElementById('deropay-qr-canvas');
+            if (canvas && qrData) renderQR(canvas, qrData, 200);
 
             function updateCountdown() {
-                const now = new Date();
-                const diff = expiresAt - now;
-                if (diff <= 0) {
-                    countdown.textContent = 'Expired';
-                    return;
-                }
-                const mins = Math.floor(diff / 60000);
-                const secs = Math.floor((diff % 60000) / 1000);
+                var diff = expiresAt - new Date();
+                if (diff <= 0) { countdown.textContent = 'Expired'; return; }
+                var mins = Math.floor(diff / 60000);
+                var secs = Math.floor((diff % 60000) / 1000);
                 countdown.textContent = mins + ':' + String(secs).padStart(2, '0') + ' remaining';
             }
 
             async function checkStatus() {
                 if (!polling) return;
                 try {
-                    const resp = await fetch(statusUrl + '&invoice_id=' + encodeURIComponent(invoiceId));
-                    const data = await resp.json();
-
+                    var resp = await fetch(statusUrl + '&invoice_id=' + encodeURIComponent(invoiceId) + '&_wpnonce=' + encodeURIComponent(nonce));
+                    var data = await resp.json();
                     if (data.status === 'completed') {
                         statusText.textContent = 'Payment confirmed!';
                         statusBox.classList.add('confirmed');
                         polling = false;
-                        setTimeout(() => location.reload(), 2000);
+                        setTimeout(function(){ location.reload(); }, 2000);
                         return;
                     }
-                    if (data.status === 'confirming') {
-                        statusText.textContent = 'Payment detected — confirming...';
-                    }
+                    if (data.status === 'confirming') statusText.textContent = 'Payment detected — confirming...';
                     if (data.status === 'expired') {
                         statusText.textContent = 'Invoice expired. Please try again.';
                         statusBox.classList.add('expired');
                         polling = false;
-                        return;
                     }
-                } catch (e) {
-                    // Silently retry on network errors
-                }
+                } catch (e) { /* silently retry */ }
             }
 
             updateCountdown();
@@ -263,6 +382,10 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
      * AJAX endpoint for checking invoice status from the payment page.
      */
     public function ajax_check_status() {
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field($_GET['_wpnonce']), 'deropay_check_status')) {
+            wp_send_json_error(['message' => 'Invalid or expired nonce'], 403);
+        }
+
         $invoice_id = sanitize_text_field($_GET['invoice_id'] ?? '');
         if (empty($invoice_id)) {
             wp_send_json_error(['message' => 'Missing invoice_id'], 400);

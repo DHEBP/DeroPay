@@ -112,9 +112,9 @@ The plugin handles these events from the gateway:
 
 ### Pricing
 
-The `amount` sent to the gateway is the WooCommerce order total. **You must price your products in DERO atomic units** or use a conversion mechanism. A future version will support automatic fiat-to-DERO conversion via price feeds.
+The plugin automatically converts your WooCommerce order total to DERO using live price feeds. The gateway server fetches the current DERO/USD rate from CoinGecko (with TradeOgre as fallback) and converts the fiat amount to the correct DERO atomic unit amount at checkout.
 
-For now, the simplest approach is to set your WooCommerce store currency to a custom "DERO" currency and price products in DERO atomic units.
+Supported fiat currencies: **USD** (others coming soon). If your store uses a different currency, set it to USD or contact support.
 
 ### Security
 

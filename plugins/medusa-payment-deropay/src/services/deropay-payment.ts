@@ -222,7 +222,50 @@ class DeroPayPaymentService extends AbstractPaymentProvider<DeroPayOptions> {
   async getWebhookActionAndData(
     payload: ProviderWebhookPayload["payload"]
   ): Promise<WebhookActionResult> {
-    const { data } = payload;
+    const { data, rawData, headers } = payload;
+
+    // Verify HMAC-SHA256 signature if a webhook secret is configured
+    if (this.webhookSecret_) {
+      const signature = (headers as Record<string, string>)["x-deropay-signature"] ?? "";
+      if (!signature) {
+        throw new MedusaError(
+          MedusaError.Types.UNAUTHORIZED,
+          "DeroPay webhook: missing X-DeroPay-Signature header"
+        );
+      }
+
+      const body =
+        typeof rawData === "string"
+          ? rawData
+          : Buffer.isBuffer(rawData)
+          ? rawData.toString("utf-8")
+          : JSON.stringify(data);
+
+      const secret = this.webhookSecret_;
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+      const sigBuffer = await crypto.subtle.sign(
+        "HMAC",
+        keyMaterial,
+        encoder.encode(body)
+      );
+      const expected = Array.from(new Uint8Array(sigBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      if (expected !== signature) {
+        throw new MedusaError(
+          MedusaError.Types.UNAUTHORIZED,
+          "DeroPay webhook: invalid signature"
+        );
+      }
+    }
 
     try {
       const event = data as Record<string, unknown>;

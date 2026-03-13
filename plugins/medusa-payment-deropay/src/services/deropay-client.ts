@@ -34,7 +34,7 @@ export class DeroPayClient {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
+        "X-DeroPay-ApiKey": this.apiKey,
         ...options?.headers,
       },
     });

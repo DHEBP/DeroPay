@@ -113,6 +113,14 @@ export class SqliteInvoiceStore implements InvoiceStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id);
+
+      CREATE TABLE IF NOT EXISTS used_receipt_jtis (
+        jti TEXT PRIMARY KEY,
+        expires_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_used_receipt_jtis_expires_at
+        ON used_receipt_jtis(expires_at);
     `);
   }
 
@@ -344,6 +352,21 @@ export class SqliteInvoiceStore implements InvoiceStore {
     }
 
     return stats;
+  }
+
+  async markReceiptJtiUsed(jti: string, expiresAt: string): Promise<boolean> {
+    // Periodic opportunistic cleanup to keep table small.
+    this.db
+      .prepare("DELETE FROM used_receipt_jtis WHERE expires_at <= ?")
+      .run(new Date().toISOString());
+
+    const result = this.db
+      .prepare(
+        "INSERT OR IGNORE INTO used_receipt_jtis (jti, expires_at) VALUES (?, ?)"
+      )
+      .run(jti, expiresAt);
+
+    return Number(result.changes) > 0;
   }
 
   async close(): Promise<void> {

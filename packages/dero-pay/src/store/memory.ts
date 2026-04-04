@@ -14,6 +14,7 @@ import type { InvoiceStore, InvoiceFilter, InvoiceStats } from "./types.js";
 export class MemoryInvoiceStore implements InvoiceStore {
   private invoices = new Map<string, Invoice>();
   private paymentIdIndex = new Map<bigint, string>();
+  private usedReceiptJtis = new Map<string, number>();
 
   async createInvoice(invoice: Invoice): Promise<void> {
     if (this.invoices.has(invoice.id)) {
@@ -155,8 +156,28 @@ export class MemoryInvoiceStore implements InvoiceStore {
     };
   }
 
+  async markReceiptJtiUsed(jti: string, expiresAt: string): Promise<boolean> {
+    this.pruneExpiredReceiptJtis();
+    if (this.usedReceiptJtis.has(jti)) {
+      return false;
+    }
+
+    const expiryMs = new Date(expiresAt).getTime();
+    this.usedReceiptJtis.set(jti, Number.isFinite(expiryMs) ? expiryMs : Date.now());
+    return true;
+  }
+
   async close(): Promise<void> {
     this.invoices.clear();
     this.paymentIdIndex.clear();
+    this.usedReceiptJtis.clear();
+  }
+
+  private pruneExpiredReceiptJtis(nowMs = Date.now()): void {
+    for (const [jti, expiresAtMs] of this.usedReceiptJtis.entries()) {
+      if (expiresAtMs <= nowMs) {
+        this.usedReceiptJtis.delete(jti);
+      }
+    }
   }
 }

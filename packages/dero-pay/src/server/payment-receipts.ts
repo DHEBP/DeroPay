@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { DeroChainId, Invoice } from "../core/types.js";
 
 type PaymentReceiptHeader = {
@@ -8,6 +8,7 @@ type PaymentReceiptHeader = {
 
 export type PaymentReceiptClaims = {
   v: 1;
+  jti: string;
   invoiceId: string;
   resource: string;
   asset: "DERO";
@@ -95,7 +96,9 @@ export function verifyPaymentReceipt(
 
     const claims = JSON.parse(decodeBase64Url(encodedPayload)) as PaymentReceiptClaims;
     if (claims.v !== 1) return null;
-    if (!claims.invoiceId || !claims.resource || claims.asset !== "DERO") return null;
+    if (!claims.jti || !claims.invoiceId || !claims.resource || claims.asset !== "DERO") {
+      return null;
+    }
     if (!claims.amountAtomic || Number.isNaN(Number(claims.confirmations))) return null;
 
     const now = options?.nowMs ?? Date.now();
@@ -130,6 +133,7 @@ export function issueReceiptFromInvoice(
   const confirmedPayment = invoice.payments.find((p) => p.status === "confirmed");
 
   const claims: Omit<PaymentReceiptClaims, "v"> = {
+    jti: randomUUID(),
     invoiceId: invoice.id,
     resource: options.resource,
     asset: "DERO",

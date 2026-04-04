@@ -95,6 +95,14 @@ export type InvoiceStore = {
   getStats(): Promise<InvoiceStats>;
 
   /**
+   * Mark a receipt JTI as used for replay protection.
+   * Returns true when this is the first use, false when already used.
+   *
+   * Implementations should expire entries at or after `expiresAt`.
+   */
+  markReceiptJtiUsed?(jti: string, expiresAt: string): Promise<boolean>;
+
+  /**
    * Close the store and release any resources.
    */
   close(): Promise<void>;

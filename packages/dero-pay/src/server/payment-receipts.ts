@@ -4,6 +4,13 @@ import type { DeroChainId, Invoice } from "../core/types.js";
 type PaymentReceiptHeader = {
   alg: "HS256";
   typ: "DPAY-RECEIPT";
+  kid?: string;
+};
+
+export type ReceiptSecrets = string | Record<string, string>;
+
+export type CreateReceiptOptions = {
+  keyId?: string;
 };
 
 export type PaymentReceiptClaims = {
@@ -31,6 +38,7 @@ export type IssueReceiptOptions = {
   secret: string;
   ttlSeconds?: number;
   network?: DeroChainId;
+  keyId?: string;
 };
 
 function encodeBase64Url(input: string): string {
@@ -45,9 +53,16 @@ function sign(input: string, secret: string): string {
   return createHmac("sha256", secret).update(input).digest("base64url");
 }
 
+function timingSafeMatch(a: string, b: string): boolean {
+  const aBytes = Buffer.from(a, "utf8");
+  const bBytes = Buffer.from(b, "utf8");
+  return aBytes.length === bBytes.length && timingSafeEqual(aBytes, bBytes);
+}
+
 export function createPaymentReceipt(
   claims: Omit<PaymentReceiptClaims, "v">,
-  secret: string
+  secret: string,
+  options?: CreateReceiptOptions
 ): string {
   if (!secret) {
     throw new Error("Receipt secret is required");
@@ -56,6 +71,7 @@ export function createPaymentReceipt(
   const header: PaymentReceiptHeader = {
     alg: "HS256",
     typ: "DPAY-RECEIPT",
+    kid: options?.keyId,
   };
 
   const payload: PaymentReceiptClaims = {
@@ -71,28 +87,38 @@ export function createPaymentReceipt(
 
 export function verifyPaymentReceipt(
   token: string,
-  secret: string,
+  secrets: ReceiptSecrets,
   options?: VerifyReceiptOptions
 ): PaymentReceiptClaims | null {
   try {
-    if (!secret || !token) return null;
+    if (!secrets || !token) return null;
     const parts = token.split(".");
     if (parts.length !== 3) return null;
 
     const [encodedHeader, encodedPayload, incomingSignature] = parts;
-    const computedSignature = sign(`${encodedHeader}.${encodedPayload}`, secret);
-
-    const incomingBytes = Buffer.from(incomingSignature, "utf8");
-    const computedBytes = Buffer.from(computedSignature, "utf8");
-    if (
-      incomingBytes.length !== computedBytes.length ||
-      !timingSafeEqual(incomingBytes, computedBytes)
-    ) {
-      return null;
-    }
-
     const header = JSON.parse(decodeBase64Url(encodedHeader)) as PaymentReceiptHeader;
     if (header.alg !== "HS256" || header.typ !== "DPAY-RECEIPT") return null;
+
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    let signatureValid = false;
+
+    if (typeof secrets === "string") {
+      signatureValid = timingSafeMatch(sign(signingInput, secrets), incomingSignature);
+    } else {
+      const keysToTry =
+        header.kid && secrets[header.kid]
+          ? [secrets[header.kid]]
+          : Object.values(secrets);
+
+      for (const secret of keysToTry) {
+        if (timingSafeMatch(sign(signingInput, secret), incomingSignature)) {
+          signatureValid = true;
+          break;
+        }
+      }
+    }
+
+    if (!signatureValid) return null;
 
     const claims = JSON.parse(decodeBase64Url(encodedPayload)) as PaymentReceiptClaims;
     if (claims.v !== 1) return null;
@@ -146,7 +172,7 @@ export function issueReceiptFromInvoice(
   };
 
   return {
-    token: createPaymentReceipt(claims, options.secret),
+    token: createPaymentReceipt(claims, options.secret, { keyId: options.keyId }),
     claims: {
       v: 1,
       ...claims,

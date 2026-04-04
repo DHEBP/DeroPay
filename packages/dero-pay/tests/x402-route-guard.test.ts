@@ -92,6 +92,54 @@ describe("createX402RouteGuard", () => {
     expect(createInvoice).not.toHaveBeenCalled();
   });
 
+  it("accepts keyring config for rotated receipt secrets", async () => {
+    const now = Date.now();
+    const receipt = createPaymentReceipt(
+      {
+        jti: "jti_guard_rotated",
+        invoiceId: "inv_paid",
+        resource: "/api/protected",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "900000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "new-secret",
+      { keyId: "k2" }
+    );
+
+    const createInvoice = vi.fn();
+    const guard = createX402RouteGuard({
+      getEngine: async () =>
+        ({
+          createInvoice,
+        }) as unknown as InvoiceEngine,
+      receiptSecrets: {
+        k1: "old-secret",
+        k2: "new-secret",
+      },
+      policy: {
+        name: "Premium report",
+        amountAtomic: 500_000n,
+      },
+    });
+
+    const handler = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    const guarded = guard(handler);
+    const response = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: {
+          "X-DeroPay-Receipt": receipt,
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks replay when single-use receipts are enforced", async () => {
     const now = Date.now();
     const receipt = createPaymentReceipt(

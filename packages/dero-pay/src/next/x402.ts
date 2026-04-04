@@ -1,7 +1,7 @@
 import { atomicToDero } from "../core/pricing.js";
 import type { DeroChainId, CreateInvoiceParams } from "../core/types.js";
 import type { InvoiceEngine } from "../server/invoice-engine.js";
-import { verifyPaymentReceipt } from "../server/payment-receipts.js";
+import { verifyPaymentReceipt, type ReceiptSecrets } from "../server/payment-receipts.js";
 
 export type X402PaymentPolicy = {
   name: string;
@@ -20,7 +20,8 @@ export type X402PolicyResolver = (
 
 export type X402RouteGuardConfig = {
   getEngine: () => Promise<InvoiceEngine>;
-  receiptSecret: string;
+  receiptSecret?: string;
+  receiptSecrets?: Record<string, string>;
   policy: X402PaymentPolicy | X402PolicyResolver;
   receiptHeaderName?: string;
   enforceSingleUseReceipts?: boolean;
@@ -65,6 +66,15 @@ function buildInvoiceParams(policy: X402PaymentPolicy): CreateInvoiceParams {
 }
 
 export function createX402RouteGuard(config: X402RouteGuardConfig) {
+  const receiptSecrets: ReceiptSecrets =
+    config.receiptSecrets ?? config.receiptSecret ?? "";
+  if (
+    (typeof receiptSecrets === "string" && receiptSecrets.length === 0) ||
+    (typeof receiptSecrets !== "string" && Object.keys(receiptSecrets).length === 0)
+  ) {
+    throw new Error("createX402RouteGuard requires receiptSecret or receiptSecrets");
+  }
+
   const receiptHeaderName = config.receiptHeaderName ?? "X-DeroPay-Receipt";
   const enforceSingleUseReceipts = config.enforceSingleUseReceipts ?? false;
   const protocolId = config.protocolId ?? "x402-deropay-draft";
@@ -79,7 +89,7 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
 
       const existingReceipt = request.headers.get(receiptHeaderName);
       if (existingReceipt) {
-        const claims = verifyPaymentReceipt(existingReceipt, config.receiptSecret, {
+        const claims = verifyPaymentReceipt(existingReceipt, receiptSecrets, {
           resource,
           minAmountAtomic: policy.amountAtomic,
         });

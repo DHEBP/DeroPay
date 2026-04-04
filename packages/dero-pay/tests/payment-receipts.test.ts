@@ -123,4 +123,78 @@ describe("payment receipts", () => {
       })
     ).toThrow("not completed");
   });
+
+  it("verifies receipt signed with key ID from keyring", () => {
+    const now = Date.now();
+    const token = createPaymentReceipt(
+      {
+        jti: "jti_kid_1",
+        invoiceId: "inv_kid",
+        resource: "/api/protected/report",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "1500000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "new-secret",
+      { keyId: "k2" }
+    );
+
+    const claims = verifyPaymentReceipt(
+      token,
+      { k1: "old-secret", k2: "new-secret" },
+      { resource: "/api/protected/report" }
+    );
+    expect(claims).not.toBeNull();
+    expect(claims?.invoiceId).toBe("inv_kid");
+  });
+
+  it("rejects receipt when key ID is unknown", () => {
+    const now = Date.now();
+    const token = createPaymentReceipt(
+      {
+        jti: "jti_kid_2",
+        invoiceId: "inv_kid",
+        resource: "/api/protected/report",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "1500000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "new-secret",
+      { keyId: "k2" }
+    );
+
+    const claims = verifyPaymentReceipt(token, { k1: "old-secret" });
+    expect(claims).toBeNull();
+  });
+
+  it("verifies legacy receipt without key ID against keyring", () => {
+    const now = Date.now();
+    const token = createPaymentReceipt(
+      {
+        jti: "jti_legacy",
+        invoiceId: "inv_legacy",
+        resource: "/api/protected/report",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "1700000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "legacy-secret"
+    );
+
+    const claims = verifyPaymentReceipt(token, {
+      old: "legacy-secret",
+      next: "new-secret",
+    });
+    expect(claims).not.toBeNull();
+    expect(claims?.invoiceId).toBe("inv_legacy");
+  });
 });

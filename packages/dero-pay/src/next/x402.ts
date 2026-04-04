@@ -86,6 +86,13 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
       const policy = await resolvePolicy(config.policy, request);
       const url = new URL(request.url);
       const resource = policy.resource ?? url.pathname;
+      let engine: InvoiceEngine | null = null;
+      const getEngine = async (): Promise<InvoiceEngine> => {
+        if (!engine) {
+          engine = await config.getEngine();
+        }
+        return engine;
+      };
 
       const existingReceipt = request.headers.get(receiptHeaderName);
       if (existingReceipt) {
@@ -95,9 +102,16 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
         });
         if (claims) {
           if (enforceSingleUseReceipts) {
-            const engine = await config.getEngine();
-            const store = engine.getStore();
+            const activeEngine = await getEngine();
+            const store = activeEngine.getStore();
             if (!store.markReceiptJtiUsed) {
+              activeEngine.emitX402AuditEvent({
+                type: "x402.receipt_rejected",
+                resource,
+                invoiceId: claims.invoiceId,
+                jti: claims.jti,
+                reason: "replay_store_not_configured",
+              });
               return Response.json(
                 { error: "Receipt replay store not configured" },
                 { status: 500 }
@@ -109,18 +123,45 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
               new Date(claims.expiresAt).toISOString()
             );
             if (!marked) {
+              activeEngine.emitX402AuditEvent({
+                type: "x402.receipt_rejected",
+                resource,
+                invoiceId: claims.invoiceId,
+                jti: claims.jti,
+                reason: "receipt_replay_detected",
+              });
               return Response.json(
                 { error: "Receipt has already been used" },
                 { status: 409 }
               );
             }
           }
+          (await getEngine()).emitX402AuditEvent({
+            type: "x402.receipt_used",
+            resource,
+            invoiceId: claims.invoiceId,
+            jti: claims.jti,
+          });
           return handler(request);
         }
+
+        (await getEngine()).emitX402AuditEvent({
+          type: "x402.receipt_rejected",
+          resource,
+          reason: "invalid_or_expired_receipt",
+        });
       }
 
-      const engine = await config.getEngine();
-      const invoice = await engine.createInvoice(buildInvoiceParams(policy));
+      const activeEngine = await getEngine();
+      const invoice = await activeEngine.createInvoice(buildInvoiceParams(policy));
+      activeEngine.emitX402AuditEvent({
+        type: "x402.challenge_issued",
+        resource,
+        invoiceId: invoice.id,
+        metadata: {
+          amountAtomic: invoice.amount.toString(),
+        },
+      });
       const responseBody: X402ChallengeResponse = {
         error: "payment_required",
         payment: {

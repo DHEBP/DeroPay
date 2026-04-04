@@ -43,6 +43,22 @@ import type {
 } from "../core/types.js";
 import type { InvoiceStore, InvoiceFilter, InvoiceStats } from "../store/types.js";
 
+export type X402AuditEventType =
+  | "x402.challenge_issued"
+  | "x402.receipt_issued"
+  | "x402.receipt_used"
+  | "x402.receipt_rejected";
+
+export type X402AuditEvent = {
+  type: X402AuditEventType;
+  timestamp: string;
+  resource?: string;
+  invoiceId?: string;
+  jti?: string;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+};
+
 /** Events emitted by the invoice engine */
 export type InvoiceEngineEvents = {
   /** Invoice status changed */
@@ -51,6 +67,8 @@ export type InvoiceEngineEvents = {
   paymentDetected: (invoice: Invoice, payment: Payment) => void;
   /** Payment confirmed */
   paymentConfirmed: (invoice: Invoice, payment: Payment) => void;
+  /** x402 payment lifecycle audit event */
+  x402Audit: (event: X402AuditEvent) => void;
   /** Error occurred */
   error: (error: Error) => void;
 };
@@ -391,6 +409,16 @@ export class InvoiceEngine {
    */
   getStore(): InvoiceStore {
     return this.store;
+  }
+
+  /**
+   * Emit a structured x402 audit event for observability and monitoring.
+   */
+  emitX402AuditEvent(event: Omit<X402AuditEvent, "timestamp"> & { timestamp?: string }): void {
+    this.emit("x402Audit", {
+      ...event,
+      timestamp: event.timestamp ?? new Date().toISOString(),
+    });
   }
 
   /**

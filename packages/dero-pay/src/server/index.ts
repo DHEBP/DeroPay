@@ -8,6 +8,8 @@
 export {
   InvoiceEngine,
   type InvoiceEngineEvents,
+  type X402AuditEvent,
+  type X402AuditEventType,
 } from "./invoice-engine.js";
 
 // RPC clients

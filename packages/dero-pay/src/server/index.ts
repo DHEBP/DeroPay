@@ -50,6 +50,16 @@ export type {
   WebhookDelivery,
 } from "../webhook/types.js";
 
+// Payment receipts
+export {
+  createPaymentReceipt,
+  verifyPaymentReceipt,
+  issueReceiptFromInvoice,
+  type PaymentReceiptClaims,
+  type VerifyReceiptOptions,
+  type IssueReceiptOptions,
+} from "./payment-receipts.js";
+
 // Escrow (re-exported for convenience)
 export {
   EscrowManager,

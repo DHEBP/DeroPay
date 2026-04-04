@@ -73,6 +73,92 @@ export const POST = createInvoiceHandler;
 export const GET = statusHandler;
 ```
 
+### x402-Style Protected Route (DERO Native)
+
+```ts
+// lib/deropay.ts
+import { createPaymentHandlers, createX402RouteGuard } from "dero-pay/next";
+import { deroToAtomic } from "dero-pay";
+
+export const paymentHandlers = createPaymentHandlers({
+  walletRpcUrl: "http://127.0.0.1:10103/json_rpc",
+  daemonRpcUrl: "http://127.0.0.1:10102/json_rpc",
+  receiptSecret: process.env.DEROPAY_RECEIPT_SECRET!,
+});
+
+export const x402Guard = createX402RouteGuard({
+  getEngine: paymentHandlers.getEngine,
+  receiptSecret: process.env.DEROPAY_RECEIPT_SECRET!,
+  policy: {
+    name: "Premium API Access",
+    amountAtomic: deroToAtomic("0.10"),
+    requiredConfirmations: 3,
+    metadata: { plan: "premium" },
+  },
+});
+```
+
+```ts
+// app/api/protected/report/route.ts
+import { x402Guard } from "@/lib/deropay";
+
+export const GET = x402Guard(async () => {
+  return Response.json({
+    report: "paid content",
+  });
+});
+```
+
+When a valid `X-DeroPay-Receipt` is not provided, this route responds with:
+
+- `HTTP 402 Payment Required`
+- a machine-readable DERO challenge payload (invoice ID, integrated address, amount, expiry, confirmations)
+
+### Issue and Verify Receipts
+
+```ts
+// app/api/pay/receipts/issue/route.ts
+import { paymentHandlers } from "@/lib/deropay";
+export const POST = paymentHandlers.issueReceiptHandler;
+```
+
+```ts
+// app/api/pay/receipts/verify/route.ts
+import { paymentHandlers } from "@/lib/deropay";
+export const POST = paymentHandlers.verifyReceiptHandler;
+```
+
+Issue a receipt after invoice completion:
+
+```bash
+curl -X POST http://localhost:3000/api/pay/receipts/issue \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invoiceId":"inv_123",
+    "resource":"/api/protected/report",
+    "ttlSeconds":600
+  }'
+```
+
+Verify and use the receipt:
+
+```bash
+curl -X POST http://localhost:3000/api/pay/receipts/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "receipt":"<token>",
+    "resource":"/api/protected/report",
+    "minAmountAtomic":"100000000000"
+  }'
+
+curl http://localhost:3000/api/protected/report \
+  -H "X-DeroPay-Receipt: <token>"
+```
+
+A full runnable Next.js example is available at:
+
+- `apps/x402-example`
+
 ### React Components
 
 ```tsx

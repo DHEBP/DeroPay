@@ -15,3 +15,11 @@ export {
   generateApiKey,
   type DeroPayMiddlewareConfig,
 } from "./middleware.js";
+
+export {
+  createX402RouteGuard,
+  type X402PaymentPolicy,
+  type X402PolicyResolver,
+  type X402RouteGuardConfig,
+  type X402ChallengeResponse,
+} from "./x402.js";

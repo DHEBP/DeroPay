@@ -37,6 +37,7 @@ import { verifyWebhookSignature } from "../webhook/dispatcher.js";
 import {
   issueReceiptFromInvoice,
   verifyPaymentReceipt,
+  type ReceiptSecrets,
 } from "../server/payment-receipts.js";
 import type {
   DeroPayConfig,
@@ -53,6 +54,10 @@ export type PaymentHandlersConfig = DeroPayConfig & {
   autoStart?: boolean;
   /** Secret used to sign and verify payment receipts */
   receiptSecret?: string;
+  /** Secrets by key ID for receipt key rotation (verification supports all keys) */
+  receiptSecrets?: Record<string, string>;
+  /** Active key ID used to issue new receipts when receiptSecrets is set */
+  receiptKeyId?: string;
 };
 
 // Singleton engine instance per configuration
@@ -77,6 +82,43 @@ async function getEngine(config: PaymentHandlersConfig): Promise<InvoiceEngine> 
   }
 
   return engineInstance;
+}
+
+function resolveReceiptVerificationSecrets(
+  config: PaymentHandlersConfig
+): ReceiptSecrets | null {
+  if (config.receiptSecrets && Object.keys(config.receiptSecrets).length > 0) {
+    return config.receiptSecrets;
+  }
+  if (config.receiptSecret) {
+    return config.receiptSecret;
+  }
+  return null;
+}
+
+function resolveReceiptSigningKey(
+  config: PaymentHandlersConfig
+): { secret: string; keyId?: string } | null {
+  if (config.receiptSecrets && Object.keys(config.receiptSecrets).length > 0) {
+    if (config.receiptKeyId) {
+      const keyed = config.receiptSecrets[config.receiptKeyId];
+      if (!keyed) {
+        throw new Error(`receiptKeyId '${config.receiptKeyId}' not found in receiptSecrets`);
+      }
+      return { secret: keyed, keyId: config.receiptKeyId };
+    }
+
+    const [firstKeyId, firstSecret] = Object.entries(config.receiptSecrets)[0] ?? [];
+    if (!firstKeyId || !firstSecret) {
+      return null;
+    }
+    return { secret: firstSecret, keyId: firstKeyId };
+  }
+
+  if (config.receiptSecret) {
+    return { secret: config.receiptSecret };
+  }
+  return null;
 }
 
 /**
@@ -420,9 +462,10 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
    */
   async function issueReceiptHandler(request: Request): Promise<Response> {
     try {
-      if (!config.receiptSecret) {
+      const signingKey = resolveReceiptSigningKey(config);
+      if (!signingKey) {
         return Response.json(
-          { error: "Receipt secret not configured" },
+          { error: "Receipt signing key not configured" },
           { status: 500 }
         );
       }
@@ -460,7 +503,8 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
       }
 
       const issued = issueReceiptFromInvoice(invoice, {
-        secret: config.receiptSecret,
+        secret: signingKey.secret,
+        keyId: signingKey.keyId,
         resource: body.resource,
         ttlSeconds: body.ttlSeconds,
         network: body.network ?? (config.chainId ?? "dero-mainnet"),
@@ -485,9 +529,10 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
    */
   async function verifyReceiptHandler(request: Request): Promise<Response> {
     try {
-      if (!config.receiptSecret) {
+      const verificationSecrets = resolveReceiptVerificationSecrets(config);
+      if (!verificationSecrets) {
         return Response.json(
-          { error: "Receipt secret not configured" },
+          { error: "Receipt verification secrets not configured" },
           { status: 500 }
         );
       }
@@ -507,7 +552,7 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
         return Response.json({ error: "Missing receipt" }, { status: 400 });
       }
 
-      const claims = verifyPaymentReceipt(body.receipt, config.receiptSecret, {
+      const claims = verifyPaymentReceipt(body.receipt, verificationSecrets, {
         resource: body.resource,
         minAmountAtomic:
           typeof body.minAmountAtomic === "string"

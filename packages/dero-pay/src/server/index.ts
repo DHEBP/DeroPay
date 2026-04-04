@@ -55,6 +55,8 @@ export {
   createPaymentReceipt,
   verifyPaymentReceipt,
   issueReceiptFromInvoice,
+  type ReceiptSecrets,
+  type CreateReceiptOptions,
   type PaymentReceiptClaims,
   type VerifyReceiptOptions,
   type IssueReceiptOptions,

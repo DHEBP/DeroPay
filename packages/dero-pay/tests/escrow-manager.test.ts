@@ -1,43 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EscrowManager } from "../src/escrow/manager.js";
+import { createMockWalletRpc, createMockDaemonRpc } from "./mocks/rpc.js";
 import type { EscrowOnChainState, EscrowRecord, EscrowStatus } from "../src/escrow/types.js";
-
-const mockWallet = {
-  ping: vi.fn().mockResolvedValue(true),
-  getAddress: vi.fn().mockResolvedValue("dero1qowner..."),
-  getHeight: vi.fn().mockResolvedValue(1000),
-  getBalance: vi.fn().mockResolvedValue({ balance: 500_000, unlocked_balance: 500_000 }),
-  makeIntegratedAddress: vi.fn().mockResolvedValue("deti1q..."),
-  getTransfers: vi.fn().mockResolvedValue([]),
-  getIncomingByPaymentId: vi.fn().mockResolvedValue([]),
-  getTransferByTxid: vi.fn().mockResolvedValue({}),
-  splitIntegratedAddress: vi.fn().mockResolvedValue({ address: "dero1q...", payloadRpc: [] }),
-  transfer: vi.fn().mockResolvedValue("tx-001"),
-  installSc: vi.fn().mockResolvedValue("sc-deploy-001"),
-  invokeSc: vi.fn().mockResolvedValue("tx-invoke-001"),
-  scinvokeRaw: vi.fn().mockResolvedValue("tx-raw-001"),
-};
-
-const mockDaemon = {
-  ping: vi.fn().mockResolvedValue(true),
-  getInfo: vi.fn().mockResolvedValue({ topoheight: 1000 }),
-  getHeight: vi.fn().mockResolvedValue(1000),
-  getStableHeight: vi.fn().mockResolvedValue(990),
-  getTransactions: vi.fn().mockResolvedValue({ txs_as_hex: [], txs: [], status: "OK" }),
-  getSc: vi.fn().mockResolvedValue({ stringkeys: {}, balance: 0, code: "", status: "OK" }),
-  getScVariable: vi.fn().mockResolvedValue(undefined),
-  getScBalance: vi.fn().mockResolvedValue(0),
-  gasEstimate: vi.fn().mockResolvedValue({ gascompute: 100, gasstorage: 50, status: "OK" }),
-  isTestnet: vi.fn().mockResolvedValue(false),
-};
-
-vi.mock("../src/rpc/wallet-rpc.js", () => ({
-  WalletRpcClient: vi.fn().mockImplementation(() => mockWallet),
-}));
-
-vi.mock("../src/rpc/daemon-rpc.js", () => ({
-  DaemonRpcClient: vi.fn().mockImplementation(() => mockDaemon),
-}));
+import type { WalletRpcClient } from "../src/rpc/wallet-rpc.js";
+import type { DaemonRpcClient } from "../src/rpc/daemon-rpc.js";
 
 // Mock the EscrowContract to control deploy and getState
 const mockContract = {
@@ -72,13 +38,19 @@ vi.mock("../src/escrow/contract.js", () => ({
 
 describe("EscrowManager", () => {
   let manager: EscrowManager;
+  let mockWallet: ReturnType<typeof createMockWalletRpc>;
+  let mockDaemon: ReturnType<typeof createMockDaemonRpc>;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.clearAllMocks();
+    mockWallet = createMockWalletRpc({
+      getAddress: vi.fn().mockResolvedValue("dero1qowner..."),
+      installSc: vi.fn().mockResolvedValue("sc-deploy-001"),
+    });
+    mockDaemon = createMockDaemonRpc();
     manager = new EscrowManager({
-      walletRpcUrl: "http://mock:10103/json_rpc",
-      daemonRpcUrl: "http://mock:10102/json_rpc",
+      walletRpc: mockWallet as unknown as WalletRpcClient,
+      daemonRpc: mockDaemon as unknown as DaemonRpcClient,
       pollIntervalMs: 100,
       defaultFeeBasisPoints: 250,
       defaultBlockExpiration: 60,

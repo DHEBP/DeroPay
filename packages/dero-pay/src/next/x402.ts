@@ -1,0 +1,115 @@
+import { atomicToDero } from "../core/pricing.js";
+import type { DeroChainId, CreateInvoiceParams } from "../core/types.js";
+import type { InvoiceEngine } from "../server/invoice-engine.js";
+import { verifyPaymentReceipt } from "../server/payment-receipts.js";
+
+export type X402PaymentPolicy = {
+  name: string;
+  amountAtomic: bigint;
+  description?: string;
+  ttlSeconds?: number;
+  requiredConfirmations?: number;
+  metadata?: Record<string, unknown>;
+  resource?: string;
+  network?: DeroChainId;
+};
+
+export type X402PolicyResolver = (
+  request: Request
+) => X402PaymentPolicy | Promise<X402PaymentPolicy>;
+
+export type X402RouteGuardConfig = {
+  getEngine: () => Promise<InvoiceEngine>;
+  receiptSecret: string;
+  policy: X402PaymentPolicy | X402PolicyResolver;
+  receiptHeaderName?: string;
+  protocolId?: string;
+};
+
+export type X402ChallengeResponse = {
+  error: "payment_required";
+  payment: {
+    protocol: string;
+    network: DeroChainId;
+    asset: "DERO";
+    amountAtomic: string;
+    amountDisplay: string;
+    invoiceId: string;
+    integratedAddress: string;
+    expiresAt: string;
+    requiredConfirmations: number;
+    resource: string;
+  };
+};
+
+async function resolvePolicy(
+  policy: X402PaymentPolicy | X402PolicyResolver,
+  request: Request
+): Promise<X402PaymentPolicy> {
+  if (typeof policy === "function") {
+    return policy(request);
+  }
+  return policy;
+}
+
+function buildInvoiceParams(policy: X402PaymentPolicy): CreateInvoiceParams {
+  return {
+    name: policy.name,
+    description: policy.description,
+    amount: policy.amountAtomic,
+    ttlSeconds: policy.ttlSeconds,
+    requiredConfirmations: policy.requiredConfirmations,
+    metadata: policy.metadata,
+  };
+}
+
+export function createX402RouteGuard(config: X402RouteGuardConfig) {
+  const receiptHeaderName = config.receiptHeaderName ?? "X-DeroPay-Receipt";
+  const protocolId = config.protocolId ?? "x402-deropay-draft";
+
+  return function withX402PaymentGuard(
+    handler: (request: Request) => Promise<Response> | Response
+  ) {
+    return async function guardedHandler(request: Request): Promise<Response> {
+      const policy = await resolvePolicy(config.policy, request);
+      const url = new URL(request.url);
+      const resource = policy.resource ?? url.pathname;
+
+      const existingReceipt = request.headers.get(receiptHeaderName);
+      if (existingReceipt) {
+        const claims = verifyPaymentReceipt(existingReceipt, config.receiptSecret, {
+          resource,
+          minAmountAtomic: policy.amountAtomic,
+        });
+        if (claims) {
+          return handler(request);
+        }
+      }
+
+      const engine = await config.getEngine();
+      const invoice = await engine.createInvoice(buildInvoiceParams(policy));
+      const responseBody: X402ChallengeResponse = {
+        error: "payment_required",
+        payment: {
+          protocol: protocolId,
+          network: policy.network ?? "dero-mainnet",
+          asset: "DERO",
+          amountAtomic: invoice.amount.toString(),
+          amountDisplay: atomicToDero(invoice.amount),
+          invoiceId: invoice.id,
+          integratedAddress: invoice.integratedAddress,
+          expiresAt: invoice.expiresAt,
+          requiredConfirmations: invoice.requiredConfirmations,
+          resource,
+        },
+      };
+
+      return Response.json(responseBody, {
+        status: 402,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      });
+    };
+  };
+}

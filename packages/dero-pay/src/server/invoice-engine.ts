@@ -98,17 +98,24 @@ export class InvoiceEngine {
       escrowBlockExpiration?: number;
       /** Enable escrow support (default: false — must be explicitly opted into) */
       enableEscrow?: boolean;
+      /** Inject RPC clients (for testing); when set, walletRpcUrl/daemonRpcUrl are ignored */
+      walletRpc?: WalletRpcClient;
+      daemonRpc?: DaemonRpcClient;
     }
   ) {
-    this.walletRpc = new WalletRpcClient({
-      url: options.walletRpcUrl,
-      auth: options.rpcAuth,
-    });
+    this.walletRpc =
+      options.walletRpc ??
+      new WalletRpcClient({
+        url: options.walletRpcUrl,
+        auth: options.rpcAuth,
+      });
 
-    this.daemonRpc = new DaemonRpcClient({
-      url: options.daemonRpcUrl,
-      auth: options.rpcAuth,
-    });
+    this.daemonRpc =
+      options.daemonRpc ??
+      new DaemonRpcClient({
+        url: options.daemonRpcUrl,
+        auth: options.rpcAuth,
+      });
 
     this.store = options.store ?? new MemoryInvoiceStore();
 
@@ -140,6 +147,8 @@ export class InvoiceEngine {
     // Set up escrow manager (opt-in: must be explicitly enabled)
     if (options.enableEscrow === true) {
       this.escrowManager = new EscrowManager({
+        walletRpc: options.walletRpc ?? undefined,
+        daemonRpc: options.daemonRpc ?? undefined,
         walletRpcUrl: options.walletRpcUrl,
         daemonRpcUrl: options.daemonRpcUrl,
         rpcAuth: options.rpcAuth,

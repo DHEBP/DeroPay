@@ -19,6 +19,8 @@
     "build:checkout": "bun run --cwd apps/checkout build",
     "build:widget": "bun run --cwd packages/deropay-widget build && cp packages/deropay-widget/dist/widget.global.js apps/web/public/widget.js",
     "build:demo": "bun run --cwd apps/demo build",
+    "dev:x402-example": "bun run build:sdk && bun run --cwd apps/x402-example dev",
+    "build:x402-example": "bun run build:sdk && bun run --cwd apps/x402-example build",
     "build:dashboard": "NEXT_PUBLIC_DEMO_MODE=true bun run --cwd apps/dashboard build",
     "build:medusa": "bun run --cwd plugins/medusa-payment-deropay build",
     "typecheck": "bun run --cwd packages/dero-pay typecheck"

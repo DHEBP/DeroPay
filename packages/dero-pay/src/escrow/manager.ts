@@ -63,16 +63,26 @@ export class EscrowManager {
     [K in keyof EscrowManagerEvents]: EscrowManagerEvents[K][];
   }> = {};
 
-  constructor(config?: EscrowManagerConfig) {
-    this.walletRpc = new WalletRpcClient({
-      url: config?.walletRpcUrl,
-      auth: config?.rpcAuth,
-    });
+  constructor(
+    config?: EscrowManagerConfig & {
+      /** Inject RPC clients (for testing); when set, walletRpcUrl/daemonRpcUrl are ignored */
+      walletRpc?: WalletRpcClient;
+      daemonRpc?: DaemonRpcClient;
+    }
+  ) {
+    this.walletRpc =
+      config?.walletRpc ??
+      new WalletRpcClient({
+        url: config?.walletRpcUrl,
+        auth: config?.rpcAuth,
+      });
 
-    this.daemonRpc = new DaemonRpcClient({
-      url: config?.daemonRpcUrl,
-      auth: config?.rpcAuth,
-    });
+    this.daemonRpc =
+      config?.daemonRpc ??
+      new DaemonRpcClient({
+        url: config?.daemonRpcUrl,
+        auth: config?.rpcAuth,
+      });
 
     this.contract = new EscrowContract(this.walletRpc, this.daemonRpc);
 

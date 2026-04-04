@@ -34,7 +34,15 @@
 
 import { InvoiceEngine } from "../server/invoice-engine.js";
 import { verifyWebhookSignature } from "../webhook/dispatcher.js";
-import type { DeroPayConfig, CreateInvoiceParams } from "../core/types.js";
+import {
+  issueReceiptFromInvoice,
+  verifyPaymentReceipt,
+} from "../server/payment-receipts.js";
+import type {
+  DeroPayConfig,
+  CreateInvoiceParams,
+  DeroChainId,
+} from "../core/types.js";
 import type { InvoiceStore } from "../store/types.js";
 
 /** Configuration for the payment handlers */
@@ -43,6 +51,8 @@ export type PaymentHandlersConfig = DeroPayConfig & {
   store?: InvoiceStore;
   /** Whether to auto-start the engine (default: true) */
   autoStart?: boolean;
+  /** Secret used to sign and verify payment receipts */
+  receiptSecret?: string;
 };
 
 // Singleton engine instance per configuration
@@ -403,6 +413,120 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
     }
   }
 
+  /**
+   * POST /api/pay/receipts/issue
+   * Body: { invoiceId, resource, ttlSeconds?, network? }
+   * Returns: { receipt, claims }
+   */
+  async function issueReceiptHandler(request: Request): Promise<Response> {
+    try {
+      if (!config.receiptSecret) {
+        return Response.json(
+          { error: "Receipt secret not configured" },
+          { status: 500 }
+        );
+      }
+
+      let body: {
+        invoiceId?: string;
+        resource?: string;
+        ttlSeconds?: number;
+        network?: DeroChainId;
+      };
+      try {
+        body = (await request.json()) as typeof body;
+      } catch {
+        return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      }
+
+      if (!body.invoiceId) {
+        return Response.json({ error: "Missing invoiceId" }, { status: 400 });
+      }
+      if (!body.resource) {
+        return Response.json({ error: "Missing resource" }, { status: 400 });
+      }
+
+      const engine = await getEngine(config);
+      const invoice = await engine.getInvoice(body.invoiceId);
+      if (!invoice) {
+        return Response.json({ error: "Invoice not found" }, { status: 404 });
+      }
+
+      if (invoice.status !== "completed") {
+        return Response.json(
+          { error: "Invoice is not completed yet" },
+          { status: 409 }
+        );
+      }
+
+      const issued = issueReceiptFromInvoice(invoice, {
+        secret: config.receiptSecret,
+        resource: body.resource,
+        ttlSeconds: body.ttlSeconds,
+        network: body.network ?? (config.chainId ?? "dero-mainnet"),
+      });
+
+      return Response.json({
+        receipt: issued.token,
+        claims: issued.claims,
+      });
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
+   * POST /api/pay/receipts/verify
+   * Body: { receipt, resource?, minAmountAtomic? }
+   * Returns: { valid, claims? }
+   */
+  async function verifyReceiptHandler(request: Request): Promise<Response> {
+    try {
+      if (!config.receiptSecret) {
+        return Response.json(
+          { error: "Receipt secret not configured" },
+          { status: 500 }
+        );
+      }
+
+      let body: {
+        receipt?: string;
+        resource?: string;
+        minAmountAtomic?: string;
+      };
+      try {
+        body = (await request.json()) as typeof body;
+      } catch {
+        return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      }
+
+      if (!body.receipt) {
+        return Response.json({ error: "Missing receipt" }, { status: 400 });
+      }
+
+      const claims = verifyPaymentReceipt(body.receipt, config.receiptSecret, {
+        resource: body.resource,
+        minAmountAtomic:
+          typeof body.minAmountAtomic === "string"
+            ? BigInt(body.minAmountAtomic)
+            : undefined,
+      });
+
+      return Response.json({
+        valid: claims !== null,
+        claims,
+      });
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        { status: 500 }
+      );
+    }
+  }
+
   return {
     createInvoiceHandler,
     statusHandler,
@@ -412,6 +536,8 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
     healthHandler,
     escrowActionHandler,
     listEscrowsHandler,
+    issueReceiptHandler,
+    verifyReceiptHandler,
     /** Access the underlying engine instance */
     getEngine: () => getEngine(config),
   };

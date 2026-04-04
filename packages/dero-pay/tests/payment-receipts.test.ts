@@ -13,6 +13,7 @@ describe("payment receipts", () => {
     const now = Date.now();
     const token = createPaymentReceipt(
       {
+        jti: "jti_1",
         invoiceId: "inv_123",
         resource: "/api/protected/report",
         asset: "DERO",
@@ -34,12 +35,14 @@ describe("payment receipts", () => {
     expect(claims).not.toBeNull();
     expect(claims?.invoiceId).toBe("inv_123");
     expect(claims?.amountAtomic).toBe("1000000");
+    expect(claims?.jti).toBe("jti_1");
   });
 
   it("rejects receipts when resource does not match", () => {
     const now = Date.now();
     const token = createPaymentReceipt(
       {
+        jti: "jti_2",
         invoiceId: "inv_123",
         resource: "/api/protected/report",
         asset: "DERO",
@@ -63,6 +66,7 @@ describe("payment receipts", () => {
     const now = Date.now();
     const token = createPaymentReceipt(
       {
+        jti: "jti_3",
         invoiceId: "inv_123",
         resource: "/api/protected/report",
         asset: "DERO",
@@ -103,6 +107,7 @@ describe("payment receipts", () => {
     expect(claims).not.toBeNull();
     expect(claims?.invoiceId).toBe("inv_done");
     expect(claims?.paymentTxid).toBe("tx_receipt");
+    expect(claims?.jti).toBeTruthy();
   });
 
   it("throws when issuing from incomplete invoice", () => {

@@ -3,6 +3,7 @@ import { createX402RouteGuard } from "../src/next/x402.js";
 import { createPaymentReceipt } from "../src/server/payment-receipts.js";
 import { makeInvoice } from "./helpers.js";
 import type { InvoiceEngine } from "../src/server/invoice-engine.js";
+import { MemoryInvoiceStore } from "../src/store/memory.js";
 
 describe("createX402RouteGuard", () => {
   it("returns 402 challenge when receipt is missing", async () => {
@@ -39,6 +40,7 @@ describe("createX402RouteGuard", () => {
     expect(body.error).toBe("payment_required");
     expect(body.payment.invoiceId).toBe("inv_challenge");
     expect(body.payment.amountAtomic).toBe("500000");
+    expect(response.headers.get("WWW-Authenticate")).toContain("X402");
     expect(createInvoice).toHaveBeenCalledTimes(1);
     expect(handler).not.toHaveBeenCalled();
   });
@@ -47,6 +49,7 @@ describe("createX402RouteGuard", () => {
     const now = Date.now();
     const receipt = createPaymentReceipt(
       {
+        jti: "jti_guard_1",
         invoiceId: "inv_paid",
         resource: "/api/protected",
         asset: "DERO",
@@ -87,5 +90,58 @@ describe("createX402RouteGuard", () => {
     expect(body.ok).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(createInvoice).not.toHaveBeenCalled();
+  });
+
+  it("blocks replay when single-use receipts are enforced", async () => {
+    const now = Date.now();
+    const receipt = createPaymentReceipt(
+      {
+        jti: "jti_single_use",
+        invoiceId: "inv_paid",
+        resource: "/api/protected",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "900000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "guard-secret"
+    );
+
+    const createInvoice = vi.fn();
+    const store = new MemoryInvoiceStore();
+    const guard = createX402RouteGuard({
+      getEngine: async () =>
+        ({
+          createInvoice,
+          getStore: () => store,
+        }) as unknown as InvoiceEngine,
+      receiptSecret: "guard-secret",
+      enforceSingleUseReceipts: true,
+      policy: {
+        name: "Premium report",
+        amountAtomic: 500_000n,
+      },
+    });
+
+    const handler = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    const guarded = guard(handler);
+
+    const first = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: { "X-DeroPay-Receipt": receipt },
+      })
+    );
+    expect(first.status).toBe(200);
+
+    const replay = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: { "X-DeroPay-Receipt": receipt },
+      })
+    );
+    const replayBody = (await replay.json()) as { error: string };
+    expect(replay.status).toBe(409);
+    expect(replayBody.error).toContain("already been used");
   });
 });

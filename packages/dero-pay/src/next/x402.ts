@@ -23,6 +23,7 @@ export type X402RouteGuardConfig = {
   receiptSecret: string;
   policy: X402PaymentPolicy | X402PolicyResolver;
   receiptHeaderName?: string;
+  enforceSingleUseReceipts?: boolean;
   protocolId?: string;
 };
 
@@ -65,6 +66,7 @@ function buildInvoiceParams(policy: X402PaymentPolicy): CreateInvoiceParams {
 
 export function createX402RouteGuard(config: X402RouteGuardConfig) {
   const receiptHeaderName = config.receiptHeaderName ?? "X-DeroPay-Receipt";
+  const enforceSingleUseReceipts = config.enforceSingleUseReceipts ?? false;
   const protocolId = config.protocolId ?? "x402-deropay-draft";
 
   return function withX402PaymentGuard(
@@ -82,6 +84,27 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
           minAmountAtomic: policy.amountAtomic,
         });
         if (claims) {
+          if (enforceSingleUseReceipts) {
+            const engine = await config.getEngine();
+            const store = engine.getStore();
+            if (!store.markReceiptJtiUsed) {
+              return Response.json(
+                { error: "Receipt replay store not configured" },
+                { status: 500 }
+              );
+            }
+
+            const marked = await store.markReceiptJtiUsed(
+              claims.jti,
+              new Date(claims.expiresAt).toISOString()
+            );
+            if (!marked) {
+              return Response.json(
+                { error: "Receipt has already been used" },
+                { status: 409 }
+              );
+            }
+          }
           return handler(request);
         }
       }
@@ -108,6 +131,15 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
         status: 402,
         headers: {
           "Cache-Control": "no-store",
+          "WWW-Authenticate": [
+            `X402 protocol="${protocolId}"`,
+            `asset="DERO"`,
+            `network="${policy.network ?? "dero-mainnet"}"`,
+            `amount="${invoice.amount.toString()}"`,
+            `invoice_id="${invoice.id}"`,
+            `address="${invoice.integratedAddress}"`,
+            `resource="${resource}"`,
+          ].join(", "),
         },
       });
     };

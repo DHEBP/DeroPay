@@ -387,6 +387,13 @@ export class InvoiceEngine {
   }
 
   /**
+   * Get the underlying invoice store.
+   */
+  getStore(): InvoiceStore {
+    return this.store;
+  }
+
+  /**
    * Get the wallet's base address.
    */
   getBaseAddress(): string | null {

@@ -510,6 +510,16 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
         network: body.network ?? (config.chainId ?? "dero-mainnet"),
       });
 
+      engine.emitX402AuditEvent({
+        type: "x402.receipt_issued",
+        resource: body.resource,
+        invoiceId: invoice.id,
+        jti: issued.claims.jti,
+        metadata: {
+          keyId: signingKey.keyId,
+        },
+      });
+
       return Response.json({
         receipt: issued.token,
         claims: issued.claims,
@@ -559,6 +569,28 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
             ? BigInt(body.minAmountAtomic)
             : undefined,
       });
+
+      const engine = await getEngine(config);
+      if (claims) {
+        engine.emitX402AuditEvent({
+          type: "x402.receipt_used",
+          resource: body.resource,
+          invoiceId: claims.invoiceId,
+          jti: claims.jti,
+          metadata: {
+            source: "verifyReceiptHandler",
+          },
+        });
+      } else {
+        engine.emitX402AuditEvent({
+          type: "x402.receipt_rejected",
+          resource: body.resource,
+          reason: "verify_endpoint_rejected",
+          metadata: {
+            source: "verifyReceiptHandler",
+          },
+        });
+      }
 
       return Response.json({
         valid: claims !== null,

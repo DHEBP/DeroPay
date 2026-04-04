@@ -15,11 +15,13 @@ describe("createX402RouteGuard", () => {
         integratedAddress: "deti1qchallenge...",
       })
     );
+    const emitX402AuditEvent = vi.fn();
 
     const guard = createX402RouteGuard({
       getEngine: async () =>
         ({
           createInvoice,
+          emitX402AuditEvent,
         }) as unknown as InvoiceEngine,
       receiptSecret: "guard-secret",
       policy: {
@@ -42,6 +44,12 @@ describe("createX402RouteGuard", () => {
     expect(body.payment.amountAtomic).toBe("500000");
     expect(response.headers.get("WWW-Authenticate")).toContain("X402");
     expect(createInvoice).toHaveBeenCalledTimes(1);
+    expect(emitX402AuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "x402.challenge_issued",
+        invoiceId: "inv_challenge",
+      })
+    );
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -63,10 +71,12 @@ describe("createX402RouteGuard", () => {
     );
 
     const createInvoice = vi.fn();
+    const emitX402AuditEvent = vi.fn();
     const guard = createX402RouteGuard({
       getEngine: async () =>
         ({
           createInvoice,
+          emitX402AuditEvent,
         }) as unknown as InvoiceEngine,
       receiptSecret: "guard-secret",
       policy: {
@@ -90,6 +100,12 @@ describe("createX402RouteGuard", () => {
     expect(body.ok).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(createInvoice).not.toHaveBeenCalled();
+    expect(emitX402AuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "x402.receipt_used",
+        invoiceId: "inv_paid",
+      })
+    );
   });
 
   it("accepts keyring config for rotated receipt secrets", async () => {
@@ -111,10 +127,12 @@ describe("createX402RouteGuard", () => {
     );
 
     const createInvoice = vi.fn();
+    const emitX402AuditEvent = vi.fn();
     const guard = createX402RouteGuard({
       getEngine: async () =>
         ({
           createInvoice,
+          emitX402AuditEvent,
         }) as unknown as InvoiceEngine,
       receiptSecrets: {
         k1: "old-secret",
@@ -138,6 +156,12 @@ describe("createX402RouteGuard", () => {
 
     expect(response.status).toBe(200);
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(emitX402AuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "x402.receipt_used",
+        invoiceId: "inv_paid",
+      })
+    );
   });
 
   it("blocks replay when single-use receipts are enforced", async () => {
@@ -158,12 +182,14 @@ describe("createX402RouteGuard", () => {
     );
 
     const createInvoice = vi.fn();
+    const emitX402AuditEvent = vi.fn();
     const store = new MemoryInvoiceStore();
     const guard = createX402RouteGuard({
       getEngine: async () =>
         ({
           createInvoice,
           getStore: () => store,
+          emitX402AuditEvent,
         }) as unknown as InvoiceEngine,
       receiptSecret: "guard-secret",
       enforceSingleUseReceipts: true,
@@ -191,5 +217,11 @@ describe("createX402RouteGuard", () => {
     const replayBody = (await replay.json()) as { error: string };
     expect(replay.status).toBe(409);
     expect(replayBody.error).toContain("already been used");
+    expect(emitX402AuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "x402.receipt_rejected",
+        reason: "receipt_replay_detected",
+      })
+    );
   });
 });

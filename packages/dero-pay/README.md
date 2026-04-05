@@ -124,6 +124,17 @@ You can retry using either header:
 - `X-DeroPay-Receipt: <token>`
 - `Authorization: X402 proof="<token>"`
 
+#### How x402 Works (Simple)
+
+1. A client calls a protected route.
+2. If no valid receipt is present, DeroPay responds with `402 Payment Required` plus invoice details (amount, integrated address, expiry, confirmations).
+3. The client pays the invoice in DERO.
+4. After confirmation, the client gets a signed short-lived receipt token.
+5. The client retries the same route with the receipt header, and the route is served.
+
+Receipt verification is local and fast (signature + policy checks), so protected routes do not need per-request chain proof verification.
+Default receipt TTL is `600` seconds when issuing via `issueReceiptHandler`, and can be customized with `ttlSeconds`.
+
 Optional quota controls are available directly on `X402PaymentPolicy`:
 
 - `maxReceiptsPerDay`

@@ -6,7 +6,14 @@
  */
 
 import type { Invoice, InvoiceStatus, Payment } from "../core/types.js";
-import type { InvoiceStore, InvoiceFilter, InvoiceStats } from "./types.js";
+import type {
+  InvoiceStore,
+  InvoiceFilter,
+  InvoiceStats,
+  X402UsageReservation,
+  X402UsageBatchReservationResult,
+  X402UsageReservationResult,
+} from "./types.js";
 
 /**
  * In-memory implementation of InvoiceStore.
@@ -15,6 +22,10 @@ export class MemoryInvoiceStore implements InvoiceStore {
   private invoices = new Map<string, Invoice>();
   private paymentIdIndex = new Map<bigint, string>();
   private usedReceiptJtis = new Map<string, number>();
+  private x402UsageWindows = new Map<
+    string,
+    { windowEndMs: number; receiptCount: number; totalAmountAtomic: bigint }
+  >();
 
   async createInvoice(invoice: Invoice): Promise<void> {
     if (this.invoices.has(invoice.id)) {
@@ -167,16 +178,124 @@ export class MemoryInvoiceStore implements InvoiceStore {
     return true;
   }
 
+  async reserveX402Usage(
+    reservation: X402UsageReservation
+  ): Promise<X402UsageReservationResult> {
+    this.pruneExpiredUsageWindows();
+    const windowEndMs = new Date(reservation.windowEnd).getTime();
+    const existing = this.x402UsageWindows.get(reservation.windowKey) ?? {
+      windowEndMs: Number.isFinite(windowEndMs) ? windowEndMs : Date.now(),
+      receiptCount: 0,
+      totalAmountAtomic: 0n,
+    };
+
+    const nextReceiptCount = existing.receiptCount + 1;
+    const nextTotalAmountAtomic = existing.totalAmountAtomic + reservation.amountAtomic;
+
+    const exceedsReceiptLimit =
+      reservation.maxReceipts !== undefined && nextReceiptCount > reservation.maxReceipts;
+    const exceedsAmountLimit =
+      reservation.maxAmountAtomic !== undefined &&
+      nextTotalAmountAtomic > reservation.maxAmountAtomic;
+
+    if (exceedsReceiptLimit || exceedsAmountLimit) {
+      return {
+        allowed: false,
+        receiptCount: existing.receiptCount,
+        totalAmountAtomic: existing.totalAmountAtomic,
+      };
+    }
+
+    this.x402UsageWindows.set(reservation.windowKey, {
+      windowEndMs: existing.windowEndMs,
+      receiptCount: nextReceiptCount,
+      totalAmountAtomic: nextTotalAmountAtomic,
+    });
+
+    return {
+      allowed: true,
+      receiptCount: nextReceiptCount,
+      totalAmountAtomic: nextTotalAmountAtomic,
+    };
+  }
+
+  async reserveX402UsageBatch(
+    reservations: X402UsageReservation[]
+  ): Promise<X402UsageBatchReservationResult> {
+    this.pruneExpiredUsageWindows();
+
+    const staged = reservations.map((reservation) => {
+      const windowEndMs = new Date(reservation.windowEnd).getTime();
+      const existing = this.x402UsageWindows.get(reservation.windowKey) ?? {
+        windowEndMs: Number.isFinite(windowEndMs) ? windowEndMs : Date.now(),
+        receiptCount: 0,
+        totalAmountAtomic: 0n,
+      };
+      const nextReceiptCount = existing.receiptCount + 1;
+      const nextTotalAmountAtomic = existing.totalAmountAtomic + reservation.amountAtomic;
+      const allowed =
+        (reservation.maxReceipts === undefined ||
+          nextReceiptCount <= reservation.maxReceipts) &&
+        (reservation.maxAmountAtomic === undefined ||
+          nextTotalAmountAtomic <= reservation.maxAmountAtomic);
+
+      return {
+        reservation,
+        existing,
+        nextReceiptCount,
+        nextTotalAmountAtomic,
+        allowed,
+      };
+    });
+
+    if (staged.some((entry) => !entry.allowed)) {
+      return {
+        allowed: false,
+        results: staged.map((entry) => ({
+          allowed: entry.allowed,
+          receiptCount: entry.existing.receiptCount,
+          totalAmountAtomic: entry.existing.totalAmountAtomic,
+        })),
+      };
+    }
+
+    for (const entry of staged) {
+      this.x402UsageWindows.set(entry.reservation.windowKey, {
+        windowEndMs: entry.existing.windowEndMs,
+        receiptCount: entry.nextReceiptCount,
+        totalAmountAtomic: entry.nextTotalAmountAtomic,
+      });
+    }
+
+    return {
+      allowed: true,
+      results: staged.map((entry) => ({
+        allowed: true,
+        receiptCount: entry.nextReceiptCount,
+        totalAmountAtomic: entry.nextTotalAmountAtomic,
+      })),
+    };
+  }
+
   async close(): Promise<void> {
     this.invoices.clear();
     this.paymentIdIndex.clear();
     this.usedReceiptJtis.clear();
+    this.x402UsageWindows.clear();
   }
 
   private pruneExpiredReceiptJtis(nowMs = Date.now()): void {
     for (const [jti, expiresAtMs] of this.usedReceiptJtis.entries()) {
       if (expiresAtMs <= nowMs) {
         this.usedReceiptJtis.delete(jti);
+      }
+    }
+  }
+
+  private pruneExpiredUsageWindows(nowMs = Date.now()): void {
+    for (const [windowKey, window] of this.x402UsageWindows.entries()) {
+      if (window.windowEndMs <= nowMs) {
+        this.x402UsageWindows.delete(windowKey);
       }
     }
   }

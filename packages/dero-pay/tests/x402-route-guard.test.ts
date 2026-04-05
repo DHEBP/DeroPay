@@ -164,6 +164,211 @@ describe("createX402RouteGuard", () => {
     );
   });
 
+  it("accepts Authorization header alias for receipts", async () => {
+    const now = Date.now();
+    const receipt = createPaymentReceipt(
+      {
+        jti: "jti_auth_alias",
+        invoiceId: "inv_paid",
+        resource: "/api/protected",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "900000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "guard-secret"
+    );
+
+    const createInvoice = vi.fn();
+    const emitX402AuditEvent = vi.fn();
+    const guard = createX402RouteGuard({
+      getEngine: async () =>
+        ({
+          createInvoice,
+          emitX402AuditEvent,
+        }) as unknown as InvoiceEngine,
+      receiptSecret: "guard-secret",
+      policy: {
+        name: "Premium report",
+        amountAtomic: 500_000n,
+      },
+    });
+
+    const handler = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    const guarded = guard(handler);
+    const response = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: {
+          Authorization: `X402 proof="${receipt}"`,
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(emitX402AuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "x402.receipt_used",
+        invoiceId: "inv_paid",
+      })
+    );
+  });
+
+  it("enforces maxReceiptsPerDay quotas", async () => {
+    const now = Date.now();
+    const firstReceipt = createPaymentReceipt(
+      {
+        jti: "jti_day_quota_1",
+        invoiceId: "inv_day_quota_1",
+        resource: "/api/protected",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "500000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "guard-secret"
+    );
+    const secondReceipt = createPaymentReceipt(
+      {
+        jti: "jti_day_quota_2",
+        invoiceId: "inv_day_quota_2",
+        resource: "/api/protected",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "500000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "guard-secret"
+    );
+
+    const createInvoice = vi.fn();
+    const emitX402AuditEvent = vi.fn();
+    const store = new MemoryInvoiceStore();
+    const guard = createX402RouteGuard({
+      getEngine: async () =>
+        ({
+          createInvoice,
+          getStore: () => store,
+          emitX402AuditEvent,
+        }) as unknown as InvoiceEngine,
+      receiptSecret: "guard-secret",
+      policy: {
+        name: "Premium report",
+        amountAtomic: 500_000n,
+        maxReceiptsPerDay: 1,
+      },
+    });
+
+    const handler = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    const guarded = guard(handler);
+
+    const first = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: { "X-DeroPay-Receipt": firstReceipt },
+      })
+    );
+    expect(first.status).toBe(200);
+
+    const second = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: { "X-DeroPay-Receipt": secondReceipt },
+      })
+    );
+    const secondBody = (await second.json()) as { error: string };
+    expect(second.status).toBe(429);
+    expect(secondBody.error).toContain("quota exceeded");
+    expect(emitX402AuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "x402.receipt_rejected",
+        reason: "receipt_daily_quota_exceeded",
+      })
+    );
+  });
+
+  it("enforces maxAtomicPerWindow quotas", async () => {
+    const now = Date.now();
+    const firstReceipt = createPaymentReceipt(
+      {
+        jti: "jti_atomic_quota_1",
+        invoiceId: "inv_atomic_quota_1",
+        resource: "/api/protected",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "600000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "guard-secret"
+    );
+    const secondReceipt = createPaymentReceipt(
+      {
+        jti: "jti_atomic_quota_2",
+        invoiceId: "inv_atomic_quota_2",
+        resource: "/api/protected",
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "600000",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      "guard-secret"
+    );
+
+    const createInvoice = vi.fn();
+    const emitX402AuditEvent = vi.fn();
+    const store = new MemoryInvoiceStore();
+    const guard = createX402RouteGuard({
+      getEngine: async () =>
+        ({
+          createInvoice,
+          getStore: () => store,
+          emitX402AuditEvent,
+        }) as unknown as InvoiceEngine,
+      receiptSecret: "guard-secret",
+      policy: {
+        name: "Premium report",
+        amountAtomic: 600_000n,
+        maxAtomicPerWindow: {
+          amountAtomic: 1_000_000n,
+          windowSeconds: 60,
+        },
+      },
+    });
+
+    const handler = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    const guarded = guard(handler);
+
+    const first = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: { "X-DeroPay-Receipt": firstReceipt },
+      })
+    );
+    expect(first.status).toBe(200);
+
+    const second = await guarded(
+      new Request("https://app.test/api/protected", {
+        headers: { "X-DeroPay-Receipt": secondReceipt },
+      })
+    );
+    const secondBody = (await second.json()) as { error: string };
+    expect(second.status).toBe(429);
+    expect(secondBody.error).toContain("quota exceeded");
+    expect(emitX402AuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "x402.receipt_rejected",
+        reason: "atomic_window_quota_exceeded",
+      })
+    );
+  });
+
   it("blocks replay when single-use receipts are enforced", async () => {
     const now = Date.now();
     const receipt = createPaymentReceipt(

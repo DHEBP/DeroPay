@@ -5,7 +5,9 @@ Minimal runnable example that shows:
 - x402-style `HTTP 402 Payment Required` challenge
 - DERO payment via DeroPay invoice
 - receipt issue and verification
-- protected route access with `X-DeroPay-Receipt`
+- protected route access with `X-DeroPay-Receipt` or `Authorization: X402 ...`
+- dynamic pricing with `X402PolicyResolver`
+- route-level quota enforcement via `maxReceiptsPerDay` and `maxAtomicPerWindow`
 
 ## 1) Configure env
 
@@ -78,6 +80,39 @@ Copy the `receipt` token from response.
 ```bash
 curl -sS http://localhost:3000/api/protected/report \
   -H "X-DeroPay-Receipt: <receipt>"
+
+curl -sS http://localhost:3000/api/protected/report \
+  -H 'Authorization: X402 proof="<receipt>"'
+```
+
+## 5) Dynamic pricing route (metered example)
+
+### A. Request metered route challenge
+
+```bash
+curl -i "http://localhost:3000/api/protected/inference?tokens=2500"
+```
+
+This returns a `402` challenge where `payment.amountAtomic` is resolved dynamically from
+the `tokens` query parameter.
+
+### B. Issue receipt bound to inference resource
+
+```bash
+curl -sS -X POST http://localhost:3000/api/pay/receipts/issue \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invoiceId":"<invoiceId>",
+    "resource":"/api/protected/inference",
+    "ttlSeconds":600
+  }'
+```
+
+### C. Retry metered route with receipt
+
+```bash
+curl -sS "http://localhost:3000/api/protected/inference?tokens=2500" \
+  -H "X-DeroPay-Receipt: <receipt>"
 ```
 
 ## Routes included
@@ -87,3 +122,4 @@ curl -sS http://localhost:3000/api/protected/report \
 - `POST /api/pay/receipts/issue`
 - `POST /api/pay/receipts/verify`
 - `GET /api/protected/report` (x402-style guard)
+- `GET /api/protected/inference?tokens=...` (dynamic pricing + quota policy)

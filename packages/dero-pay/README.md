@@ -93,6 +93,11 @@ export const x402Guard = createX402RouteGuard({
     name: "Premium API Access",
     amountAtomic: deroToAtomic("0.10"),
     requiredConfirmations: 3,
+    maxReceiptsPerDay: 500,
+    maxAtomicPerWindow: {
+      amountAtomic: deroToAtomic("10"),
+      windowSeconds: 3600,
+    },
     metadata: { plan: "premium" },
   },
 });
@@ -113,6 +118,28 @@ When a valid `X-DeroPay-Receipt` is not provided, this route responds with:
 
 - `HTTP 402 Payment Required`
 - a machine-readable DERO challenge payload (invoice ID, integrated address, amount, expiry, confirmations)
+
+You can retry using either header:
+
+- `X-DeroPay-Receipt: <token>`
+- `Authorization: X402 proof="<token>"`
+
+Optional quota controls are available directly on `X402PaymentPolicy`:
+
+- `maxReceiptsPerDay`
+- `maxAtomicPerWindow: { amountAtomic, windowSeconds }`
+
+### Quotas in Multi-Instance Deployments
+
+`maxReceiptsPerDay` and `maxAtomicPerWindow` are enforced via store-backed usage reservations.
+
+For correct quota enforcement across multiple API instances:
+
+- use a shared persistent store (for example, `SqliteInvoiceStore` on shared disk, or a custom central store implementation)
+- avoid per-instance in-memory stores in production because each instance tracks usage independently
+- keep clocks reasonably synchronized across instances so window boundaries behave predictably
+
+If quota reservation support is missing in the configured store, guarded routes will reject usage with a server error so limits are not silently bypassed.
 
 ### Issue and Verify Receipts
 
@@ -153,11 +180,62 @@ curl -X POST http://localhost:3000/api/pay/receipts/verify \
 
 curl http://localhost:3000/api/protected/report \
   -H "X-DeroPay-Receipt: <token>"
+
+curl http://localhost:3000/api/protected/report \
+  -H 'Authorization: X402 proof="<token>"'
+```
+
+Build the authorization header programmatically:
+
+```ts
+import { formatX402AuthorizationHeader } from "dero-pay";
+
+const headerValue = formatX402AuthorizationHeader(receiptToken);
+// => X402 proof="<token>"
 ```
 
 A full runnable Next.js example is available at:
 
 - `apps/x402-example`
+
+### Dynamic Pricing with `X402PolicyResolver`
+
+```ts
+import { createX402RouteGuard } from "dero-pay/next";
+import { deroToAtomic } from "dero-pay";
+
+export const meteredGuard = createX402RouteGuard({
+  getEngine: paymentHandlers.getEngine,
+  receiptSecret: process.env.DEROPAY_RECEIPT_SECRET!,
+  policy: async (request) => {
+    const url = new URL(request.url);
+    const tokens = Number(url.searchParams.get("tokens") ?? "1000");
+    const amountAtomic = deroToAtomic((tokens / 100_000).toFixed(5));
+
+    return {
+      name: "Metered inference request",
+      amountAtomic,
+      resource: "/api/protected/inference",
+      metadata: { tokens },
+    };
+  },
+});
+```
+
+### Audit Event Subscription
+
+```ts
+import { InvoiceEngine } from "dero-pay/server";
+
+const engine = new InvoiceEngine({
+  walletRpcUrl: "http://127.0.0.1:10103/json_rpc",
+  daemonRpcUrl: "http://127.0.0.1:10102/json_rpc",
+});
+
+engine.on("x402Audit", (event) => {
+  console.log("[x402-audit]", event.type, event.resource, event.invoiceId, event.reason);
+});
+```
 
 ### React Components
 

@@ -41,13 +41,13 @@ Follow the [gateway server instructions](../../apps/gateway/README.md) to get th
 
 ### 2. Install the plugin
 
-**Option A: Upload via WordPress admin**
+**Option A: Download from GitHub Releases (Recommended)**
 
-1. Zip this directory: `cd plugins && zip -r deropay-for-woocommerce.zip woocommerce/`
-2. In WordPress admin: Plugins → Add New → Upload Plugin → select the zip
-3. Activate the plugin
+1. Download the latest `deropay-for-woocommerce.zip` from the [GitHub Releases](https://github.com/DHEBP/DeroPay/releases) page.
+2. In your WordPress admin dashboard, go to **Plugins → Add New → Upload Plugin**.
+3. Select the `.zip` file, install, and activate the plugin.
 
-**Option B: Copy to plugins directory**
+**Option B: Manual Installation**
 
 ```bash
 cp -r plugins/woocommerce /path/to/wordpress/wp-content/plugins/deropay-for-woocommerce

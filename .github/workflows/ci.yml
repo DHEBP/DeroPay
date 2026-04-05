@@ -1,0 +1,29 @@
+name: deropay-ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  sdk-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck SDK
+        run: bun run typecheck
+
+      - name: Run SDK unit tests
+        run: bun run --cwd packages/dero-pay test:unit
+
+      - name: Build SDK
+        run: bun run --cwd packages/dero-pay build

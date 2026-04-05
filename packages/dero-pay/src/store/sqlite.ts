@@ -9,7 +9,14 @@
  */
 
 import type { Invoice, InvoiceStatus, Payment } from "../core/types.js";
-import type { InvoiceStore, InvoiceFilter, InvoiceStats } from "./types.js";
+import type {
+  InvoiceStore,
+  InvoiceFilter,
+  InvoiceStats,
+  X402UsageReservation,
+  X402UsageBatchReservationResult,
+  X402UsageReservationResult,
+} from "./types.js";
 
 /** SQLite row for invoices table */
 type InvoiceRow = {
@@ -121,6 +128,18 @@ export class SqliteInvoiceStore implements InvoiceStore {
 
       CREATE INDEX IF NOT EXISTS idx_used_receipt_jtis_expires_at
         ON used_receipt_jtis(expires_at);
+
+      CREATE TABLE IF NOT EXISTS x402_usage_windows (
+        window_key TEXT PRIMARY KEY,
+        resource TEXT NOT NULL,
+        window_start TEXT NOT NULL,
+        window_end TEXT NOT NULL,
+        receipt_count INTEGER NOT NULL DEFAULT 0,
+        total_amount_atomic TEXT NOT NULL DEFAULT '0'
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_x402_usage_windows_window_end
+        ON x402_usage_windows(window_end);
     `);
   }
 
@@ -367,6 +386,159 @@ export class SqliteInvoiceStore implements InvoiceStore {
       .run(jti, expiresAt);
 
     return Number(result.changes) > 0;
+  }
+
+  async reserveX402Usage(
+    reservation: X402UsageReservation
+  ): Promise<X402UsageReservationResult> {
+    this.db
+      .prepare("DELETE FROM x402_usage_windows WHERE window_end <= ?")
+      .run(new Date().toISOString());
+
+    const transaction = this.db.transaction(() => {
+      const existing = this.db
+        .prepare(
+          `SELECT receipt_count, total_amount_atomic
+           FROM x402_usage_windows
+           WHERE window_key = ?`
+        )
+        .get(reservation.windowKey) as
+        | { receipt_count: number; total_amount_atomic: string }
+        | undefined;
+
+      const currentReceiptCount = existing?.receipt_count ?? 0;
+      const currentTotalAmountAtomic = BigInt(existing?.total_amount_atomic ?? "0");
+      const nextReceiptCount = currentReceiptCount + 1;
+      const nextTotalAmountAtomic = currentTotalAmountAtomic + reservation.amountAtomic;
+
+      if (
+        (reservation.maxReceipts !== undefined &&
+          nextReceiptCount > reservation.maxReceipts) ||
+        (reservation.maxAmountAtomic !== undefined &&
+          nextTotalAmountAtomic > reservation.maxAmountAtomic)
+      ) {
+        return {
+          allowed: false,
+          receiptCount: currentReceiptCount,
+          totalAmountAtomic: currentTotalAmountAtomic,
+        };
+      }
+
+      this.db
+        .prepare(
+          `INSERT INTO x402_usage_windows (
+             window_key, resource, window_start, window_end, receipt_count, total_amount_atomic
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(window_key) DO UPDATE SET
+             receipt_count = excluded.receipt_count,
+             total_amount_atomic = excluded.total_amount_atomic,
+             resource = excluded.resource,
+             window_start = excluded.window_start,
+             window_end = excluded.window_end`
+        )
+        .run(
+          reservation.windowKey,
+          reservation.resource,
+          reservation.windowStart,
+          reservation.windowEnd,
+          nextReceiptCount,
+          nextTotalAmountAtomic.toString()
+        );
+
+      return {
+        allowed: true,
+        receiptCount: nextReceiptCount,
+        totalAmountAtomic: nextTotalAmountAtomic,
+      };
+    });
+
+    return transaction() as X402UsageReservationResult;
+  }
+
+  async reserveX402UsageBatch(
+    reservations: X402UsageReservation[]
+  ): Promise<X402UsageBatchReservationResult> {
+    this.db
+      .prepare("DELETE FROM x402_usage_windows WHERE window_end <= ?")
+      .run(new Date().toISOString());
+
+    const transaction = this.db.transaction(() => {
+      const staged = reservations.map((reservation) => {
+        const existing = this.db
+          .prepare(
+            `SELECT receipt_count, total_amount_atomic
+             FROM x402_usage_windows
+             WHERE window_key = ?`
+          )
+          .get(reservation.windowKey) as
+          | { receipt_count: number; total_amount_atomic: string }
+          | undefined;
+
+        const currentReceiptCount = existing?.receipt_count ?? 0;
+        const currentTotalAmountAtomic = BigInt(existing?.total_amount_atomic ?? "0");
+        const nextReceiptCount = currentReceiptCount + 1;
+        const nextTotalAmountAtomic = currentTotalAmountAtomic + reservation.amountAtomic;
+        const allowed =
+          (reservation.maxReceipts === undefined ||
+            nextReceiptCount <= reservation.maxReceipts) &&
+          (reservation.maxAmountAtomic === undefined ||
+            nextTotalAmountAtomic <= reservation.maxAmountAtomic);
+
+        return {
+          reservation,
+          currentReceiptCount,
+          currentTotalAmountAtomic,
+          nextReceiptCount,
+          nextTotalAmountAtomic,
+          allowed,
+        };
+      });
+
+      if (staged.some((entry) => !entry.allowed)) {
+        return {
+          allowed: false,
+          results: staged.map((entry) => ({
+            allowed: entry.allowed,
+            receiptCount: entry.currentReceiptCount,
+            totalAmountAtomic: entry.currentTotalAmountAtomic,
+          })),
+        };
+      }
+
+      const upsert = this.db.prepare(
+        `INSERT INTO x402_usage_windows (
+           window_key, resource, window_start, window_end, receipt_count, total_amount_atomic
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(window_key) DO UPDATE SET
+           receipt_count = excluded.receipt_count,
+           total_amount_atomic = excluded.total_amount_atomic,
+           resource = excluded.resource,
+           window_start = excluded.window_start,
+           window_end = excluded.window_end`
+      );
+
+      for (const entry of staged) {
+        upsert.run(
+          entry.reservation.windowKey,
+          entry.reservation.resource,
+          entry.reservation.windowStart,
+          entry.reservation.windowEnd,
+          entry.nextReceiptCount,
+          entry.nextTotalAmountAtomic.toString()
+        );
+      }
+
+      return {
+        allowed: true,
+        results: staged.map((entry) => ({
+          allowed: true,
+          receiptCount: entry.nextReceiptCount,
+          totalAmountAtomic: entry.nextTotalAmountAtomic,
+        })),
+      };
+    });
+
+    return transaction() as X402UsageBatchReservationResult;
   }
 
   async close(): Promise<void> {

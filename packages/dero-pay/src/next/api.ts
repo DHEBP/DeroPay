@@ -44,6 +44,7 @@ import type {
   CreateInvoiceParams,
   DeroChainId,
 } from "../core/types.js";
+import { parseX402AuthorizationHeader } from "../core/x402-headers.js";
 import type { InvoiceStore } from "../store/types.js";
 
 /** Configuration for the payment handlers */
@@ -558,11 +559,14 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
         return Response.json({ error: "Invalid JSON body" }, { status: 400 });
       }
 
-      if (!body.receipt) {
+      const receipt =
+        body.receipt ?? parseX402AuthorizationHeader(request.headers.get("Authorization"));
+
+      if (!receipt) {
         return Response.json({ error: "Missing receipt" }, { status: 400 });
       }
 
-      const claims = verifyPaymentReceipt(body.receipt, verificationSecrets, {
+      const claims = verifyPaymentReceipt(receipt, verificationSecrets, {
         resource: body.resource,
         minAmountAtomic:
           typeof body.minAmountAtomic === "string"

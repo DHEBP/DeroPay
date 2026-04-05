@@ -37,3 +37,8 @@ export {
   formatDero,
   isValidAmount,
 } from "./pricing.js";
+
+export {
+  formatX402AuthorizationHeader,
+  parseX402AuthorizationHeader,
+} from "./x402-headers.js";

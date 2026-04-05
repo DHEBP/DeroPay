@@ -27,3 +27,35 @@ export const x402Guard = createX402RouteGuard({
     },
   },
 });
+
+export const meteredX402Guard = createX402RouteGuard({
+  getEngine: paymentHandlers.getEngine,
+  receiptSecret,
+  policy: async (request) => {
+    const url = new URL(request.url);
+    const tokensRaw = Number.parseInt(url.searchParams.get("tokens") ?? "1000", 10);
+    const tokens = Number.isFinite(tokensRaw) && tokensRaw > 0 ? tokensRaw : 1000;
+
+    // 5,000 atomic DERO per requested token unit for demo metering.
+    const unitAtomic = 5_000n;
+    const amountAtomic = BigInt(tokens) * unitAtomic;
+
+    return {
+      name: "Metered inference request",
+      description: "Example dynamic x402 policy resolved per request",
+      amountAtomic,
+      requiredConfirmations: 3,
+      resource: "/api/protected/inference",
+      maxReceiptsPerDay: 100,
+      maxAtomicPerWindow: {
+        amountAtomic: deroToAtomic("25"),
+        windowSeconds: 3600,
+      },
+      metadata: {
+        route: "inference",
+        tokens,
+        unitAtomic: unitAtomic.toString(),
+      },
+    };
+  },
+});

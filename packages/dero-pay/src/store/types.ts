@@ -33,6 +33,27 @@ export type InvoiceStats = {
   totalAmountReceived: bigint;
 };
 
+export type X402UsageReservation = {
+  resource: string;
+  windowKey: string;
+  windowStart: string;
+  windowEnd: string;
+  amountAtomic: bigint;
+  maxReceipts?: number;
+  maxAmountAtomic?: bigint;
+};
+
+export type X402UsageReservationResult = {
+  allowed: boolean;
+  receiptCount: number;
+  totalAmountAtomic: bigint;
+};
+
+export type X402UsageBatchReservationResult = {
+  allowed: boolean;
+  results: X402UsageReservationResult[];
+};
+
 /**
  * Storage interface for invoices and payments.
  *
@@ -101,6 +122,21 @@ export type InvoiceStore = {
    * Implementations should expire entries at or after `expiresAt`.
    */
   markReceiptJtiUsed?(jti: string, expiresAt: string): Promise<boolean>;
+
+  /**
+   * Atomically check and reserve x402 route usage against a quota window.
+   * Returns the resulting counters whether or not the reservation was allowed.
+   */
+  reserveX402Usage?(
+    reservation: X402UsageReservation
+  ): Promise<X402UsageReservationResult>;
+
+  /**
+   * Atomically check and reserve multiple x402 quota windows together.
+   */
+  reserveX402UsageBatch?(
+    reservations: X402UsageReservation[]
+  ): Promise<X402UsageBatchReservationResult>;
 
   /**
    * Close the store and release any resources.

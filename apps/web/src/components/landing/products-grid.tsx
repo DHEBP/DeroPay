@@ -35,6 +35,15 @@ const products: Product[] = [
     purpleGlow: "bottom right",
   },
   {
+    title: "x402",
+    tagline: "AGENTIC COMMERCE RAIL",
+    description:
+      "Internet-native payment negotiation for APIs and agents. Request -> 402 challenge -> pay -> retry with proof -> response.",
+    href: "/x402",
+    image: "/images/402.png",
+    purpleGlow: "top right",
+  },
+  {
     title: "Payment Router",
     tagline: "INSTANT ON-CHAIN SETTLEMENT",
     description:

@@ -23,6 +23,7 @@
     "build:x402-example": "bun run build:sdk && bun run --cwd apps/x402-example build",
     "build:dashboard": "NEXT_PUBLIC_DEMO_MODE=true bun run --cwd apps/dashboard build",
     "build:medusa": "bun run --cwd plugins/medusa-payment-deropay build",
+    "build:woocommerce": "cd plugins/woocommerce && zip -r ../../deropay-for-woocommerce.zip . -x '*.git*' -x '*node_modules*'",
     "typecheck": "bun run --cwd packages/dero-pay typecheck"
   },
   "packageManager": "bun",

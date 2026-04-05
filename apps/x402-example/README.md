@@ -9,6 +9,18 @@ Minimal runnable example that shows:
 - dynamic pricing with `X402PolicyResolver`
 - route-level quota enforcement via `maxReceiptsPerDay` and `maxAtomicPerWindow`
 
+## How x402 Works (Simple)
+
+1. A client calls a protected route.
+2. If no valid receipt is present, DeroPay returns `402 Payment Required` with invoice details.
+3. The client pays the invoice in DERO.
+4. After the invoice is confirmed, DeroPay issues a signed short-lived receipt.
+5. The client retries the same route with that receipt header and gets the response.
+
+Receipt checks are local and fast (signature + policy validation), so protected routes avoid per-request chain proof verification.
+Retries can use either `X-DeroPay-Receipt: <token>` or `Authorization: X402 proof="<token>"`.
+Default receipt TTL is `600` seconds in this flow unless you set `ttlSeconds`.
+
 ## 1) Configure env
 
 ```bash
@@ -123,3 +135,7 @@ curl -sS "http://localhost:3000/api/protected/inference?tokens=2500" \
 - `POST /api/pay/receipts/verify`
 - `GET /api/protected/report` (x402-style guard)
 - `GET /api/protected/inference?tokens=...` (dynamic pricing + quota policy)
+
+## Quota & Multi-Instance Note
+
+Quota policies (`maxReceiptsPerDay`, `maxAtomicPerWindow`) are store-backed. For multi-instance deployments, use a shared persistent store so quota/replay checks remain consistent across instances.

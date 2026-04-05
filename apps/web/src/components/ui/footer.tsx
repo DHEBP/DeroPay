@@ -31,6 +31,7 @@ export const Footer = () => (
           <ul className="mt-4 space-y-3">
             <li><Link href="/auth" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">DeroAuth</Link></li>
             <li><Link href="/pay" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">DeroPay</Link></li>
+            <li><Link href="/x402" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">x402</Link></li>
             <li><Link href="/escrow" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Escrow</Link></li>
             <li><Link href="/dashboard" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Dashboard</Link></li>
             <li><a href="https://demo.deropay.com" target="_blank" rel="noopener noreferrer" className="text-sm text-[#6b7f75] hover:text-[#f0fdf4] transition-colors">Live Demo</a></li>

@@ -1,25 +1,38 @@
-// Full Escrow Smart Contract with Arbitrator Support
+// =============================================================================
 //
-// Roles:
-//   - Owner: the platform operator (deploys the contract)
-//   - Seller: the merchant receiving payment
-//   - Buyer: the customer making payment
-//   - Arbitrator: optional third party for dispute resolution
+//  #####  #####  #####   ###   #####    ##   #    #
+//  #    # #      #    # #    # #    #  #  #   #  #
+//  #    # #####  #####  #    # #####  ######   ##
+//  #    # #      #   #  #    # #      #    #   ##
+//  #####  #####  #    #  ###   #      #    #   ##
 //
-// Status codes:
-//   0 = awaiting deposit
-//   1 = funded (buyer deposited)
-//   2 = released to seller (buyer confirmed or expiry claimed)
-//   3 = refunded to buyer
-//   4 = released after expiry
-//   5 = disputed (arbitrator needed)
-//   6 = resolved by arbitrator
+//  DeroPay Escrow * DVM-BASIC smart contract for DERO
 //
-// Flow:
-//   1. Platform deploys contract with seller, arbitrator, fee, and expiration
-//   2. Buyer deposits DERO
-//   3. Resolution: confirm, refund, expiry claim, or dispute -> arbitrate
+// -----------------------------------------------------------------------------
+//  Four-party DERO escrow: platform owner, seller, buyer, optional arbitrator.
+//  Atomic settlement, fee-on-release (basis points), timed seller claim path,
+//  buyer dispute with arbitrator resolution.
 //
+//  SPDX-License-Identifier: MIT
+//  Copyright (c) 2026 DHEBP
+//  https://deropay.com
+// -----------------------------------------------------------------------------
+//
+//  Roles:  Owner (deploys, fee recipient) / Seller / Buyer / Arbitrator
+//
+//  Deploy: Initialize(seller, arbitrator, feeBps, blockExpiration) -- no DERO.
+//          Then buyer funds via Deposit().
+//
+//  Status codes
+//    0  awaiting deposit
+//    1  funded
+//    2  released - buyer confirmed delivery
+//    3  buyer fully refunded
+//    4  released - seller claimed after expiry window
+//    5  disputed - arbitrator action pending
+//    6  closed - arbitrator decided outcome
+//
+// =============================================================================
 
 Function Initialize(sellerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200

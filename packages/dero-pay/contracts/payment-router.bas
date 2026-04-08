@@ -1,27 +1,39 @@
-// Payment Router Smart Contract
+// =============================================================================
 //
-// A reusable per-merchant contract for fast, simple payments.
-// The merchant deploys this contract from their own wallet.
+//  #####  #####  #####   ###   #####    ##   #    #
+//  #    # #      #    # #    # #    #  #  #   #  #
+//  #    # #####  #####  #    # #####  ######   ##
+//  #    # #      #   #  #    # #      #    #   ##
+//  #####  #####  #    #  ###   #      #    #   ##
 //
-// Roles:
-//   - Merchant: the deployer (SIGNER at initialization). Receives payouts.
-//   - Fee Recipient: optional address that receives a fee split on each payment.
-//     If feeBasisPoints is 0, no fee is taken and feeRecipient is unused.
+//  DeroPay Payment Router * DVM-BASIC smart contract for DERO
 //
-// Flow:
-//   1. Merchant deploys contract with feeRecipient address and fee rate
-//   2. Customer calls Pay(invoiceId) with DERO attached
-//   3. Contract instantly splits: merchant gets payout, feeRecipient gets fee
-//   4. Single transaction, ~18 seconds
+// -----------------------------------------------------------------------------
+//  Per-merchant contract: unlimited instant payments in one on-chain step.
+//  Customer invokes Pay(invoiceId) with DERO; contract splits atomically
+//  between merchant payout and optional fee recipient (basis points).
 //
-// On-chain state:
-//   merchant        — deployers address (receives payouts)
-//   feeRecipient    — address that receives the fee split
-//   feeBasisPoints  — fee rate (100 = 1%, 250 = 2.5%, 0 = no fee)
-//   totalProcessed  — cumulative DERO processed (atomic units)
-//   totalFees       — cumulative fees collected (atomic units)
-//   paymentCount    — number of payments processed
+//  SPDX-License-Identifier: MIT
+//  Copyright (c) 2026 DHEBP
+//  https://deropay.com
+// -----------------------------------------------------------------------------
 //
+//  Roles:  Merchant (deployer, primary payout) / Fee recipient (optional %)
+//
+//  Deploy: Initialize(feeRecipientAddress, feeBasisPoints) -- no DERO attached.
+//          feeBasisPoints 0 skips split; feeRecipient stored as merchant.
+//          feeBasisPoints > 0 requires feeRecipient distinct from merchant.
+//
+//  State keys
+//    merchant         deployer address; receives payout slice each Pay
+//    feeRecipient     receives fee slice when feeBasisPoints > 0
+//    feeBasisPoints   fee rate (100 = 1%, 250 = 2.5%, 0 = no fee)
+//    totalProcessed   cumulative DERO volume (atomic units)
+//    totalFees        cumulative fees sent (atomic units)
+//    paymentCount     number of successful Pay invocations
+//    paused           merchant can halt new Pay (Pause / Resume)
+//
+// =============================================================================
 
 Function Initialize(feeRecipientAddress String, feeBasisPoints Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200

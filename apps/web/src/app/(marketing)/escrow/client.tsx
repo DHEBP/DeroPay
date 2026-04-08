@@ -6,6 +6,9 @@ import { Lock, Scale, Timer, Coins, ShieldAlert, FileCode2, ArrowRight } from "l
 import { FeatureCard } from "@/components/ui/feature-card";
 import { EscrowFlowDemo } from "@/components/demos/escrow-flow";
 
+const escrowViewContractsHref =
+  "https://github.com/DHEBP/dero-pay/blob/main/packages/dero-pay/contracts/escrow.bas";
+
 const features = [
   { icon: <Lock size={20} />, title: "On-Chain Security", description: "Funds are locked in a DERO smart contract. No one can move them without meeting the contract conditions." },
   { icon: <Scale size={20} />, title: "Arbitration", description: "Designate a neutral arbitrator who can resolve disputes. Buyer gets a refund or seller gets paid." },
@@ -70,7 +73,15 @@ export const EscrowPageClient = () => (
           </p>
           <div style={{ marginTop: "28px", display: "flex", justifyContent: "center", gap: "16px", flexWrap: "wrap" }}>
             <a href="https://deropay.derod.org/escrow/overview" className="btn-accent">Get Started <ArrowRight size={16} /></a>
-            <a href="https://github.com/DHEBP/dero-pay" target="_blank" rel="noopener noreferrer" className="btn-secondary">View Contracts</a>
+            <a
+              href={escrowViewContractsHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary"
+              title="DeroPay escrow.bas — DVM-BASIC source on GitHub"
+            >
+              View Contracts
+            </a>
           </div>
         </motion.div>
       </div>

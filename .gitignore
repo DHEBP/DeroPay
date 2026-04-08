@@ -40,5 +40,8 @@ next-env.d.ts
 # Turbo
 .turbo/
 
+# TELA on-chain bundle (deploy via publisher / HOLOGRAM; not for clearnet repo)
+apps/tela/
+
 # Misc
 *.tsbuildinfo

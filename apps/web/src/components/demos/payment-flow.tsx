@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CreditCard, Loader2, CheckCircle2, Clock } from "lucide-react";
 
@@ -14,16 +14,54 @@ const steps = [
 
 type StepId = (typeof steps)[number]["id"];
 
+/** Version-1-style demo matrix (21×21): real finder patterns + timing + deterministic “data” modules — same logic as apps/tela/views/pay.js */
+const QR_FINDER = [
+  "1111111",
+  "1000001",
+  "1011101",
+  "1011101",
+  "1011101",
+  "1000001",
+  "1111111",
+] as const;
+
+function qrModule(r: number, c: number): boolean {
+  function finderAt(fr: number, fc: number): boolean | null {
+    if (r < fr || r >= fr + 7 || c < fc || c >= fc + 7) return null;
+    return QR_FINDER[r - fr]!.charAt(c - fc) === "1";
+  }
+  let bit = finderAt(0, 0);
+  if (bit !== null) return bit;
+  bit = finderAt(0, 14);
+  if (bit !== null) return bit;
+  bit = finderAt(14, 0);
+  if (bit !== null) return bit;
+  if (c === 7 && r <= 6) return false;
+  if (r === 7 && c <= 7) return false;
+  if (c === 13 && r <= 6) return false;
+  if (r === 7 && c >= 13 && c <= 20) return false;
+  if (c === 7 && r >= 14) return false;
+  if (r === 13 && c <= 7) return false;
+  if (r === 6 && c >= 8 && c <= 12) return (c - 8) % 2 === 0;
+  if (c === 6 && r >= 8 && r <= 12) return (r - 8) % 2 === 0;
+  if ((r * 47 + c * 31 + (r % 5) * (c % 7)) % 113 < 52) return true;
+  return false;
+}
+
+const DEMO_QR_CELLS: boolean[] = (() => {
+  const cells: boolean[] = [];
+  for (let row = 0; row < 21; row++) {
+    for (let col = 0; col < 21; col++) {
+      cells.push(qrModule(row, col));
+    }
+  }
+  return cells;
+})();
+
 export const PaymentFlowDemo = () => {
   const [currentStep, setCurrentStep] = useState<StepId>("invoice");
   const [stepIndex, setStepIndex] = useState(0);
   const [confirmations, setConfirmations] = useState(0);
-
-  // Generate stable QR pattern once
-  const qrPattern = useMemo(
-    () => Array.from({ length: 64 }, () => Math.random() > 0.42),
-    []
-  );
 
   useEffect(() => {
     const step = steps[stepIndex];
@@ -92,11 +130,29 @@ export const PaymentFlowDemo = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}
             >
-              {/* QR code — crisp white */}
-              <div style={{ width: "160px", height: "160px", borderRadius: "12px", background: "#ffffff", padding: "12px", boxShadow: "0 0 40px -10px rgba(16,185,129,0.3)" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(8, 1fr)", gap: "2px", width: "100%", height: "100%" }}>
-                  {qrPattern.map((filled, i) => (
-                    <div key={i} style={{ borderRadius: "1px", background: filled ? "#000" : "#fff" }} />
+              {/* QR code — 21×21 demo matrix (matches TELA pay.js) */}
+              <div
+                style={{
+                  width: "168px",
+                  height: "168px",
+                  borderRadius: "10px",
+                  background: "#ffffff",
+                  padding: "10px",
+                  boxShadow: "0 0 40px -10px rgba(16,185,129,0.3)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(21, 1fr)",
+                    gridTemplateRows: "repeat(21, 1fr)",
+                    gap: 0,
+                    width: "100%",
+                    height: "100%",
+                  }}
+                >
+                  {DEMO_QR_CELLS.map((filled, i) => (
+                    <div key={i} style={{ minWidth: 0, minHeight: 0, background: filled ? "#000" : "#fff" }} />
                   ))}
                 </div>
               </div>

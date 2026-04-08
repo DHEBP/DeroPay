@@ -21,7 +21,7 @@ import { PaymentFlowDemo } from "@/components/demos/payment-flow";
 const features = [
   { icon: <Receipt size={20} />, title: "Invoice Engine", description: "Create invoices with unique integrated addresses. Automatic TTL expiry, partial payment handling, and full state machine lifecycle." },
   { icon: <QrCode size={20} />, title: "QR Code Payments", description: "Customers scan a QR code with their wallet. Integrated addresses embed payment IDs — no manual input needed." },
-  { icon: <BarChart3 size={20} />, title: "Real-Time Monitoring", description: "Polling-based payment detection with configurable confirmation depth. DAG-aware with STABLE_LIMIT = 8 blocks." },
+  { icon: <BarChart3 size={20} />, title: "Real-Time Monitoring", description: "Polling-based payment detection with configurable confirmation depth, using daemon topo height vs. the transfer’s inclusion height." },
   { icon: <Webhook size={20} />, title: "HMAC Webhooks", description: "Stripe-style signed HTTP POST notifications on every state change. Retry with exponential backoff." },
   { icon: <Database size={20} />, title: "Pluggable Storage", description: "In-memory for development, SQLite for production, or bring your own. Simple InvoiceStore interface." },
   { icon: <CreditCard size={20} />, title: "Merchant Dashboard", description: "Self-hosted admin UI for invoice management, payment history, wallet status, and escrow operations." },
@@ -85,7 +85,7 @@ export const PayPageClient = () => (
         <div style={{ textAlign: "center", marginBottom: "40px" }}>
           <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>Invoice to confirmation</h2>
           <p style={{ marginTop: "12px", fontSize: "16px", color: "#6b7f75", maxWidth: "560px", margin: "12px auto 0" }}>
-            Watch the complete payment lifecycle — invoice creation, QR code, payment detection, and DAG confirmations.
+            Watch the complete payment lifecycle — invoice creation, QR code, payment detection, and chain confirmations.
           </p>
         </div>
         <div style={{ maxWidth: "480px", margin: "0 auto", position: "relative" }}>

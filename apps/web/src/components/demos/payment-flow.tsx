@@ -156,7 +156,7 @@ export const PaymentFlowDemo = () => {
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>Confirming...</p>
                 <p style={{ marginTop: "6px", fontSize: "12px", color: "#4a6356" }}>
-                  DAG confirmations &middot; STABLE_LIMIT = 8
+                  Chain confirmations &middot; depth 8 (example)
                 </p>
               </div>
             </motion.div>

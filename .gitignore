@@ -6,8 +6,9 @@ dist/
 .next/
 out/
 
-# Internal docs
+# Documentation — local reference only; not for public repo
 docs/
+packages/*/docs/
 
 # Test / scratch scripts
 test-escrow.ts

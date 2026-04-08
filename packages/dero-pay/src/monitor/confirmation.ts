@@ -1,8 +1,8 @@
 /**
  * Confirmation depth tracking for DERO payments.
  *
- * DERO uses a DAG-based blockchain with topological height.
- * Confirmation depth = current_topoheight - tx_topoheight.
+ * Confirmations are derived from daemon topological height (topoheight):
+ * depth ≈ current_topoheight - tx_topoheight (see calculateConfirmations).
  * A payment is considered confirmed when it reaches the required depth.
  */
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Bot, ShieldCheck, Zap, Repeat, Gauge } from "lucide-react";
+import { X402FlowDemo } from "@/components/demos/x402-flow";
 
 export const metadata: Metadata = {
   title: "x402 for Agentic Commerce",
@@ -77,6 +78,23 @@ export default function X402Page() {
               </a>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section style={{ background: "#000", padding: "72px 24px", borderBottom: "1px solid #1e2a24" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "40px" }}>
+            <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+              Request Loop
+            </p>
+            <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>
+              See it negotiate payment
+            </h2>
+            <p style={{ marginTop: "12px", fontSize: "15px", color: "#6b7f75", maxWidth: "520px", marginLeft: "auto", marginRight: "auto" }}>
+              A complete x402 exchange — request, challenge, settlement, proof, and delivery — as it happens on the wire.
+            </p>
+          </div>
+          <X402FlowDemo />
         </div>
       </section>
 

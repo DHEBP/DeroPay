@@ -20,6 +20,24 @@ const DEMO_ADDRESS =
 
 const $ = (id: string) => document.getElementById(id)!;
 
+const STATUS_ICON_HTML = {
+  pending:
+    '<svg class="status-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>',
+  confirming:
+    '<svg class="status-icon-svg status-icon-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>',
+  partial:
+    '<svg class="status-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10.29 3.86-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.71-3.14l-8-14a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+  completed:
+    '<svg class="status-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>',
+} as const;
+
+function setStatusIcon(
+  el: HTMLElement,
+  status: keyof typeof STATUS_ICON_HTML,
+): void {
+  el.innerHTML = STATUS_ICON_HTML[status];
+}
+
 function getParams(): { gateway: string; invoiceId: string; demo: boolean } | null {
   const params = new URLSearchParams(window.location.search);
   const demo = params.get("demo") === "true";
@@ -91,21 +109,21 @@ function updateStatus(invoice: InvoiceData): void {
 
   switch (invoice.status) {
     case "pending":
-      icon.textContent = "⏳";
+      setStatusIcon(icon, "pending");
       text.textContent = "Waiting for payment...";
       break;
     case "confirming":
-      icon.textContent = "⛏";
+      setStatusIcon(icon, "confirming");
       text.textContent = "Payment detected — confirming...";
       bar.classList.add("confirming");
       break;
     case "partial":
-      icon.textContent = "⚠️";
+      setStatusIcon(icon, "partial");
       text.textContent = `Partial payment received (${formatDero(invoice.amountReceived)} DERO)`;
       bar.classList.add("confirming");
       break;
     case "completed":
-      icon.textContent = "✓";
+      setStatusIcon(icon, "completed");
       text.textContent = "Payment confirmed!";
       bar.classList.add("completed");
       break;

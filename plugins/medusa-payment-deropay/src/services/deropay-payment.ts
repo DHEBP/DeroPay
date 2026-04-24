@@ -21,6 +21,7 @@ import type {
   ProviderWebhookPayload,
   WebhookActionResult,
   Logger,
+  PaymentProviderContext,
 } from "@medusajs/framework/types";
 import { BigNumber, MedusaError } from "@medusajs/framework/utils";
 import { DeroPayClient } from "./deropay-client.js";
@@ -75,14 +76,21 @@ class DeroPayPaymentService extends AbstractPaymentProvider<DeroPayOptions> {
     const isNonDero =
       currency_code && currency_code.toLowerCase() !== "dero";
 
+    // Medusa v2 passes customer context in the typed PaymentProviderContext.
+    // The payment session ID is not available at initiation time — we use the
+    // invoice ID as the correlation key. Medusa will call getWebhookActionAndData
+    // with the invoiceId from the webhook payload, which is stored in the
+    // payment session's data.id field set in our InitiatePaymentOutput.
+    const ctx = context as PaymentProviderContext | undefined;
+    const customerEmail = ctx?.customer?.email ?? "";
+
     const invoice = await this.client.createInvoice({
       ...(isNonDero
         ? { fiatAmount: amountNum / 100, currency: currency_code }
         : { amount: amountNum }),
       name: `Medusa Order`,
       metadata: {
-        medusa_session_id: (context as any)?.session_id || "",
-        medusa_cart_id: (context as any)?.extra?.cart_id || "",
+        medusa_customer_email: customerEmail,
       },
     });
 
@@ -279,8 +287,13 @@ class DeroPayPaymentService extends AbstractPaymentProvider<DeroPayOptions> {
         };
       }
 
-      const sessionId =
-        ((event.metadata as Record<string, string>)?.medusa_session_id) || "";
+      // Medusa's webhook dispatch calls getWebhookActionAndData and then uses
+      // the returned session_id to look up the payment session and trigger
+      // authorizePayment. We use the invoiceId as the session_id because that
+      // is stored as data.id in the payment session (set in initiatePayment).
+      // Medusa resolves payment sessions by their data.id, so this correlates
+      // correctly without needing to embed a session ID in gateway metadata.
+      const sessionId = invoiceId;
 
       if (status === "completed") {
         const invoice = await this.client.getStatus(invoiceId);

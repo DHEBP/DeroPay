@@ -5,7 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     service: "src/services/deropay-payment.ts",
   },
-  format: ["esm"],
+  format: ["cjs"],
   dts: true,
   clean: true,
   external: ["@medusajs/framework", "@medusajs/framework/utils", "@medusajs/framework/types"],

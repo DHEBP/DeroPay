@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Manrope, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
 });
 
@@ -13,9 +13,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const manrope = Manrope({
+  variable: "--font-manrope",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
-  title: "DeroPay Demo Store",
-  description: "A showcase of DeroPay and DeroAuth",
+  title: "DeroPay Demo",
+  description: "A retail-grade storefront demonstrating private DERO payments, wallet sign-in, and escrow flows.",
 };
 
 export default function RootLayout({
@@ -26,18 +31,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${spaceGrotesk.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <div className="bg-emerald-600 text-white text-center text-xs font-semibold py-1.5 px-4">
+          <div className="border-b border-white/[0.08] bg-black/40 px-4 py-2 text-center text-xs text-[var(--text-muted)]">
             Simulation mode — no real DERO is transferred.{" "}
             <a
               href="https://deropay.com/pay"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-emerald-100"
+              className="text-[var(--accent-strong)] underline-offset-2 hover:underline"
             >
-              Learn more →
+              Learn more
             </a>
           </div>
           {children}

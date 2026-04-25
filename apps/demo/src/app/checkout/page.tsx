@@ -1,18 +1,58 @@
 "use client";
 
-import { Header } from "@/components/header";
-import { useCart } from "@/components/cart-context";
-import { useToast } from "@/components/toast";
-import { formatDero } from "dero-pay";
-import { InvoiceView, EscrowInvoiceView } from "dero-pay/react";
-import { useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useDeroPayContext } from "dero-pay/react";
-import { Loader2, FlaskConical, ShoppingBag } from "lucide-react";
+import { Loader2, FlaskConical, ShoppingBag, ShieldCheck, Sparkles } from "lucide-react";
+import { formatDero } from "dero-pay";
+import { EscrowInvoiceView, InvoiceView, useDeroPayContext } from "dero-pay/react";
+import { useCart } from "@/components/cart-context";
+import { StoreShell } from "@/components/store-shell";
+import { useToast } from "@/components/toast";
+import {
+  clearActiveCheckoutSession,
+  consumePendingCheckoutDraft,
+  createCartCheckoutDraft,
+  getCheckoutItemCount,
+  type ActiveCheckoutSession,
+  type CheckoutDraft,
+  readActiveCheckoutSession,
+  writeActiveCheckoutSession,
+  writePendingCheckoutDraft,
+} from "@/lib/checkout-session";
+
+type CheckoutDisplayItem = {
+  id: string;
+  name: string;
+  price: bigint;
+  quantity: number;
+  image?: string;
+  category?: string;
+  badge?: string;
+};
+
+function toDisplayItems(order: CheckoutDraft | null): CheckoutDisplayItem[] {
+  if (!order) {
+    return [];
+  }
+
+  return order.items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    price: BigInt(item.priceAtomic),
+    quantity: item.quantity,
+    image: item.image,
+    category: item.category,
+    badge: item.badge,
+  }));
+}
 
 export default function CheckoutPage() {
-  const { items, totalPrice, clearCart } = useCart();
+  const { items, clearCart } = useCart();
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [checkoutSession, setCheckoutSession] = useState<ActiveCheckoutSession | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<CheckoutDraft | null>(null);
+  const [isSessionReady, setIsSessionReady] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [useEscrow, setUseEscrow] = useState(false);
@@ -20,51 +60,134 @@ export default function CheckoutPage() {
   const { currentInvoice } = useDeroPayContext();
   const { success, error, info } = useToast();
 
-  if (items.length === 0 && !invoiceId) {
+  const cartDraft = useMemo(
+    () => (items.length > 0 ? createCartCheckoutDraft(items) : null),
+    [items]
+  );
+
+  const stagedOrder = pendingDraft ?? cartDraft;
+  const stagedItems = useMemo(() => toDisplayItems(stagedOrder), [stagedOrder]);
+  const liveSessionOrder = checkoutSession?.order ?? null;
+  const sessionItems = useMemo(() => toDisplayItems(liveSessionOrder), [liveSessionOrder]);
+  const activeInvoice =
+    currentInvoice && currentInvoice.id === invoiceId ? currentInvoice : null;
+  const stagedTotal = stagedOrder ? BigInt(stagedOrder.totalAtomic) : 0n;
+  const sessionAmount = activeInvoice
+    ? activeInvoice.amount
+    : liveSessionOrder
+      ? BigInt(liveSessionOrder.totalAtomic)
+      : 0n;
+
+  useEffect(() => {
+    const incomingDraft = consumePendingCheckoutDraft();
+    if (incomingDraft) {
+      clearActiveCheckoutSession();
+      setPendingDraft(incomingDraft);
+      setCheckoutSession(null);
+      setInvoiceId(null);
+      setUseEscrow(false);
+      setIsSessionReady(true);
+      return;
+    }
+
+    if (items.length === 0) {
+      const storedSession = readActiveCheckoutSession();
+      if (storedSession) {
+        setCheckoutSession(storedSession);
+        setInvoiceId(storedSession.invoiceId);
+        setUseEscrow(storedSession.useEscrow);
+      }
+    }
+
+    setIsSessionReady(true);
+  }, [items.length]);
+
+  if (!isSessionReady) {
     return (
-      <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-        <Header />
-        <main className="flex-1 max-w-4xl w-full mx-auto p-6 flex items-center justify-center">
-          <div className="text-center">
-            <ShoppingBag className="w-12 h-12 text-gray-300 dark:text-gray-700 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Your cart is empty</h1>
-            <p className="text-gray-500 dark:text-gray-400 mb-6">Add some items before checking out.</p>
+      <StoreShell>
+        <section className="px-6 pb-18 pt-12 md:px-10 md:pb-24 md:pt-16">
+          <div className="glass-panel-strong mx-auto max-w-3xl rounded-[2rem] p-8 text-center md:p-12">
+            <Loader2 className="mx-auto h-12 w-12 animate-spin text-[var(--text-muted)]" />
+            <p className="section-kicker mt-6">Checkout</p>
+            <h1 className="mt-3 font-display text-3xl font-semibold text-white md:text-5xl">
+              Restoring your session.
+            </h1>
+          </div>
+        </section>
+      </StoreShell>
+    );
+  }
+
+  if (!stagedOrder && !invoiceId) {
+    return (
+      <StoreShell>
+        <section className="px-6 pb-18 pt-12 md:px-10 md:pb-24 md:pt-16">
+          <div className="glass-panel-strong mx-auto max-w-3xl rounded-[2rem] p-8 text-center md:p-12">
+            <ShoppingBag className="mx-auto h-12 w-12 text-[var(--text-muted)]" />
+            <p className="section-kicker mt-6">Checkout</p>
+            <h1 className="mt-3 font-display text-3xl font-semibold text-white md:text-5xl">
+              Your cart is empty.
+            </h1>
+            <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[var(--text-secondary)]">
+              Add something from the collection first, then come back to generate an invoice and test the payment flow.
+            </p>
             <button
               onClick={() => router.push("/")}
-              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95 text-white font-medium rounded-lg transition-all"
+              className="mt-8 inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)]"
             >
               Go back to store
             </button>
           </div>
-        </main>
-      </div>
+        </section>
+      </StoreShell>
     );
   }
 
   const handleCreateInvoice = async () => {
+    if (!stagedOrder) {
+      error("Nothing to invoice", "Add something to checkout first.");
+      return;
+    }
+
     setIsCreating(true);
+
     try {
       const response = await fetch("/api/pay/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Demo Store Order",
-          description: `Order containing ${items.length} item${items.length !== 1 ? "s" : ""}`,
-          amount: totalPrice.toString(),
-          ...(useEscrow ? {
-            escrow: {
-              sellerAddress: "dero1qyr8yjnu6cl2c5yqkls0hmxe6rry77kn24nmc5fje6hm9jltyvdd5qq4hn5pn",
-              arbitratorAddress: "dero1qyr8yjnu6cl2c5yqkls0hmxe6rry77kn24nmc5fje6hm9jltyvdd5qq4hn5pn",
-              feeBasisPoints: 250,
-              blockExpiration: 1000
-            }
-          } : {})
+          items: stagedOrder.items.map((item) => ({
+            id: item.id,
+            quantity: item.quantity,
+          })),
+          ...(useEscrow
+            ? {
+                escrow: {
+                  sellerAddress:
+                    "dero1qyr8yjnu6cl2c5yqkls0hmxe6rry77kn24nmc5fje6hm9jltyvdd5qq4hn5pn",
+                  arbitratorAddress:
+                    "dero1qyr8yjnu6cl2c5yqkls0hmxe6rry77kn24nmc5fje6hm9jltyvdd5qq4hn5pn",
+                  feeBasisPoints: 250,
+                  blockExpiration: 1000,
+                },
+              }
+            : {}),
         }),
       });
 
       const data = await response.json();
       if (data.id) {
+        const nextSession: ActiveCheckoutSession = {
+          invoiceId: data.id,
+          useEscrow,
+          order: stagedOrder,
+        };
+
         setInvoiceId(data.id);
+        setCheckoutSession(nextSession);
+        setPendingDraft(null);
+        writePendingCheckoutDraft(null);
+        writeActiveCheckoutSession(nextSession);
         clearCart();
         info("Invoice created", "Awaiting your DERO payment.");
       } else {
@@ -82,13 +205,16 @@ export default function CheckoutPage() {
       info("Not ready", "Invoice is still loading — try again in a moment.");
       return;
     }
+
     setIsSimulating(true);
+
     try {
       const res = await fetch("/api/pay/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invoiceId }),
       });
+
       if (res.ok) {
         success("Payment simulated!", "The invoice will update within a few seconds.");
       } else {
@@ -101,108 +227,283 @@ export default function CheckoutPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-      <Header />
-      <main className="flex-1 max-w-4xl w-full mx-auto p-6">
-        <h1 className="text-3xl font-bold mb-8">Checkout</h1>
+  const resetCheckoutSession = () => {
+    clearActiveCheckoutSession();
+    writePendingCheckoutDraft(null);
+    setCheckoutSession(null);
+    setPendingDraft(null);
+    setInvoiceId(null);
+    setUseEscrow(false);
+    router.push("/");
+  };
 
-        {!invoiceId ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Order Summary */}
-            <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-100 dark:border-gray-800">
-              <h2 className="text-xl font-bold mb-4">Order Summary</h2>
-              <div className="space-y-3 mb-6">
-                {items.map((item) => (
-                  <div key={item.id} className="flex justify-between text-sm">
-                    <span className="text-gray-700 dark:text-gray-300">
-                      {item.quantity}× {item.name}
+  return (
+    <StoreShell>
+      <section className="px-6 pb-18 pt-10 md:px-10 md:pb-24 md:pt-14">
+        <div className="mx-auto w-full max-w-7xl">
+          <div className="mb-8 max-w-3xl space-y-3">
+            <p className="section-kicker">Checkout</p>
+            <h1 className="font-display text-4xl font-semibold tracking-[-0.05em] text-white md:text-6xl">
+              Generate the invoice and close the loop.
+            </h1>
+            <p className="text-sm leading-7 text-[var(--text-secondary)] md:text-base">
+              This stays a demo flow: same invoice endpoint, same status polling, same simulate-payment control. The difference is the frame around it.
+            </p>
+          </div>
+
+          {!invoiceId ? (
+            <div className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="glass-panel soft-outline rounded-[2rem] p-6 md:p-7">
+                <div className="mb-6 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="section-kicker mb-2">Order summary</p>
+                    <h2 className="font-display text-3xl font-semibold text-white">
+                      Selected pieces
+                    </h2>
+                  </div>
+                  <div className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    {stagedItems.length} line item{stagedItems.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {stagedItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="grid gap-4 rounded-[1.5rem] border border-white/[0.08] bg-black/[0.18] p-4 md:grid-cols-[96px_1fr_auto] md:items-center"
+                    >
+                      <div className="relative overflow-hidden rounded-[1.1rem] border border-white/[0.08] bg-black/25">
+                        {item.image ? (
+                          <Image
+                            src={item.image}
+                            alt={item.name}
+                            width={400}
+                            height={400}
+                            className="aspect-square w-full object-cover"
+                          />
+                        ) : (
+                          <div className="aspect-square bg-white/[0.04]" />
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.category ? (
+                            <span className="rounded-full border border-white/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                              {item.category}
+                            </span>
+                          ) : null}
+                          {item.badge ? (
+                            <span className="rounded-full bg-[var(--accent-dim)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
+                              {item.badge}
+                            </span>
+                          ) : null}
+                        </div>
+                        <h3 className="font-display text-2xl font-semibold text-white">
+                          {item.name}
+                        </h3>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          Qty {item.quantity}
+                        </p>
+                      </div>
+
+                      <div className="text-left md:text-right">
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                          Line total
+                        </p>
+                        <p className="font-display text-2xl font-semibold text-white">
+                          {formatDero(item.price * BigInt(item.quantity))}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 rounded-[1.6rem] border border-white/[0.08] bg-black/[0.24] p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      Total due
                     </span>
-                    <span className="font-medium">
-                      {formatDero(item.price * BigInt(item.quantity))}
+                    <span className="font-display text-3xl font-semibold text-white">
+                      {formatDero(stagedTotal)}
                     </span>
                   </div>
-                ))}
-              </div>
-              <div className="border-t border-gray-100 dark:border-gray-800 pt-4 flex justify-between font-bold text-lg">
-                <span>Total</span>
-                <span>{formatDero(totalPrice)}</span>
-              </div>
-            </div>
-
-            {/* Payment Method */}
-            <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-100 dark:border-gray-800 h-fit">
-              <h2 className="text-xl font-bold mb-4">Payment Method</h2>
-
-              <label className="flex items-start gap-3 p-4 border border-emerald-500 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 mb-4 cursor-pointer">
-                <input type="radio" checked readOnly className="mt-1 text-emerald-600 focus:ring-emerald-500" />
-                <div>
-                  <div className="font-semibold text-emerald-900 dark:text-emerald-100">Pay with DERO</div>
-                  <div className="text-sm text-emerald-700 dark:text-emerald-300">Private, instant, secure.</div>
                 </div>
-              </label>
+              </div>
 
-              <label className="flex items-center gap-3 mb-6 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={useEscrow}
-                  onChange={(e) => setUseEscrow(e.target.checked)}
-                  className="rounded text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-sm font-medium">Use DeroPay Escrow Smart Contract</span>
-              </label>
+              <div className="space-y-6">
+                <div className="glass-panel-strong soft-outline rounded-[2rem] p-6 md:p-7">
+                  <p className="section-kicker mb-4">Payment method</p>
+                  <h2 className="font-display text-3xl font-semibold text-white">
+                    DERO invoice checkout
+                  </h2>
 
-              <button
-                onClick={handleCreateInvoice}
-                disabled={isCreating}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2"
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Generating Invoice...
-                  </>
-                ) : (
-                  "Generate Invoice"
-                )}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="max-w-md mx-auto">
-            <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
-              {useEscrow ? (
-                <EscrowInvoiceView invoiceId={invoiceId} role="buyer" />
-              ) : (
-                <InvoiceView invoiceId={invoiceId} />
-              )}
+                  <div className="mt-6 rounded-[1.5rem] border border-[var(--border-strong)] bg-[var(--accent-dim)] p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-black/[0.18] text-[var(--accent-strong)]">
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-xl font-semibold text-white">
+                          Private, direct, and wallet-native
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                          Create a DeroPay invoice, pay with your DERO wallet, and optionally route the order through the escrow demo.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-              {currentInvoice && currentInvoice.status !== "completed" && (
-                <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-800 text-center">
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 flex items-center justify-center gap-1.5">
-                    <FlaskConical className="w-3.5 h-3.5" />
-                    Testing the demo?
-                  </p>
+                  <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-[1.3rem] border border-white/[0.08] bg-white/[0.04] p-4">
+                    <input
+                      type="checkbox"
+                      checked={useEscrow}
+                      onChange={(event) => setUseEscrow(event.target.checked)}
+                      className="h-4 w-4 rounded border-white/20 bg-transparent text-[var(--accent)] focus:ring-[var(--accent)]"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        Use DeroPay Escrow Smart Contract
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                        Keeps the same demo behavior, but generates the invoice in escrow mode for the buyer flow.
+                      </p>
+                    </div>
+                  </label>
+
                   <button
-                    onClick={simulatePayment}
-                    disabled={isSimulating}
-                    className="inline-flex items-center gap-2 px-5 py-2 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:border-emerald-500/70 active:bg-emerald-100 dark:active:bg-emerald-950/60 active:scale-95 text-sm font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                    onClick={handleCreateInvoice}
+                    disabled={isCreating}
+                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isSimulating ? (
+                    {isCreating ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Sending...
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Generating invoice...
                       </>
                     ) : (
-                      "Simulate Payment"
+                      "Generate invoice"
                     )}
                   </button>
                 </div>
-              )}
+
+                <div className="glass-panel rounded-[2rem] p-6">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.06] text-[var(--warm)]">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-display text-xl font-semibold text-white">
+                        Simulation-friendly flow
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                        Once the invoice is created, you can use the built-in simulate control to push it through the demo status pipeline.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
-    </div>
+          ) : (
+            <div className="grid gap-8 xl:grid-cols-[0.72fr_0.28fr]">
+              <div className="glass-panel-strong soft-outline rounded-[2rem] p-5 md:p-7">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="section-kicker mb-2">Live invoice</p>
+                    <h2 className="font-display text-3xl font-semibold text-white">
+                      Awaiting wallet payment
+                    </h2>
+                  </div>
+                  {activeInvoice ? (
+                    <span className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      {activeInvoice.status}
+                    </span>
+                  ) : null}
+                </div>
+
+                {useEscrow ? (
+                  <EscrowInvoiceView invoiceId={invoiceId} role="buyer" />
+                ) : (
+                  <InvoiceView invoiceId={invoiceId} />
+                )}
+
+                {activeInvoice && activeInvoice.status !== "completed" ? (
+                  <div className="mt-6 rounded-[1.6rem] border border-white/[0.08] bg-black/[0.22] p-5 text-center">
+                    <p className="mb-3 flex items-center justify-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      <FlaskConical className="h-4 w-4" />
+                      Testing the demo?
+                    </p>
+                    <button
+                      onClick={simulatePayment}
+                      disabled={isSimulating}
+                      className="inline-flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--accent-dim)] px-5 py-3 text-sm font-semibold text-white hover:bg-[rgba(49,223,144,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSimulating ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        "Simulate payment"
+                      )}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+              <aside className="glass-panel h-fit rounded-[2rem] p-6 xl:sticky xl:top-28">
+                <p className="section-kicker mb-4">Session details</p>
+                <div className="space-y-4 text-sm text-[var(--text-secondary)]">
+                  <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      Invoice id
+                    </p>
+                    <p className="mt-2 break-all font-mono text-xs text-white">
+                      {invoiceId}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      Mode
+                    </p>
+                    <p className="mt-2 text-white">
+                      {useEscrow ? "Escrow demo" : "Standard invoice"}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      Amount
+                    </p>
+                    <p className="mt-2 font-display text-2xl font-semibold text-white">
+                      {formatDero(sessionAmount)}
+                    </p>
+                  </div>
+                  {liveSessionOrder ? (
+                    <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
+                      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                        Order snapshot
+                      </p>
+                      <p className="mt-2 text-white">
+                        {getCheckoutItemCount(liveSessionOrder.items)} item
+                        {getCheckoutItemCount(liveSessionOrder.items) === 1 ? "" : "s"} across{" "}
+                        {sessionItems.length} line item{sessionItems.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={resetCheckoutSession}
+                  className="mt-6 w-full rounded-full border border-white/[0.08] bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white hover:border-[var(--border-strong)] hover:bg-[var(--accent-dim)]"
+                >
+                  Start a new checkout
+                </button>
+              </aside>
+            </div>
+          )}
+        </div>
+      </section>
+    </StoreShell>
   );
 }

@@ -2,18 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDemoPaySessionId } from "@/lib/demo-pay-session";
 import {
   isMockStoreError,
-  simulatePaymentForSession,
+  performEscrowActionForSession,
 } from "@/lib/mock-store";
 
 export async function POST(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
   const body = await request.json().catch(() => ({}));
   const invoiceId =
-    searchParams.get("invoiceId") ||
-    ((body as { invoiceId?: string }).invoiceId ?? "").trim();
+    typeof (body as { invoiceId?: string }).invoiceId === "string"
+      ? (body as { invoiceId: string }).invoiceId.trim()
+      : "";
+  const action =
+    typeof (body as { action?: string }).action === "string"
+      ? (body as { action: string }).action
+      : "";
 
   if (!invoiceId) {
     return NextResponse.json({ error: "Missing invoiceId" }, { status: 400 });
+  }
+
+  if (!action.trim()) {
+    return NextResponse.json({ error: "Missing action" }, { status: 400 });
   }
 
   const sessionId = getDemoPaySessionId(request);
@@ -22,8 +30,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const invoice = simulatePaymentForSession(invoiceId, sessionId);
-    return NextResponse.json(invoice);
+    const result = performEscrowActionForSession({
+      invoiceId,
+      sessionId,
+      action,
+    });
+
+    return NextResponse.json({
+      txid: result.txid,
+      invoice: result.invoice,
+    });
   } catch (error) {
     if (isMockStoreError(error)) {
       return NextResponse.json(
@@ -33,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Could not simulate payment." },
+      { error: "Could not apply escrow action." },
       { status: 500 }
     );
   }

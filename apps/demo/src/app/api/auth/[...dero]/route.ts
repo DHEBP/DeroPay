@@ -1,44 +1,22 @@
-import { createAuthHandlers } from "dero-auth/next";
+const LEGACY_ROUTE_MESSAGE =
+  "Legacy dero-auth endpoints are disabled. Use /api/auth/challenge and /api/auth/verify with dero-auth.";
 
-const secret = process.env.JWT_SECRET || "demo-secret-not-for-production-use!";
-
-const {
-  challengeHandler,
-  verifyHandler,
-  signinHandler,
-  callbackHandler,
-  sessionHandler,
-  signoutHandler,
-} = createAuthHandlers({
-  domain: "localhost",
-  uri: "http://localhost:3002",
-  jwtSecret: secret,
-});
-
-export async function GET(
-  request: Request,
-  context: { params: Promise<{ dero: string[] }> }
-) {
-  const { dero } = await context.params;
-  const path = dero?.[0];
-
-  if (path === "signin") return signinHandler(request);
-  if (path === "callback") return callbackHandler(request);
-  if (path === "session") return sessionHandler(request);
-
-  return Response.json({ error: "Not found" }, { status: 404 });
+function legacyRouteDisabled(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "legacy_auth_route_disabled",
+        message: LEGACY_ROUTE_MESSAGE,
+      },
+    },
+    { status: 410 },
+  );
 }
 
-export async function POST(
-  request: Request,
-  context: { params: Promise<{ dero: string[] }> }
-) {
-  const { dero } = await context.params;
-  const path = dero?.[0];
+export async function GET(): Promise<Response> {
+  return legacyRouteDisabled();
+}
 
-  if (path === "challenge") return challengeHandler(request);
-  if (path === "verify") return verifyHandler(request);
-  if (path === "signout") return signoutHandler(request);
-
-  return Response.json({ error: "Not found" }, { status: 404 });
+export async function POST(): Promise<Response> {
+  return legacyRouteDisabled();
 }

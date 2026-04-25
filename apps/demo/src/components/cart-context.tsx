@@ -7,6 +7,9 @@ export type CartItem = {
   name: string;
   price: bigint;
   quantity: number;
+  image?: string;
+  category?: string;
+  badge?: string;
 };
 
 type CartContextType = {

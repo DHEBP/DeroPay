@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ShieldCheck, Check, AlertCircle } from "lucide-react";
 
 type CreateEscrowFormProps = {
   onCreated?: () => void;
@@ -14,7 +16,7 @@ export function CreateEscrowForm({ onCreated }: CreateEscrowFormProps) {
   const [arbitratorAddress, setArbitratorAddress] = useState("");
   const [feeBasisPoints, setFeeBasisPoints] = useState("250");
   const [blockExpiration, setBlockExpiration] = useState("60");
-  const [ttl, setTtl] = useState("86400"); // 24 hours default for escrow
+  const [ttl, setTtl] = useState("86400");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -26,7 +28,6 @@ export function CreateEscrowForm({ onCreated }: CreateEscrowFormProps) {
     setIsSubmitting(true);
 
     try {
-      // Convert DERO amount to atomic units
       const parts = amount.split(".");
       const whole = BigInt(parts[0] || "0") * 1_000_000_000_000n;
       const frac = parts[1]
@@ -70,9 +71,14 @@ export function CreateEscrowForm({ onCreated }: CreateEscrowFormProps) {
 
       const invoice = await response.json();
       const scid = (invoice as Record<string, unknown>).escrow
-        ? ((invoice as Record<string, Record<string, string>>).escrow?.scid ?? "deployed")
+        ? ((invoice as Record<string, Record<string, string>>).escrow?.scid ??
+          "deployed")
         : "created";
-      setSuccess(`Escrow invoice created: ${(invoice as Record<string, string>).id} (SCID: ${scid})`);
+      setSuccess(
+        `Escrow contract deployed · ${
+          (invoice as Record<string, string>).id
+        } · ${scid.slice(0, 10)}…`
+      );
       setName("");
       setDescription("");
       setAmount("");
@@ -88,213 +94,212 @@ export function CreateEscrowForm({ onCreated }: CreateEscrowFormProps) {
     }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "0.625rem 0.75rem",
-    backgroundColor: "var(--bg)",
-    border: "1px solid var(--border)",
-    borderRadius: "8px",
-    color: "var(--text-primary)",
-    fontSize: "0.875rem",
-    outline: "none",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "0.8rem",
-    fontWeight: 500,
-    color: "var(--text-secondary)",
-    marginBottom: "0.375rem",
-  };
-
   return (
-    <form onSubmit={handleSubmit}>
-      <div style={{ display: "grid", gap: "1rem" }}>
-        {/* Invoice info */}
+    <form onSubmit={handleSubmit} style={{ display: "grid", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div className="field">
+          <label className="field-label">Invoice name *</label>
+          <input
+            className="input"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Freelance Project · Hardware · Service"
+            required
+          />
+        </div>
+        <div className="field">
+          <label className="field-label">
+            <span className="field-label-inline">
+              Amount <span className="field-hint">(DERO)</span>
+            </span>
+          </label>
+          <input
+            className="input input-mono"
+            type="text"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="100.00000"
+            required
+            pattern="[0-9]+\.?[0-9]*"
+          />
+        </div>
+      </div>
+
+      <div className="field">
+        <label className="field-label">Description</label>
+        <input
+          className="input"
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Short line shown on checkout"
+        />
+      </div>
+
+      {/* Escrow section */}
+      <section
+        style={{
+          padding: "18px 18px 16px",
+          background: "var(--ink-deep)",
+          border: "1px solid var(--ink-hair)",
+          borderRadius: "var(--radius)",
+          position: "relative",
+        }}
+      >
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 14,
           }}
         >
-          <div>
-            <label style={labelStyle}>Invoice Name *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Freelance Project"
-              required
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Amount (DERO) *</label>
-            <input
-              type="text"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="e.g., 100.0"
-              required
-              pattern="[0-9]+\.?[0-9]*"
-              style={inputStyle}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label style={labelStyle}>Description</label>
-          <input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Optional description"
-            style={inputStyle}
+          <ShieldCheck size={14} color="var(--dero)" />
+          <span className="eyebrow" style={{ color: "var(--dero)" }}>
+            Escrow Parameters
+          </span>
+          <span
+            aria-hidden
+            style={{ flex: 1, height: 1, background: "var(--ink-hair)" }}
           />
         </div>
 
-        {/* Escrow parameters */}
-        <div
-          style={{
-            padding: "1rem",
-            backgroundColor: "var(--bg-secondary)",
-            borderRadius: "8px",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <h4
+        <div style={{ display: "grid", gap: 14 }}>
+          <div className="field">
+            <label className="field-label">Seller address *</label>
+            <input
+              className="input input-mono"
+              type="text"
+              value={sellerAddress}
+              onChange={(e) => setSellerAddress(e.target.value)}
+              placeholder="dero1q… or deto1q…"
+              required
+            />
+          </div>
+
+          <div className="field">
+            <label className="field-label">
+              <span className="field-label-inline">
+                Arbitrator address <span className="field-hint">defaults to platform wallet</span>
+              </span>
+            </label>
+            <input
+              className="input input-mono"
+              type="text"
+              value={arbitratorAddress}
+              onChange={(e) => setArbitratorAddress(e.target.value)}
+              placeholder="dero1q… (optional)"
+            />
+          </div>
+
+          <div
             style={{
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              marginBottom: "0.75rem",
-              color: "var(--accent)",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 12,
             }}
           >
-            Escrow Parameters
-          </h4>
-
-          <div style={{ display: "grid", gap: "0.75rem" }}>
-            <div>
-              <label style={labelStyle}>Seller Address *</label>
-              <input
-                type="text"
-                value={sellerAddress}
-                onChange={(e) => setSellerAddress(e.target.value)}
-                placeholder="dero1q... or deto1q..."
-                required
-                style={{ ...inputStyle, fontSize: "0.8rem", fontFamily: "var(--font-mono)" }}
-              />
+            <div className="field">
+              <label className="field-label">Fee</label>
+              <select
+                className="select"
+                value={feeBasisPoints}
+                onChange={(e) => setFeeBasisPoints(e.target.value)}
+              >
+                <option value="0">0%</option>
+                <option value="100">1%</option>
+                <option value="250">2.5% (default)</option>
+                <option value="500">5%</option>
+                <option value="1000">10%</option>
+              </select>
             </div>
-
-            <div>
-              <label style={labelStyle}>
-                Arbitrator Address{" "}
-                <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
-                  (defaults to platform wallet)
-                </span>
-              </label>
-              <input
-                type="text"
-                value={arbitratorAddress}
-                onChange={(e) => setArbitratorAddress(e.target.value)}
-                placeholder="dero1q... (optional)"
-                style={{ ...inputStyle, fontSize: "0.8rem", fontFamily: "var(--font-mono)" }}
-              />
+            <div className="field">
+              <label className="field-label">Block expiry</label>
+              <select
+                className="select"
+                value={blockExpiration}
+                onChange={(e) => setBlockExpiration(e.target.value)}
+              >
+                <option value="20">20 blocks · ~1h</option>
+                <option value="60">60 blocks · ~3h</option>
+                <option value="120">120 blocks · ~6h</option>
+                <option value="480">480 blocks · ~1d</option>
+                <option value="1440">1440 blocks · ~3d</option>
+              </select>
             </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: "0.75rem",
-              }}
-            >
-              <div>
-                <label style={labelStyle}>Fee (%)</label>
-                <select
-                  value={feeBasisPoints}
-                  onChange={(e) => setFeeBasisPoints(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="0">0%</option>
-                  <option value="100">1%</option>
-                  <option value="250">2.5% (default)</option>
-                  <option value="500">5%</option>
-                  <option value="1000">10%</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Block Expiry</label>
-                <select
-                  value={blockExpiration}
-                  onChange={(e) => setBlockExpiration(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="20">20 blocks (~1hr)</option>
-                  <option value="60">60 blocks (~3hr)</option>
-                  <option value="120">120 blocks (~6hr)</option>
-                  <option value="480">480 blocks (~1day)</option>
-                  <option value="1440">1440 blocks (~3days)</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Invoice TTL</label>
-                <select
-                  value={ttl}
-                  onChange={(e) => setTtl(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="3600">1 hour</option>
-                  <option value="86400">24 hours</option>
-                  <option value="604800">7 days</option>
-                  <option value="2592000">30 days</option>
-                </select>
-              </div>
+            <div className="field">
+              <label className="field-label">Invoice TTL</label>
+              <select
+                className="select"
+                value={ttl}
+                onChange={(e) => setTtl(e.target.value)}
+              >
+                <option value="3600">1 hour</option>
+                <option value="86400">24 hours</option>
+                <option value="604800">7 days</option>
+                <option value="2592000">30 days</option>
+              </select>
             </div>
           </div>
         </div>
+      </section>
 
+      <AnimatePresence mode="wait">
         {error && (
-          <div
-            style={{
-              padding: "0.625rem",
-              backgroundColor: "rgba(239, 68, 68, 0.1)",
-              borderRadius: "8px",
-              color: "var(--danger)",
-              fontSize: "0.8rem",
-            }}
+          <motion.div
+            key="err"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            style={toast("danger")}
           >
-            {error}
-          </div>
+            <AlertCircle size={14} />
+            <span>{error}</span>
+          </motion.div>
         )}
-
         {success && (
-          <div
-            style={{
-              padding: "0.625rem",
-              backgroundColor: "rgba(16, 185, 129, 0.1)",
-              borderRadius: "8px",
-              color: "var(--success)",
-              fontSize: "0.8rem",
-              wordBreak: "break-all",
-            }}
+          <motion.div
+            key="ok"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            style={toast("positive")}
           >
-            {success}
-          </div>
+            <Check size={14} />
+            <span style={{ wordBreak: "break-all" }}>{success}</span>
+          </motion.div>
         )}
+      </AnimatePresence>
 
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={isSubmitting}
-          style={{ opacity: isSubmitting ? 0.7 : 1 }}
-        >
-          {isSubmitting ? "Deploying Escrow..." : "Create Escrow Invoice"}
-        </button>
-      </div>
+      <button
+        type="submit"
+        className="btn btn-primary"
+        disabled={isSubmitting}
+        style={{ justifySelf: "flex-start" }}
+      >
+        <ShieldCheck size={13} />
+        {isSubmitting ? "Deploying contract…" : "Deploy Escrow Invoice"}
+      </button>
     </form>
   );
+}
+
+function toast(kind: "positive" | "danger"): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 12px",
+    borderRadius: "var(--radius)",
+    background:
+      kind === "positive" ? "var(--dero-wash)" : "var(--vermilion-wash)",
+    color: kind === "positive" ? "var(--dero)" : "var(--vermilion)",
+    border: `1px solid ${
+      kind === "positive" ? "var(--dero-hair)" : "rgba(224, 93, 68, 0.3)"
+    }`,
+    fontSize: 11.5,
+    fontFamily: "var(--font-mono)",
+    letterSpacing: "0.04em",
+  };
 }

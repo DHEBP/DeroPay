@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { motion } from "framer-motion";
+import {
+  RefreshCw,
+  CircleCheck,
+  CircleAlert,
+  Copy,
+  Check,
+} from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { PageHeader } from "@/components/page-header";
+import { formatDero } from "@/lib/format";
 
 type Health = {
   status: string;
@@ -13,17 +23,10 @@ type Health = {
   };
 } | null;
 
-function formatDero(atomic: string): string {
-  const value = BigInt(atomic || "0");
-  const whole = value / 1_000_000_000_000n;
-  const frac = value % 1_000_000_000_000n;
-  const fracStr = frac.toString().padStart(12, "0").slice(0, 5);
-  return `${whole}.${fracStr}`;
-}
-
 export function SettingsPage() {
   const [health, setHealth] = useState<Health>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -44,224 +47,534 @@ export function SettingsPage() {
     fetchHealth();
   }, [fetchHealth]);
 
-  const sectionStyle: React.CSSProperties = {
-    marginBottom: "2rem",
+  const copyAddr = async () => {
+    if (!health) return;
+    try {
+      await navigator.clipboard.writeText(health.wallet.address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* silent */
+    }
   };
 
-  const labelStyle: React.CSSProperties = {
-    fontSize: "0.75rem",
-    color: "var(--text-muted)",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    marginBottom: "0.5rem",
-  };
+  const endpoints: { method: "GET" | "POST"; path: string; desc: string }[] = [
+    { method: "POST", path: "/api/pay/create", desc: "Create a new invoice" },
+    { method: "GET", path: "/api/pay/status?invoiceId=…", desc: "Fetch invoice status" },
+    { method: "GET", path: "/api/pay/invoices", desc: "List invoices" },
+    { method: "GET", path: "/api/pay/stats", desc: "Get aggregate statistics" },
+    { method: "GET", path: "/api/pay/health", desc: "Wallet / daemon health check" },
+    { method: "POST", path: "/api/pay/escrow", desc: "Perform an escrow action" },
+    { method: "GET", path: "/api/pay/escrows", desc: "List escrow invoices" },
+  ];
 
-  const valueStyle: React.CSSProperties = {
-    fontFamily: "var(--font-mono)",
-    fontSize: "0.85rem",
-    wordBreak: "break-all",
-    color: "var(--text-secondary)",
-    padding: "0.5rem 0.75rem",
-    backgroundColor: "var(--bg)",
-    borderRadius: "6px",
-    border: "1px solid var(--border)",
-  };
+  const envVars: { key: string; value: string; note?: string }[] = [
+    { key: "WALLET_RPC_URL", value: "http://localhost:10103/json_rpc" },
+    { key: "DAEMON_RPC_URL", value: "http://localhost:10102/json_rpc" },
+    { key: "RPC_USERNAME", value: "—", note: "optional" },
+    { key: "RPC_PASSWORD", value: "—", note: "optional" },
+    { key: "WEBHOOK_URL", value: "—", note: "optional" },
+    { key: "WEBHOOK_SECRET", value: "—", note: "optional" },
+    { key: "DEFAULT_TTL_SECONDS", value: "900" },
+    { key: "DEFAULT_CONFIRMATIONS", value: "3" },
+    { key: "POLL_INTERVAL_MS", value: "5000" },
+    { key: "MEMPOOL_POLL_INTERVAL_MS", value: "2000" },
+    {
+      key: "MEMPOOL_POLL_ENABLED",
+      value: "true",
+      note: "fast mempool live feed",
+    },
+  ];
 
   return (
     <DashboardShell>
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-          Settings
-        </h2>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-          Wallet connection and configuration
-        </p>
-      </div>
+      <PageHeader
+        index="04"
+        eyebrow="Settings"
+        title="Station diagnostics."
+        subtitle="Wallet connection, runtime configuration, and the API surface you'll integrate from your storefront."
+        action={
+          <button
+            className="btn btn-ghost"
+            onClick={fetchHealth}
+            title="Re-check connection"
+          >
+            <RefreshCw size={13} />
+            Recheck
+          </button>
+        }
+      />
 
-      {/* Connection status */}
-      <div className="card" style={sectionStyle}>
-        <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem" }}>
-          Connection Status
-        </h3>
+      {/* Connection panel */}
+      <motion.section
+        id="connection"
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="surface corner-ticks"
+        style={{ padding: "22px 24px", marginBottom: 20, scrollMarginTop: 24 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 18,
+          }}
+        >
+          <span className="eyebrow">
+            <span style={{ color: "var(--bone-quiet)" }}>a</span>
+            <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
+            Connection
+          </span>
+          <span aria-hidden style={{ flex: 1, height: 1, background: "var(--ink-hair)" }} />
+        </div>
 
         {error ? (
-          <div
-            style={{
-              padding: "1rem",
-              backgroundColor: "rgba(239, 68, 68, 0.05)",
-              borderRadius: "8px",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
-            }}
-          >
-            <p style={{ color: "var(--danger)", fontWeight: 500, fontSize: "0.875rem" }}>
-              Connection Error
-            </p>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginTop: "0.25rem" }}>
-              {error}
-            </p>
-            <button
-              className="btn btn-secondary"
-              onClick={fetchHealth}
-              style={{ marginTop: "0.75rem", fontSize: "0.8rem" }}
+          <div style={{ display: "grid", gap: 12 }}>
+            <div
+              role="alert"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: "14px 16px",
+                borderRadius: "var(--radius)",
+                background: "var(--vermilion-wash)",
+                border: "1px solid rgba(224, 93, 68, 0.3)",
+              }}
             >
-              Retry
-            </button>
+              <CircleAlert size={16} color="var(--vermilion)" style={{ marginTop: 1 }} />
+              <div>
+                <div
+                  className="eyebrow"
+                  style={{ color: "var(--vermilion)", marginBottom: 4 }}
+                >
+                  Connection Failed
+                </div>
+                <div style={{ fontSize: 12, color: "var(--bone-dim)" }}>{error}</div>
+              </div>
+            </div>
+            <TroubleshootPanel />
           </div>
         ) : health ? (
-          <div style={{ display: "grid", gap: "1rem" }}>
-            <div style={{ display: "flex", gap: "1rem" }}>
-              <div style={{ flex: 1 }}>
-                <p style={labelStyle}>Engine</p>
-                <div style={valueStyle}>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      backgroundColor:
-                        health.engine === "running" ? "var(--success)" : "var(--danger)",
-                      marginRight: "0.5rem",
-                    }}
-                  />
-                  {health.engine}
-                </div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <p style={labelStyle}>Status</p>
-                <div style={valueStyle}>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      backgroundColor:
-                        health.status === "ok" ? "var(--success)" : "var(--danger)",
-                      marginRight: "0.5rem",
-                    }}
-                  />
-                  {health.status}
-                </div>
-              </div>
+          <div style={{ display: "grid", gap: 18 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, 1fr)",
+                gap: 16,
+              }}
+            >
+              <StatusCell
+                label="Engine"
+                value={health.engine}
+                ok={health.engine === "running"}
+              />
+              <StatusCell
+                label="Status"
+                value={health.status}
+                ok={health.status === "ok"}
+              />
             </div>
 
             <div>
-              <p style={labelStyle}>Wallet Address</p>
-              <div style={valueStyle}>{health.wallet.address}</div>
+              <div
+                className="eyebrow"
+                style={{ marginBottom: 6 }}
+              >
+                Wallet Address
+              </div>
+              <button
+                onClick={copyAddr}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: "var(--ink-deep)",
+                  border: "1px solid var(--ink-hair)",
+                  borderRadius: "var(--radius)",
+                  color: "var(--bone-dim)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11.5,
+                  wordBreak: "break-all",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "border-color 0.15s var(--ease-out)",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.borderColor = "var(--dero-hair)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.borderColor = "var(--ink-hair)")
+                }
+              >
+                <span style={{ flex: 1 }}>{health.wallet.address}</span>
+                <span
+                  style={{
+                    color: copied ? "var(--dero)" : "var(--bone-mute)",
+                    display: "inline-flex",
+                  }}
+                >
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                </span>
+              </button>
             </div>
 
-            <div style={{ display: "flex", gap: "1rem" }}>
-              <div style={{ flex: 1 }}>
-                <p style={labelStyle}>Balance</p>
-                <div style={valueStyle}>{formatDero(health.wallet.balance)} DERO</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <p style={labelStyle}>Unlocked Balance</p>
-                <div style={valueStyle}>
-                  {formatDero(health.wallet.unlockedBalance)} DERO
-                </div>
-              </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, 1fr)",
+                gap: 16,
+              }}
+            >
+              <BalanceCell
+                label="Total Balance"
+                atomic={health.wallet.balance}
+              />
+              <BalanceCell
+                label="Unlocked"
+                atomic={health.wallet.unlockedBalance}
+                accent
+              />
             </div>
           </div>
         ) : (
-          <p style={{ color: "var(--text-muted)" }}>Loading...</p>
+          <div
+            style={{
+              padding: "18px 4px",
+              color: "var(--bone-quiet)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+            }}
+          >
+            Probing wallet…
+          </div>
         )}
-      </div>
+      </motion.section>
 
       {/* Configuration */}
-      <div className="card" style={sectionStyle}>
-        <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem" }}>
-          Configuration
-        </h3>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "1rem" }}>
-          These values are set via environment variables. Edit your{" "}
-          <code style={{ color: "var(--text-secondary)" }}>.env.local</code> file and restart.
+      <motion.section
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.05 }}
+        className="surface"
+        style={{ padding: "22px 24px", marginBottom: 20 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 16,
+          }}
+        >
+          <span className="eyebrow">
+            <span style={{ color: "var(--bone-quiet)" }}>b</span>
+            <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
+            Environment
+          </span>
+          <span aria-hidden style={{ flex: 1, height: 1, background: "var(--ink-hair)" }} />
+        </div>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--bone-dim)",
+            marginBottom: 14,
+          }}
+        >
+          These values are read from{" "}
+          <code
+            style={{
+              fontFamily: "var(--font-mono)",
+              color: "var(--bone)",
+              fontSize: 11.5,
+            }}
+          >
+            .env.local
+          </code>
+          . Changes require restart.
         </p>
 
         <div
           style={{
-            display: "grid",
-            gap: "0.75rem",
-            fontFamily: "var(--font-mono)",
-            fontSize: "0.8rem",
-            color: "var(--text-secondary)",
+            border: "1px solid var(--ink-hair)",
+            borderRadius: "var(--radius)",
+            overflow: "hidden",
           }}
         >
-          <code>WALLET_RPC_URL=http://127.0.0.1:10103/json_rpc</code>
-          <code>DAEMON_RPC_URL=http://127.0.0.1:10102/json_rpc</code>
-          <code>RPC_USERNAME= (optional)</code>
-          <code>RPC_PASSWORD= (optional)</code>
-          <code>WEBHOOK_URL= (optional)</code>
-          <code>WEBHOOK_SECRET= (optional)</code>
-          <code>DEFAULT_TTL_SECONDS=900</code>
-          <code>DEFAULT_CONFIRMATIONS=3</code>
-          <code>POLL_INTERVAL_MS=5000</code>
+          {envVars.map((v, i) => (
+            <div
+              key={v.key}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "220px 1fr auto",
+                gap: 12,
+                padding: "10px 14px",
+                background:
+                  i % 2 === 0 ? "var(--ink-deep)" : "transparent",
+                borderBottom:
+                  i < envVars.length - 1
+                    ? "1px solid var(--ink-hair)"
+                    : "none",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11.5,
+                alignItems: "center",
+              }}
+            >
+              <span style={{ color: "var(--bone-dim)" }}>{v.key}</span>
+              <span style={{ color: "var(--bone)" }}>{v.value}</span>
+              {v.note && (
+                <span
+                  style={{
+                    color: "var(--bone-quiet)",
+                    fontSize: 9.5,
+                    letterSpacing: "0.18em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {v.note}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
-      </div>
+      </motion.section>
 
-      {/* API info */}
-      <div className="card" style={sectionStyle}>
-        <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem" }}>
-          API Endpoints
-        </h3>
+      {/* API */}
+      <motion.section
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="surface"
+        style={{ padding: "22px 24px" }}
+      >
         <div
           style={{
-            display: "grid",
-            gap: "0.75rem",
-            fontSize: "0.85rem",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 14,
           }}
         >
-          {[
-            { method: "POST", path: "/api/pay/create", desc: "Create a new invoice" },
-            { method: "GET", path: "/api/pay/status?invoiceId=xxx", desc: "Get invoice status" },
-            { method: "GET", path: "/api/pay/invoices", desc: "List invoices" },
-            { method: "GET", path: "/api/pay/stats", desc: "Get statistics" },
-            { method: "GET", path: "/api/pay/health", desc: "Health check" },
-          ].map((endpoint) => (
+          <span className="eyebrow">
+            <span style={{ color: "var(--bone-quiet)" }}>c</span>
+            <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
+            API Surface
+          </span>
+          <span aria-hidden style={{ flex: 1, height: 1, background: "var(--ink-hair)" }} />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {endpoints.map((e, i) => (
             <div
-              key={endpoint.path}
+              key={e.path}
               style={{
-                display: "flex",
-                gap: "1rem",
-                alignItems: "baseline",
-                padding: "0.5rem 0",
-                borderBottom: "1px solid var(--border)",
+                display: "grid",
+                gridTemplateColumns: "72px 1fr auto",
+                gap: 14,
+                alignItems: "center",
+                padding: "9px 10px",
+                borderBottom:
+                  i < endpoints.length - 1
+                    ? "1px dashed var(--ink-hair)"
+                    : "none",
+                fontSize: 12,
               }}
             >
               <span
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: "0.7rem",
-                  padding: "0.125rem 0.5rem",
-                  borderRadius: "4px",
-                  backgroundColor:
-                    endpoint.method === "POST"
-                      ? "rgba(59, 130, 246, 0.15)"
-                      : "rgba(16, 185, 129, 0.15)",
-                  color:
-                    endpoint.method === "POST" ? "#60a5fa" : "#34d399",
+                  fontSize: 10,
                   fontWeight: 600,
+                  letterSpacing: "0.2em",
+                  color: e.method === "POST" ? "var(--cobalt)" : "var(--dero)",
+                  padding: "3px 8px",
+                  borderRadius: 4,
+                  background:
+                    e.method === "POST"
+                      ? "var(--cobalt-wash)"
+                      : "var(--dero-wash)",
+                  border: `1px solid ${
+                    e.method === "POST"
+                      ? "rgba(106,161,255,0.25)"
+                      : "var(--dero-hair)"
+                  }`,
+                  textAlign: "center",
+                  justifySelf: "start",
                 }}
               >
-                {endpoint.method}
+                {e.method}
               </span>
               <code
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: "0.8rem",
-                  color: "var(--text-primary)",
+                  color: "var(--bone)",
+                  fontSize: 11.5,
                 }}
               >
-                {endpoint.path}
+                {e.path}
               </code>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                {endpoint.desc}
+              <span
+                style={{
+                  color: "var(--bone-quiet)",
+                  fontSize: 11,
+                }}
+              >
+                {e.desc}
               </span>
             </div>
           ))}
         </div>
-      </div>
+      </motion.section>
     </DashboardShell>
+  );
+}
+
+function StatusCell({
+  label,
+  value,
+  ok,
+}: {
+  label: string;
+  value: string;
+  ok: boolean;
+}) {
+  return (
+    <div>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>
+        {label}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "10px 14px",
+          background: "var(--ink-deep)",
+          border: `1px solid ${ok ? "var(--dero-hair)" : "rgba(224,93,68,0.3)"}`,
+          borderRadius: "var(--radius)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 11.5,
+          color: ok ? "var(--dero)" : "var(--vermilion)",
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+        }}
+      >
+        {ok ? <CircleCheck size={13} /> : <CircleAlert size={13} />}
+        <span>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function TroubleshootPanel() {
+  const snippets = [
+    {
+      label: "Start derod (daemon)",
+      cmd: "derod-linux-amd64 --rpc-bind=localhost:10102",
+    },
+    {
+      label: "Start walletd (wallet RPC)",
+      cmd: "dero-wallet-cli-linux-amd64 --rpc-server --rpc-bind=localhost:10103 --wallet-file=my.wallet",
+    },
+    {
+      label: "Test wallet RPC reachability",
+      cmd: 'curl -s -u user:pass http://localhost:10103/json_rpc -H "Content-Type: application/json" -d \'{"jsonrpc":"2.0","id":1,"method":"GetAddress"}\'',
+    },
+  ];
+  return (
+    <div
+      style={{
+        padding: "14px 16px",
+        borderRadius: "var(--radius)",
+        border: "1px solid var(--ink-hair)",
+        background: "var(--ink-deep)",
+      }}
+    >
+      <div className="eyebrow-mono" style={{ marginBottom: 10, color: "var(--bone-mute)" }}>
+        Troubleshoot
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--bone-dim)", lineHeight: 1.55, marginBottom: 12 }}>
+        The dashboard reaches walletd at{" "}
+        <code style={{ fontFamily: "var(--font-mono)", color: "var(--bone)" }}>
+          WALLET_RPC_URL
+        </code>{" "}
+        and derod at{" "}
+        <code style={{ fontFamily: "var(--font-mono)", color: "var(--bone)" }}>
+          DAEMON_RPC_URL
+        </code>
+        . Confirm both are running and bound to the right host/port.
+      </div>
+      <ol style={{ margin: 0, padding: "0 0 0 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {snippets.map((s) => (
+          <li key={s.label} style={{ listStyleType: "decimal", color: "var(--bone-mute)" }}>
+            <div style={{ fontSize: 12, color: "var(--bone-dim)", marginBottom: 4 }}>
+              {s.label}
+            </div>
+            <code
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                background: "var(--ink)",
+                border: "1px solid var(--ink-hair)",
+                borderRadius: "var(--radius-sm)",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                color: "var(--bone)",
+                wordBreak: "break-all",
+              }}
+            >
+              {s.cmd}
+            </code>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function BalanceCell({
+  label,
+  atomic,
+  accent,
+}: {
+  label: string;
+  atomic: string;
+  accent?: boolean;
+}) {
+  return (
+    <div>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>
+        {label}
+      </div>
+      <div
+        style={{
+          padding: "10px 14px",
+          background: "var(--ink-deep)",
+          border: "1px solid var(--ink-hair)",
+          borderRadius: "var(--radius)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 13,
+          fontVariantNumeric: "tabular-nums",
+          color: accent ? "var(--dero)" : "var(--bone)",
+        }}
+      >
+        {formatDero(atomic, 5)}{" "}
+        <span
+          style={{
+            color: "var(--bone-quiet)",
+            fontSize: 9.5,
+            letterSpacing: "0.2em",
+          }}
+        >
+          DERO
+        </span>
+      </div>
+    </div>
   );
 }

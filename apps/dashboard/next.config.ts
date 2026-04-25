@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3", "dero-pay"],
@@ -10,6 +11,20 @@ const nextConfig: NextConfig = {
         hostname: "api.qrserver.com",
       },
     ],
+  },
+  // Alias `dero-pay/events` to a local stub — the live `dero-pay` package
+  // doesn't export an `/events` subpath yet. Remove this alias (and the
+  // shim file) when the real module ships in `dero-pay`.
+  webpack(config) {
+    config.resolve = config.resolve ?? {};
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      "dero-pay/events": path.resolve(
+        __dirname,
+        "./lib/dero-pay-events-shim.ts"
+      ),
+    };
+    return config;
   },
   async headers() {
     return [

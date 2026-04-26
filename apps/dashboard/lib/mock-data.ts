@@ -76,6 +76,12 @@ export function createMockInvoice(opts: {
   return inv;
 }
 
+/**
+ * Phase 3 #33 — re-export the invoice-template mock fixtures alongside the
+ * other mock getters so engine.ts can discover them in one place.
+ */
+export { listMockInvoiceTemplates as getMockInvoiceTemplates } from "./mock-invoice-templates";
+
 export function getMockStats() {
   const all = getMockInvoices();
   const completed = all.filter((i) => i.status === "completed");
@@ -452,7 +458,7 @@ export function getMockAtomicSwaps(): MockAtomicSwap[] {
       direction: "dero-to-btc",
       counterparty: "dero1q..alice",
       state: "funded",
-      deroAmount: "12500000000000", // 12.5 DERO in picodero
+      deroAmount: "1250000", // 12.5 DERO in atomic units
       btcAmount: "210000", // 0.0021 BTC in sats
       refundTimeoutMs: nowMs + 23 * hour + 12 * 60_000,
       createdAt: nowMs - 40 * 60_000,
@@ -464,7 +470,7 @@ export function getMockAtomicSwaps(): MockAtomicSwap[] {
       direction: "btc-to-dero",
       counterparty: "bc1q..bob",
       state: "claiming",
-      deroAmount: "5000000000000", // 5 DERO
+      deroAmount: "500000", // 5 DERO
       btcAmount: "85000", // 0.00085 BTC
       refundTimeoutMs: nowMs + 4 * hour + 28 * 60_000,
       createdAt: nowMs - 3 * hour,
@@ -475,7 +481,7 @@ export function getMockAtomicSwaps(): MockAtomicSwap[] {
       direction: "dero-to-btc",
       counterparty: "dero1q..carol",
       state: "proposed",
-      deroAmount: "1000000000000", // 1 DERO
+      deroAmount: "100000", // 1 DERO
       btcAmount: "17000",
       refundTimeoutMs: nowMs + 47 * hour,
       createdAt: nowMs - 8 * 60_000,
@@ -500,7 +506,7 @@ export function getMockEscrows() {
 // full flow (create schedule, fire instant sweep, see history row appear)
 // without hitting the real wallet or SQLite store.
 
-const ATOMIC_PER_DERO = 1_000_000_000_000n;
+const ATOMIC_PER_DERO = 100_000n;
 const TREASURY_DEMO =
   "dero1qdemotreasurydemotreasurydemotreasurydemotreasurydemotreasurydemotr";
 

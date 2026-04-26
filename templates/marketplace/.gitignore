@@ -1,0 +1,13 @@
+.next/
+node_modules/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.dev-server.*.log
+.env
+.env.*
+!.env.example
+data/*.db
+data/*.sqlite
+data/*.sqlite-*

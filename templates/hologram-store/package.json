@@ -1,0 +1,27 @@
+{
+  "name": "hologram-store",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@10.4.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run storefront:dev",
+    "storefront:dev": "npm run dev --workspace @hologram/storefront",
+    "backend:dev": "npm run dev --workspace @hologram/backend",
+    "backend:build": "npm run build --workspace @hologram/backend",
+    "backend:seed": "npm run seed --workspace @hologram/backend",
+    "build": "npm run build --workspace @hologram/storefront && npm run build --workspace @hologram/backend",
+    "typecheck": "npm run typecheck --workspace @hologram/storefront"
+  },
+  "overrides": {
+    "ajv": "^8.0.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}

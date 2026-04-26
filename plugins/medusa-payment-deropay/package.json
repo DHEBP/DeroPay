@@ -12,6 +12,9 @@
   "keywords": ["medusa", "medusa-plugin", "medusa-payment", "dero", "crypto", "deropay"],
   "author": "DHEBP",
   "license": "MIT",
+  "dependencies": {
+    "dero-pay": "^0.3.0"
+  },
   "peerDependencies": {
     "@medusajs/framework": "^2.0.0"
   },

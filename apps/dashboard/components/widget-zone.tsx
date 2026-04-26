@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import {
+  EMPTY_WIDGET_LIST,
   getWidgetsForZone,
+  subscribeWidgets,
   type WidgetZone as WidgetZoneId,
 } from "@/lib/widgets/registry";
 import type { WidgetComponent } from "@/lib/widgets/types";
@@ -11,6 +13,11 @@ import type { WidgetComponent } from "@/lib/widgets/types";
  * Renders every widget registered for the given zone. Each widget is wrapped
  * in a local error boundary so a single faulty plugin can't take down the
  * host page.
+ *
+ * Hydration-safe: the SSR/initial-client snapshot always returns the same
+ * frozen empty list, so the first client render matches server output.
+ * Once plugins register (client-only, after mount), the subscription fires
+ * and React re-renders with the actual widgets.
  *
  * @example
  *   <WidgetZone zone="dashboard.home.kpi-row.after" />
@@ -23,7 +30,16 @@ export function WidgetZone<T = Record<string, unknown>>({
   zone: WidgetZoneId;
   entity?: T;
 }) {
-  const widgets = getWidgetsForZone(zone);
+  const getClientSnapshot = React.useCallback(
+    () => getWidgetsForZone(zone),
+    [zone],
+  );
+  const getServerSnapshot = React.useCallback(() => EMPTY_WIDGET_LIST, []);
+  const widgets = React.useSyncExternalStore(
+    subscribeWidgets,
+    getClientSnapshot,
+    getServerSnapshot,
+  );
   if (widgets.length === 0) return null;
   return (
     <>

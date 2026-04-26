@@ -1,0 +1,31 @@
+<svg width="420" height="100" viewBox="0 0 420 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">DeroBay logo</title>
+  <desc id="desc">DeroBay marketplace wordmark with a cyan DERO-inspired hexagon symbol.</desc>
+  <defs>
+    <linearGradient id="shell" x1="12" y1="10" x2="88" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="0.48" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#087f5b"/>
+    </linearGradient>
+    <linearGradient id="facet" x1="24" y1="22" x2="76" y2="78" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#eaffff"/>
+      <stop offset="0.42" stop-color="#67e8f9"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+    <filter id="shadow" x="-10" y="-10" width="120" height="120" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#020617" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <path d="M50 5 88.97 27.5v45L50 95 11.03 72.5v-45L50 5Z" fill="#071016" stroke="url(#shell)" stroke-width="4"/>
+    <path d="M50 15 78.58 31.5v33L50 81 21.42 64.5v-33L50 15Z" fill="#0c1218" stroke="#164e63" stroke-width="2"/>
+    <path d="M31 31 50 20l19 11-19 11-19-11Z" fill="url(#facet)" opacity="0.96"/>
+    <path d="M25 39 44 50 44 71 25 60V39Z" fill="#0d4a55"/>
+    <path d="M75 39 56 50v21l19-11V39Z" fill="#087f5b"/>
+    <path d="M35 32h19c11.6 0 20 7.4 20 18s-8.4 18-20 18H47v9H35V32Zm12 10v16h8c4.7 0 8-3.2 8-8s-3.3-8-8-8h-8Z" fill="#f8fafc"/>
+    <path d="M58 58h17l8 8-8 8H58V58Z" fill="#67e8f9"/>
+    <circle cx="73" cy="66" r="2.4" fill="#071016"/>
+  </g>
+  <text x="116" y="58" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="900">Dero<tspan fill="#087f5b">Bay</tspan></text>
+  <text x="118" y="78" fill="#5f6b7a" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="800">DERO escrow marketplace</text>
+</svg>

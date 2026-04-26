@@ -27,6 +27,7 @@ import {
   Link2,
   Pin,
   PinOff,
+  Zap,
 } from "lucide-react";
 import { ProfileMenu } from "./profile-menu";
 import { useLiveFetch } from "@/lib/useLiveFetch";
@@ -66,6 +67,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: "nav.integrations", href: "/integrations", label: "Integrations", Icon: Puzzle },
   { id: "nav.payouts", href: "/payouts", label: "Payouts", Icon: ArrowUpFromLine },
   { id: "nav.developers", href: "/developers", label: "Developers", Icon: Code2 },
+  { id: "nav.automation", href: "/automation", label: "Automation", Icon: Zap },
   { id: "nav.reports", href: "/reports", label: "Reports", Icon: BarChart3 },
   { id: "nav.settings", href: "/settings", label: "Settings", Icon: Settings2 },
 ] as const;

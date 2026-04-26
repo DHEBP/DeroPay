@@ -4,9 +4,9 @@
 
 A product-first DERO marketplace prototype with multi-vendor stores, buyer/seller flows, and DeroPay invoice + escrow checkout. Inspired by Redplaza and classic marketplace patterns from eBay, Amazon, and AliExpress.
 
-![Marketplace Home](docs/marketplace-home.png)
+![Marketplace Home](assets/marketplace-home.png)
 
-![Marketplace Checkout](docs/marketplace-checkout.png)
+![Marketplace Checkout](assets/marketplace-checkout.png)
 
 ## What works
 

@@ -38,7 +38,7 @@ const templates: Template[] = [
       "Seed script with sample products",
     ],
     stack: ["Medusa v2", "React", "Vite", "TypeScript", "medusa-payment-deropay"],
-    github: "https://github.com/DHEBP/deropay/tree/main/templates/hologram-store",
+    github: "https://github.com/DHEBP/DeroPay/tree/main/templates/hologram-store",
     icon: <ShoppingBag size={24} />,
   },
   {
@@ -56,7 +56,7 @@ const templates: Template[] = [
       "Dispute and resolution flows",
     ],
     stack: ["Next.js 16", "React 19", "SQLite", "TypeScript", "Tailwind CSS"],
-    github: "https://github.com/DHEBP/deropay/tree/main/templates/marketplace",
+    github: "https://github.com/DHEBP/DeroPay/tree/main/templates/marketplace",
     icon: <Store size={24} />,
   },
 ];

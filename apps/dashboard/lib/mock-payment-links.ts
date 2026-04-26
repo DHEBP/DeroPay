@@ -50,10 +50,10 @@ function seedIfEmpty(): void {
   const day = 86_400_000;
   const seeds: Omit<PaymentLink, "id">[] = [
     {
-      slug: "coffee-fund",
+      slug: "vpn-monthly",
       productId: null,
-      name: "Coffee fund",
-      description: "Buy the team a round of coffee.",
+      name: "VPN Monthly Access",
+      description: "One month of private VPN service — pay once, no account needed.",
       amountAtomic: "500000", // 5 DERO
       currency: "DERO",
       ttlSeconds: 1800,
@@ -70,10 +70,10 @@ function seedIfEmpty(): void {
       metadata: {},
     },
     {
-      slug: "hypergnomon-license",
+      slug: "api-access-annual",
       productId: null,
-      name: "HyperGnomon Pro license",
-      description: "Annual Pro license — auto-renews via subscription.",
+      name: "API Access — Annual",
+      description: "Full API access for one year. Key delivered after payment confirms.",
       amountAtomic: "12000000", // 120 DERO
       currency: "DERO",
       ttlSeconds: 1800,
@@ -90,10 +90,10 @@ function seedIfEmpty(): void {
       metadata: {},
     },
     {
-      slug: "tip-jar",
+      slug: "donate",
       productId: null,
-      name: "Tip jar",
-      description: "Name your price.",
+      name: "Donation",
+      description: "Support the project — any amount appreciated.",
       amountAtomic: null, // pay-what-you-want
       currency: "DERO",
       ttlSeconds: 1800,

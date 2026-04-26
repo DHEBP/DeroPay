@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/page-header";
+import { InvoiceTemplatesSection } from "@/components/invoice-templates-section";
 import { formatDero } from "@/lib/format";
 
 type Health = {
@@ -344,6 +345,9 @@ export function SettingsPage() {
           ))}
         </div>
       </motion.section>
+
+      {/* Invoice Templates */}
+      <InvoiceTemplatesSection />
 
       {/* API */}
       <motion.section

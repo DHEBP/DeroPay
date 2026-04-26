@@ -1,9 +1,9 @@
 export function formatDero(atomic: string | undefined, precision = 5): string {
   if (!atomic) return "0." + "0".repeat(precision);
   const v = BigInt(atomic);
-  const whole = v / 1_000_000_000_000n;
-  const frac = v % 1_000_000_000_000n;
-  const fracStr = frac.toString().padStart(12, "0").slice(0, precision);
+  const whole = v / 100_000n;
+  const frac = v % 100_000n;
+  const fracStr = frac.toString().padStart(5, "0").slice(0, precision);
   return `${formatWithCommas(whole)}.${fracStr}`;
 }
 

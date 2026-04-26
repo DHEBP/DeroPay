@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  HOLOGRAM Logo - G. Layered Depths (V7.3 Final)
+  
+  Single unified logo for all sizes:
+  - Sidebar (collapsed and expanded)
+  - Favicon / Tab icon / Tray icon
+  - App cards and tiles
+  
+  Design: Tonal depth progression (bright → mid → dark)
+  - Light cyan frame (#67e8f9) - outer glow boundary
+  - Dark void layer (#0c1218) - creates separation  
+  - Primary cyan body (#22d3ee) - the H letterform
+  - Teal arrow indents (#0d4a55) - carved depth, directional flow
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Outer Frame - Light cyan -->
+  <polygon 
+    points="50,2 95,26 95,74 50,98 5,74 5,26" 
+    fill="#67e8f9"
+  />
+  
+  <!-- Inner Void - Dark depth -->
+  <polygon 
+    points="50,7 90,28.5 90,71.5 50,93 10,71.5 10,28.5" 
+    fill="#0c1218"
+  />
+  
+  <!-- Inner Body - Primary cyan H-form -->
+  <polygon 
+    points="50,13 83,32 83,68 50,87 17,68 17,32" 
+    fill="#22d3ee"
+  />
+  
+  <!-- Top Arrow - Teal indent -->
+  <polygon 
+    points="17,32 38,32 38,45 50,50 62,45 62,32 83,32 50,13" 
+    fill="#0d4a55"
+  />
+  
+  <!-- Bottom Arrow - Teal indent -->
+  <polygon 
+    points="62,68 62,55 50,50 38,55 38,68 17,68 50,87 83,68" 
+    fill="#0d4a55"
+  />
+</svg>

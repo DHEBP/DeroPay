@@ -8,6 +8,7 @@ export default defineConfig({
     "escrow/index": "src/escrow/index.ts",
     "router/index": "src/router/index.ts",
     "client/index": "src/client/index.ts",
+    "gateway/index": "src/gateway/index.ts",
     "react/index": "src/react/index.ts",
     "next/index": "src/next/index.ts",
   },

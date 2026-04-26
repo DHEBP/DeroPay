@@ -24,7 +24,7 @@ import type {
   PaymentProviderContext,
 } from "@medusajs/framework/types";
 import { BigNumber, MedusaError } from "@medusajs/framework/utils";
-import { DeroPayClient } from "./deropay-client.js";
+import { GatewayClient } from "dero-pay/gateway";
 
 type DeroPayOptions = {
   gatewayUrl: string;
@@ -40,13 +40,16 @@ class DeroPayPaymentService extends AbstractPaymentProvider<DeroPayOptions> {
   static identifier = "deropay";
 
   protected logger_: Logger;
-  protected client: DeroPayClient;
+  protected client: GatewayClient;
   protected webhookSecret_?: string;
 
   constructor(container: InjectedDependencies, options: DeroPayOptions) {
     super(container, options);
     this.logger_ = container.logger;
-    this.client = new DeroPayClient(options.gatewayUrl, options.apiKey);
+    this.client = new GatewayClient({
+      gatewayUrl: options.gatewayUrl,
+      apiKey: options.apiKey,
+    });
     this.webhookSecret_ = options.webhookSecret;
   }
 

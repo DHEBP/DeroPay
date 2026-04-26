@@ -1812,7 +1812,6 @@ export function DevelopersPage() {
                 color: "var(--bone-dim)",
                 lineHeight: 1.55,
                 margin: "4px 0 0",
-                maxWidth: "72ch",
               }}
             >
               Pick an endpoint, tweak inputs, hit Execute. Runs against the same

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200">
+  <defs>
+    <radialGradient id="vignette" cx="50%" cy="52%" r="68%">
+      <stop offset="0" stop-color="#02060a" stop-opacity="0"/>
+      <stop offset="1" stop-color="#02060a" stop-opacity="0.84"/>
+    </radialGradient>
+    <filter id="logoGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#22d3ee" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="1200" fill="#071014"/>
+  <image href="./merch-base-accessories.png" x="-40" y="-20" width="1280" height="1240" preserveAspectRatio="xMidYMid slice"/>
+  <rect width="1200" height="1200" fill="url(#vignette)"/>
+  <image href="../hex_hologram_logo.svg" x="416" y="260" width="178" height="178" filter="url(#logoGlow)"/>
+  <image href="../hex_hologram_logo.svg" x="828" y="654" width="126" height="126" filter="url(#logoGlow)" opacity="0.96"/>
+  <text x="55" y="1084" font-family="Arial, sans-serif" font-size="24" font-weight="900" fill="#eefdff" letter-spacing="5">HEX LOCK SNAPBACK</text>
+</svg>

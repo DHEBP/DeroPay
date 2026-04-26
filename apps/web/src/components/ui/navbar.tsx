@@ -12,6 +12,7 @@ const links = [
   { href: "/pay", label: "Pay" },
   { href: "/x402", label: "x402" },
   { href: "/escrow", label: "Escrow" },
+  { href: "/templates", label: "Templates" },
   { href: "/playground", label: "Try It" },
   { href: "https://demo.deropay.com", label: "Demo", external: true },
   { href: "https://deropay.derod.org", label: "Docs", external: true },

@@ -4,35 +4,37 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   useEffect,
-  useMemo,
   useState,
   useSyncExternalStore,
   type ComponentType,
 } from "react";
 import {
   LayoutDashboard,
+  ShoppingCart,
+  FileClock,
   Receipt,
   Users,
   Package,
+  Warehouse,
   Ticket,
+  BadgePercent,
+  BadgeDollarSign,
   ShieldCheck,
   Sparkles,
   Gift,
   Puzzle,
+  Store,
   ArrowUpFromLine,
   Code2,
   Settings2,
   BarChart3,
   Inbox,
   Link2,
-  Pin,
-  PinOff,
   Zap,
 } from "lucide-react";
 import { ProfileMenu } from "./profile-menu";
 import { useLiveFetch } from "@/lib/useLiveFetch";
 import { useIsTestMode } from "@/lib/useIsTestMode";
-import { useSidebarPrefs } from "@/lib/useSidebarPrefs";
 import {
   getPluginNavItems,
   subscribeNavItems,
@@ -53,27 +55,69 @@ export type NavItem = {
   Icon: ComponentType<{ size?: number; strokeWidth?: number; style?: React.CSSProperties }>;
 };
 
-export const NAV_ITEMS: readonly NavItem[] = [
-  { id: "nav.dashboard", href: "/", label: "Dashboard", Icon: LayoutDashboard },
-  { id: "nav.notifications", href: "/notifications", label: "Notifications", Icon: Inbox },
-  { id: "nav.invoices", href: "/invoices", label: "Invoices", Icon: Receipt },
-  { id: "nav.payment-links", href: "/payment-links", label: "Payment links", Icon: Link2 },
-  { id: "nav.customers", href: "/customers", label: "Customers", Icon: Users },
-  { id: "nav.products", href: "/products", label: "Products", Icon: Package },
-  { id: "nav.gift-cards", href: "/gift-cards", label: "Gift Cards", Icon: Ticket },
-  { id: "nav.escrow", href: "/escrow", label: "Escrow", Icon: ShieldCheck },
-  { id: "nav.partners", href: "/partners", label: "Partners", Icon: Sparkles },
-  { id: "nav.credits", href: "/credits", label: "Credits", Icon: Gift },
-  { id: "nav.integrations", href: "/integrations", label: "Integrations", Icon: Puzzle },
-  { id: "nav.payouts", href: "/payouts", label: "Payouts", Icon: ArrowUpFromLine },
-  { id: "nav.developers", href: "/developers", label: "Developers", Icon: Code2 },
-  { id: "nav.automation", href: "/automation", label: "Automation", Icon: Zap },
-  { id: "nav.reports", href: "/reports", label: "Reports", Icon: BarChart3 },
-  { id: "nav.settings", href: "/settings", label: "Settings", Icon: Settings2 },
+export type NavSection = {
+  id: string;
+  label: string;
+  items: readonly NavItem[];
+};
+
+export const NAV_SECTIONS: readonly NavSection[] = [
+  {
+    id: "workspace",
+    label: "Workspace",
+    items: [
+      { id: "nav.dashboard", href: "/", label: "Dashboard", Icon: LayoutDashboard },
+      { id: "nav.notifications", href: "/notifications", label: "Notifications", Icon: Inbox },
+    ],
+  },
+  {
+    id: "commerce",
+    label: "Commerce",
+    items: [
+      { id: "nav.orders", href: "/orders", label: "Orders", Icon: ShoppingCart },
+      { id: "nav.draft-orders", href: "/draft-orders", label: "Draft Orders", Icon: FileClock },
+      { id: "nav.products", href: "/products", label: "Products", Icon: Package },
+      { id: "nav.inventory", href: "/inventory", label: "Inventory", Icon: Warehouse },
+      { id: "nav.price-lists", href: "/price-lists", label: "Price Lists", Icon: BadgeDollarSign },
+      { id: "nav.customers", href: "/customers", label: "Customers", Icon: Users },
+      { id: "nav.sales-channels", href: "/sales-channels", label: "Sales Channels", Icon: Store },
+    ],
+  },
+  {
+    id: "payments",
+    label: "Payments",
+    items: [
+      { id: "nav.invoices", href: "/invoices", label: "Invoices", Icon: Receipt },
+      { id: "nav.payment-links", href: "/payment-links", label: "Payment links", Icon: Link2 },
+      { id: "nav.escrow", href: "/escrow", label: "Escrow", Icon: ShieldCheck },
+      { id: "nav.payouts", href: "/payouts", label: "Payouts", Icon: ArrowUpFromLine },
+    ],
+  },
+  {
+    id: "growth",
+    label: "Growth",
+    items: [
+      { id: "nav.promotions", href: "/promotions", label: "Promotions", Icon: BadgePercent },
+      { id: "nav.gift-cards", href: "/gift-cards", label: "Gift Cards", Icon: Ticket },
+      { id: "nav.credits", href: "/credits", label: "Credits", Icon: Gift },
+      { id: "nav.partners", href: "/partners", label: "Partners", Icon: Sparkles },
+    ],
+  },
+  {
+    id: "platform",
+    label: "Platform",
+    items: [
+      { id: "nav.integrations", href: "/integrations", label: "Integrations", Icon: Puzzle },
+      { id: "nav.automation", href: "/automation", label: "Automation", Icon: Zap },
+      { id: "nav.developers", href: "/developers", label: "Developers", Icon: Code2 },
+      { id: "nav.reports", href: "/reports", label: "Reports", Icon: BarChart3 },
+      { id: "nav.settings", href: "/settings", label: "Settings", Icon: Settings2 },
+    ],
+  },
 ] as const;
 
-const NAV_BY_ID: Record<string, NavItem> = Object.fromEntries(
-  NAV_ITEMS.map((item) => [item.id, item]),
+export const NAV_ITEMS: readonly NavItem[] = NAV_SECTIONS.flatMap(
+  (section) => section.items,
 );
 
 /** Stable empty-array reference so `useSyncExternalStore`'s server snapshot
@@ -81,6 +125,10 @@ const NAV_BY_ID: Record<string, NavItem> = Object.fromEntries(
 const EMPTY_NAV: readonly PluginNavItem[] = Object.freeze([]);
 
 type HealthPayload = { status: string };
+
+function isActiveHref(href: string, path: string): boolean {
+  return href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -110,7 +158,6 @@ export function Sidebar() {
     { refreshInterval: 60_000, events: ["*"] },
   );
 
-  const { prefs, pin, unpin, isPinned } = useSidebarPrefs();
   const isDemo = useIsTestMode();
 
   // Phase 3 #29 — light-touch branding. If the active brand profile supplies
@@ -144,11 +191,6 @@ export function Sidebar() {
     () => EMPTY_NAV,
   );
 
-  const pinnedItems = useMemo(
-    () => prefs.pinned.map((id) => NAV_BY_ID[id]).filter((x): x is NavItem => Boolean(x)),
-    [prefs.pinned],
-  );
-
   const renderUnreadBadge = (href: string) => {
     if (href !== "/notifications") return null;
     if (!unreadCount || unreadCount <= 0) return null;
@@ -175,14 +217,10 @@ export function Sidebar() {
   };
 
   /**
-   * Render a single nav row. `variant` controls whether the pin toggle
-   * is exposed (main nav only — pinned/recent rows are already a
-   * product of the pin state or read-only history).
+   * Render a single nav row.
    */
-  const renderRow = (item: NavItem, variant: "main" | "pinned" | "recent") => {
-    const isActive =
-      item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-    const pinned = isPinned(item.id);
+  const renderRow = (item: NavItem) => {
+    const isActive = isActiveHref(item.href, pathname);
     const badge = renderUnreadBadge(item.href);
     const labelForAria =
       item.href === "/notifications" && unreadCount && unreadCount > 0
@@ -191,7 +229,7 @@ export function Sidebar() {
 
     return (
       <div
-        key={`${variant}:${item.id}`}
+        key={item.id}
         className="sidebar-row"
         style={{ position: "relative", display: "block" }}
       >
@@ -200,7 +238,6 @@ export function Sidebar() {
           aria-label={labelForAria}
           aria-current={isActive ? "page" : undefined}
           className={`sidebar-nav-item${isActive ? " is-active" : ""}`}
-          style={variant === "main" ? { paddingRight: 36 } : undefined}
         >
           <item.Icon
             size={18}
@@ -212,40 +249,6 @@ export function Sidebar() {
           </span>
           {badge}
         </Link>
-
-        {variant === "main" && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (pinned) unpin(item.id);
-              else pin(item.id);
-            }}
-            aria-label={pinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
-            aria-pressed={pinned}
-            className={`sidebar-pin-btn${pinned ? " is-pinned" : ""}`}
-            style={{
-              position: "absolute",
-              right: 8,
-              top: "50%",
-              transform: "translateY(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 22,
-              height: 22,
-              border: "none",
-              background: "transparent",
-              borderRadius: 4,
-              color: pinned ? "var(--dero)" : "var(--bone-quiet)",
-              cursor: "pointer",
-              padding: 0,
-            }}
-          >
-            {pinned ? <PinOff size={13} strokeWidth={1.8} /> : <Pin size={13} strokeWidth={1.6} />}
-          </button>
-        )}
       </div>
     );
   };
@@ -313,8 +316,7 @@ export function Sidebar() {
         </span>
       </div>
 
-      {/* Scroll region: pinned → recent → main nav.
-          Each subsection is its own <nav> for accessibility. */}
+      {/* Scroll region: grouped nav sections */}
       <div
         style={{
           flex: 1,
@@ -326,21 +328,19 @@ export function Sidebar() {
           overflowX: "hidden",
         }}
       >
-        {pinnedItems.length > 0 && (
-          <nav aria-label="Pinned pages" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <SectionEyebrow label="PINNED" />
-            {pinnedItems.map((item) => renderRow(item, "pinned"))}
-            <SectionDivider />
-          </nav>
-        )}
-
-        {/* Main nav — unchanged visual grammar; pin toggles are the
-            only additive element. */}
+        {/* Main nav — grouped by operating domain so the commerce stack
+            reads like a professional admin console instead of one long list. */}
         <nav
           aria-label="Primary"
           style={{ display: "flex", flexDirection: "column", gap: 2 }}
         >
-          {NAV_ITEMS.map((item) => renderRow(item, "main"))}
+          {NAV_SECTIONS.map((section, index) => (
+            <div key={section.id} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <SectionEyebrow label={section.label.toUpperCase()} />
+              {section.items.map((item) => renderRow(item))}
+              {index < NAV_SECTIONS.length - 1 && <SectionDivider />}
+            </div>
+          ))}
         </nav>
 
         {/* Plugin-contributed nav entries. Sits below the main nav so
@@ -361,9 +361,7 @@ export function Sidebar() {
               <PluginNavRow
                 key={item.id}
                 item={item}
-                isActive={
-                  pathname === item.href || pathname.startsWith(`${item.href}/`)
-                }
+                isActive={isActiveHref(item.href, pathname)}
               />
             ))}
           </nav>

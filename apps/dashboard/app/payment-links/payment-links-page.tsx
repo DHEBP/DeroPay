@@ -13,15 +13,26 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Copy, ExternalLink, Link2, X } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
+import { DashboardShell } from "@/components/dashboard-shell";
 import { EmptyState } from "@/components/empty-state";
-import { Button, Dialog, Input } from "@/components/ui";
+import { Button, Dialog, Input, ListShell } from "@/components/ui";
 import { TextArea } from "@/components/ui/Input";
 import { useToast } from "@/components/toast";
 import { formatDate } from "@/lib/format";
 import type { PaymentLink } from "@/lib/mock-payment-links";
 
 const ATOMIC_PER_DERO = 100_000n;
+
+type LinkStats = {
+  views: number;
+  invoiceStarts: number;
+  paidInvoices: number;
+  conversionRate: number;
+};
+
+type PaymentLinkRow = PaymentLink & {
+  stats?: LinkStats;
+};
 
 function formatDero(atomic: string | null | undefined): string {
   if (!atomic) return "Pay-what-you-want";
@@ -60,7 +71,7 @@ function publicUrl(l: PaymentLink): string {
 
 export function PaymentLinksPage() {
   const { toast } = useToast();
-  const [links, setLinks] = useState<PaymentLink[] | null>(null);
+  const [links, setLinks] = useState<PaymentLinkRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
@@ -71,7 +82,7 @@ export function PaymentLinksPage() {
         cache: "no-store",
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = (await r.json()) as { links: PaymentLink[] };
+      const data = (await r.json()) as { links: PaymentLinkRow[] };
       setLinks(data.links ?? []);
     } catch (err) {
       toast({
@@ -127,11 +138,13 @@ export function PaymentLinksPage() {
   const rows = useMemo(() => links ?? [], [links]);
 
   return (
-    <>
-      <PageHeader
-        title="Payment links"
-        subtitle="Shareable no-auth URLs that create an invoice when opened. Revenue lands in the same wallet as normal invoices."
-        action={
+    <DashboardShell>
+      <ListShell
+        index="03"
+        eyebrow="Payment Links"
+        title="Shareable checkout URLs."
+        subtitle="Create no-auth links that generate an invoice when opened. Revenue lands in the same wallet as normal invoices."
+        primaryAction={
           <Button
             variant="primary"
             leftIcon={<Plus size={14} />}
@@ -140,159 +153,193 @@ export function PaymentLinksPage() {
             Create payment link
           </Button>
         }
-      />
-
-      {loading && !links ? (
-        <div
-          style={{
-            padding: "48px 0",
-            textAlign: "center",
-            color: "var(--bone-dim)",
-            fontSize: 13,
-          }}
-        >
-          Loading…
-        </div>
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon={<Link2 size={28} />}
-          title="No payment links yet"
-          description="Create a link to collect payments from anyone with just a URL. Perfect for tip jars, donation pages, invoices-by-email, or one-off product links."
-          action={
-            <Button
-              variant="primary"
-              leftIcon={<Plus size={14} />}
-              onClick={() => setShowCreate(true)}
-            >
-              Create your first link
-            </Button>
-          }
-        />
-      ) : (
-        <div
-          style={{
-            border: "1px solid var(--ink-hair)",
-            borderRadius: "var(--radius)",
-            overflow: "hidden",
-            background: "var(--ink-elev)",
-          }}
-        >
-          <table
+      >
+        {loading && !links ? (
+          <div
             style={{
-              width: "100%",
-              borderCollapse: "collapse",
+              padding: "48px 0",
+              textAlign: "center",
+              color: "var(--bone-dim)",
               fontSize: 13,
             }}
           >
-            <thead>
-              <tr
-                style={{
-                  textAlign: "left",
-                  background: "var(--ink)",
-                  borderBottom: "1px solid var(--ink-hair)",
-                }}
+            Loading…
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={<Link2 size={28} />}
+            title="No payment links yet"
+            description="Create a link to collect payments from anyone with just a URL. Perfect for tip jars, donation pages, invoices-by-email, or one-off product links."
+            action={
+              <Button
+                variant="primary"
+                leftIcon={<Plus size={14} />}
+                onClick={() => setShowCreate(true)}
               >
-                <Th>Name</Th>
-                <Th>Amount</Th>
-                <Th>Uses</Th>
-                <Th>Status</Th>
-                <Th>Created</Th>
-                <Th style={{ textAlign: "right" }}>Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((l) => {
-                const status = linkStatus(l);
-                const limit = l.usageLimit ?? l.maxUses ?? null;
-                const used = l.usedCount ?? l.usesCount ?? 0;
-                return (
-                  <tr
-                    key={l.id}
-                    style={{
-                      borderBottom: "1px solid var(--ink-hair)",
-                    }}
-                  >
-                    <Td>
-                      <div style={{ fontWeight: 500 }}>{l.name}</div>
-                      {l.description && (
-                        <div
+                Create your first link
+              </Button>
+            }
+          />
+        ) : (
+          <div
+            style={{
+              border: "1px solid var(--ink-hair)",
+              borderRadius: "var(--radius)",
+              overflow: "hidden",
+              background: "var(--ink-elev)",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 13,
+              }}
+            >
+              <thead>
+                <tr
+                  style={{
+                    textAlign: "left",
+                    background: "var(--ink)",
+                    borderBottom: "1px solid var(--ink-hair)",
+                  }}
+                >
+                  <Th>Name</Th>
+                  <Th>Amount</Th>
+                  <Th>Views</Th>
+                  <Th>Starts</Th>
+                  <Th>Paid</Th>
+                  <Th>Conv.</Th>
+                  <Th>Status</Th>
+                  <Th>Created</Th>
+                  <Th style={{ textAlign: "right" }}>Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((l) => {
+                  const status = linkStatus(l);
+                  const limit = l.usageLimit ?? l.maxUses ?? null;
+                  const used = l.usedCount ?? l.usesCount ?? 0;
+                  const stats = l.stats;
+                  return (
+                    <tr
+                      key={l.id}
+                      style={{
+                        borderBottom: "1px solid var(--ink-hair)",
+                      }}
+                    >
+                      <Td>
+                        <div style={{ fontWeight: 500 }}>{l.name}</div>
+                        {l.description && (
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              color: "var(--bone-mute)",
+                              marginTop: 2,
+                              maxWidth: 320,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {l.description}
+                          </div>
+                        )}
+                      </Td>
+                      <Td>
+                        <span style={{ fontFamily: "var(--font-mono)" }}>
+                          {formatDero(l.amountAtomic)}
+                        </span>
+                      </Td>
+                      <Td>
+                        <span
                           style={{
-                            fontSize: 11.5,
-                            color: "var(--bone-mute)",
-                            marginTop: 2,
-                            maxWidth: 320,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--bone-dim)",
                           }}
                         >
-                          {l.description}
-                        </div>
-                      )}
-                    </Td>
-                    <Td>
-                      <span style={{ fontFamily: "var(--font-mono)" }}>
-                        {formatDero(l.amountAtomic)}
-                      </span>
-                    </Td>
-                    <Td>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          color: "var(--bone-dim)",
-                        }}
-                      >
-                        {used}
-                        {limit != null ? ` / ${limit}` : ""}
-                      </span>
-                    </Td>
-                    <Td>
-                      <StatusPill tone={status.tone}>{status.label}</StatusPill>
-                    </Td>
-                    <Td style={{ color: "var(--bone-dim)", fontSize: 12 }}>
-                      {formatDate(new Date(l.createdAt).toISOString())}
-                    </Td>
-                    <Td style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          gap: 4,
-                          alignItems: "center",
-                        }}
-                      >
-                        <IconButton
-                          title="Copy URL"
-                          onClick={() => void handleCopy(l)}
+                          {stats?.views ?? "—"}
+                        </span>
+                      </Td>
+                      <Td>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--bone-dim)",
+                          }}
                         >
-                          <Copy size={13} />
-                        </IconButton>
-                        <IconButton
-                          as="a"
-                          title="Open in new tab"
-                          href={publicUrl(l)}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          {used}
+                          {limit != null ? ` / ${limit}` : ""}
+                        </span>
+                      </Td>
+                      <Td>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--bone-dim)",
+                          }}
                         >
-                          <ExternalLink size={13} />
-                        </IconButton>
-                        {!l.revokedAt && (
+                          {stats?.paidInvoices ?? "—"}
+                        </span>
+                      </Td>
+                      <Td>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--bone-dim)",
+                          }}
+                        >
+                          {stats ? `${(stats.conversionRate * 100).toFixed(1)}%` : "—"}
+                        </span>
+                      </Td>
+                      <Td>
+                        <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                      </Td>
+                      <Td style={{ color: "var(--bone-dim)", fontSize: 12 }}>
+                        {formatDate(new Date(l.createdAt).toISOString())}
+                      </Td>
+                      <Td style={{ textAlign: "right" }}>
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            gap: 4,
+                            alignItems: "center",
+                          }}
+                        >
                           <IconButton
-                            title="Revoke"
-                            onClick={() => void handleRevoke(l)}
-                            tone="danger"
+                            title="Copy URL"
+                            onClick={() => void handleCopy(l)}
                           >
-                            <X size={13} />
+                            <Copy size={13} />
                           </IconButton>
-                        )}
-                      </div>
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                          <IconButton
+                            as="a"
+                            title="Open in new tab"
+                            href={publicUrl(l)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <ExternalLink size={13} />
+                          </IconButton>
+                          {!l.revokedAt && (
+                            <IconButton
+                              title="Revoke"
+                              onClick={() => void handleRevoke(l)}
+                              tone="danger"
+                            >
+                              <X size={13} />
+                            </IconButton>
+                          )}
+                        </div>
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ListShell>
 
       <CreateLinkDialog
         open={showCreate}
@@ -302,7 +349,7 @@ export function PaymentLinksPage() {
           void refresh();
         }}
       />
-    </>
+    </DashboardShell>
   );
 }
 

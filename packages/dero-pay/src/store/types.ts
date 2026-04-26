@@ -54,6 +54,53 @@ export type X402UsageBatchReservationResult = {
   results: X402UsageReservationResult[];
 };
 
+/** Public shareable link that creates invoices on demand. */
+export type PaymentLink = {
+  id: string;
+  slug: string;
+  productId?: string | null;
+  name: string;
+  description?: string | null;
+  amountAtomic?: string | null;
+  currency?: "DERO" | null;
+  ttlSeconds: number;
+  usedCount?: number;
+  usesCount: number;
+  usageLimit?: number | null;
+  maxUses?: number | null;
+  invoiceTemplateId?: string | null;
+  expiresAt?: number | null;
+  redirectUrl?: string | null;
+  revokedAt?: number | null;
+  createdAt: number;
+  archivedAt?: number | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type PaymentLinkStats = {
+  linkId: string;
+  views: number;
+  invoiceStarts: number;
+  paidInvoices: number;
+  conversionRate: number;
+};
+
+export type CreatePaymentLinkArgs = {
+  slug?: string;
+  name: string;
+  description?: string;
+  productId?: string;
+  amountAtomic?: bigint;
+  currency?: "DERO";
+  ttlSeconds?: number;
+  usageLimit?: number;
+  maxUses?: number;
+  invoiceTemplateId?: string;
+  expiresAt?: number;
+  redirectUrl?: string;
+  metadata?: Record<string, unknown>;
+};
+
 /**
  * Storage interface for invoices and payments.
  *
@@ -137,6 +184,32 @@ export type InvoiceStore = {
   reserveX402UsageBatch?(
     reservations: X402UsageReservation[]
   ): Promise<X402UsageBatchReservationResult>;
+
+  createPaymentLink?(args: CreatePaymentLinkArgs): PaymentLink;
+  listPaymentLinks?(filter?: {
+    includeArchived?: boolean;
+    includeRevoked?: boolean;
+    limit?: number;
+  }): PaymentLink[];
+  getPaymentLink?(id: string): PaymentLink | null;
+  getPaymentLinkBySlug?(slug: string): PaymentLink | null;
+  updatePaymentLink?(
+    id: string,
+    patch: {
+      name?: string;
+      description?: string | null;
+      amountAtomic?: bigint | null;
+      usageLimit?: number | null;
+      expiresAt?: number | null;
+      redirectUrl?: string | null;
+      metadata?: Record<string, unknown>;
+      invoiceTemplateId?: string | null;
+    }
+  ): PaymentLink;
+  revokePaymentLink?(id: string): PaymentLink;
+  incrementPaymentLinkUses?(id: string): PaymentLink;
+  recordPaymentLinkView?(idOrSlug: string): PaymentLinkStats | null;
+  getPaymentLinkStats?(id: string): PaymentLinkStats;
 
   /**
    * Close the store and release any resources.

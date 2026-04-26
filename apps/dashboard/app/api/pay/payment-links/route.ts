@@ -23,9 +23,14 @@ import { ensureStoreReady, getEngine } from "@/lib/engine";
 import { isTestMode } from "@/lib/test-mode-server";
 import {
   createMockPaymentLink,
+  getMockPaymentLinkStats,
   listMockPaymentLinks,
 } from "@/lib/mock-payment-links";
 import type { PaymentLink } from "@/lib/mock-payment-links";
+
+type PaymentLinkWithStats = PaymentLink & {
+  stats?: ReturnType<typeof getMockPaymentLinkStats>;
+};
 
 type LinksStore = {
   listPaymentLinks(filter?: {
@@ -43,6 +48,7 @@ type LinksStore = {
     invoiceTemplateId?: string;
     metadata?: Record<string, unknown>;
   }): PaymentLink;
+  getPaymentLinkStats?(id: string): ReturnType<typeof getMockPaymentLinkStats>;
 };
 
 async function resolveStore(): Promise<LinksStore | null> {
@@ -61,8 +67,12 @@ export async function GET(req: Request): Promise<Response> {
   const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 100;
 
   if (await isTestMode()) {
+    const links = listMockPaymentLinks({ includeRevoked, limit }).map((link) => ({
+      ...link,
+      stats: getMockPaymentLinkStats(link.id),
+    }));
     return NextResponse.json({
-      links: listMockPaymentLinks({ includeRevoked, limit }),
+      links,
     });
   }
 
@@ -75,7 +85,12 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    const links = store.listPaymentLinks({ includeRevoked, limit });
+    const links: PaymentLinkWithStats[] = store.listPaymentLinks({ includeRevoked, limit });
+    if ("getPaymentLinkStats" in store && typeof store.getPaymentLinkStats === "function") {
+      for (const link of links) {
+        link.stats = store.getPaymentLinkStats(link.id) as PaymentLinkWithStats["stats"];
+      }
+    }
     return NextResponse.json({ links });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

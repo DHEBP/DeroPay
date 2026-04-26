@@ -16,6 +16,8 @@ import { ensureStoreReady, getEngine } from "@/lib/engine";
 import { isTestMode } from "@/lib/test-mode-server";
 import {
   getMockPaymentLink,
+  getMockPaymentLinkStats,
+  recordMockPaymentLinkView,
   revokeMockPaymentLink,
   updateMockPaymentLink,
 } from "@/lib/mock-payment-links";
@@ -24,6 +26,8 @@ import type { PaymentLink } from "@/lib/mock-payment-links";
 type LinksStore = {
   getPaymentLink(id: string): PaymentLink | null;
   getPaymentLinkBySlug(slug: string): PaymentLink | null;
+  recordPaymentLinkView?(idOrSlug: string): ReturnType<typeof getMockPaymentLinkStats>;
+  getPaymentLinkStats?(id: string): ReturnType<typeof getMockPaymentLinkStats>;
   updatePaymentLink(
     id: string,
     patch: {
@@ -64,7 +68,8 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
     if (!link) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    return NextResponse.json({ link });
+    const stats = recordMockPaymentLinkView(id) ?? getMockPaymentLinkStats(link.id);
+    return NextResponse.json({ link: { ...link, stats } });
   }
 
   const store = await resolveStore();
@@ -78,7 +83,13 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
   if (!link) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  return NextResponse.json({ link });
+  const stats =
+    typeof store.recordPaymentLinkView === "function"
+      ? store.recordPaymentLinkView(link.id)
+      : typeof store.getPaymentLinkStats === "function"
+        ? store.getPaymentLinkStats(link.id)
+        : undefined;
+  return NextResponse.json({ link: { ...link, ...(stats ? { stats } : {}) } });
 }
 
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {

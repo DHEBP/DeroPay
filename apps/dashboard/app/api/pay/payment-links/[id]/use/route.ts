@@ -33,6 +33,10 @@ import {
 import { createMockInvoice } from "@/lib/mock-data";
 import { getMockInvoiceTemplate } from "@/lib/mock-invoice-templates";
 import { publish } from "@/lib/dero-pay-events-shim";
+import {
+  checkRateLimit,
+  clientIpFromRequest,
+} from "@/lib/payment-link-rate-limit";
 import type { PaymentLink } from "@/lib/mock-payment-links";
 import type { InvoiceTemplate } from "@/lib/mock-invoice-templates";
 
@@ -78,8 +82,37 @@ function serializeInvoice(inv: Record<string, unknown>): Record<string, unknown>
 
 type Ctx = { params: Promise<{ id: string }> };
 
+const MAX_PAYMENT_LINK_AMOUNT_ATOMIC = 1_000_000_000_000_000_000n; // 1,000,000 DERO
+
+function rateLimitResponse(result: ReturnType<typeof checkRateLimit>): Response | null {
+  if (result.allowed) return null;
+  return NextResponse.json(
+    {
+      error: "rate_limited",
+      message: `Too many payment-link attempts. Try again in ${result.retryAfterSeconds}s.`,
+    },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(result.retryAfterSeconds),
+        "X-RateLimit-Limit": String(result.limit),
+      },
+    },
+  );
+}
+
 export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   const { id } = await ctx.params;
+
+  const ip = clientIpFromRequest(req);
+  const ipLimit = rateLimitResponse(
+    checkRateLimit(`payment-link:ip:${ip}`, 10, 60_000),
+  );
+  if (ipLimit) return ipLimit;
+  const linkLimit = rateLimitResponse(
+    checkRateLimit(`payment-link:link:${id}`, 30, 60 * 60_000),
+  );
+  if (linkLimit) return linkLimit;
 
   // Parse optional body (pay-what-you-want amount). Empty body is fine.
   let body: { amount?: unknown } = {};
@@ -312,6 +345,15 @@ function resolveAmount(
   try {
     const v = BigInt(payerAmount as string | number);
     if (v <= 0n) throw new Error();
+    if (v > MAX_PAYMENT_LINK_AMOUNT_ATOMIC) {
+      return NextResponse.json(
+        {
+          error: "amount_too_large",
+          message: "Amount exceeds the payment-link maximum.",
+        },
+        { status: 400 },
+      );
+    }
     return v;
   } catch {
     return NextResponse.json(

@@ -1,31 +1,14 @@
 "use client";
 
-/**
- * Public pay-with-link page (Phase 3 #32).
- *
- * States:
- *   1. `loading`   — fetching the link details
- *   2. `error`     — link missing / revoked / expired / over-limit
- *   3. `ready`     — show link details + "Pay with DERO" CTA (plus amount
- *                    input for pay-what-you-want links)
- *   4. `invoice`   — invoice created; QR + integrated address + live status
- *   5. `confirmed` — payment confirmed; optional redirect countdown
- *
- * Polling strategy: when an invoice exists we poll `/api/pay/status?
- * invoiceId=...` every 4s until the invoice enters a terminal state.
- * Stops on unmount.
- */
-
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Clipboard, Copy, Loader2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PaymentLink } from "@/lib/mock-payment-links";
 
 type Props = {
-  /** The `<link>` path segment — either a short token (slug) or `pl_xxx` id. */
   linkId: string;
 };
 
-/** Invoice shape post-serialization (bigints as strings). */
 type PublicInvoice = {
   id: string;
   name: string;
@@ -51,18 +34,32 @@ const ATOMIC_PER_DERO = 100_000n;
 
 function formatDero(atomic: string | bigint | null | undefined): string {
   if (atomic == null) return "—";
-  let v: bigint;
+  let value: bigint;
   try {
-    v = typeof atomic === "bigint" ? atomic : BigInt(atomic);
+    value = typeof atomic === "bigint" ? atomic : BigInt(atomic);
   } catch {
     return String(atomic);
   }
-  const whole = v / ATOMIC_PER_DERO;
-  const frac = v % ATOMIC_PER_DERO;
-  if (frac === 0n) return `${whole.toString()} DERO`;
-  // Trim trailing zeroes from the 12-digit fractional part.
-  const fracStr = frac.toString().padStart(5, "0").replace(/0+$/, "");
-  return `${whole.toString()}.${fracStr} DERO`;
+  const whole = value / ATOMIC_PER_DERO;
+  const frac = value % ATOMIC_PER_DERO;
+  if (frac === 0n) return `${whole.toString()}.00000`;
+  return `${whole.toString()}.${frac.toString().padStart(5, "0").slice(0, 5)}`;
+}
+
+function parseDeroInput(value: string): bigint | null {
+  const match = value.trim().match(/^(\d+)(?:\.(\d{1,5}))?$/);
+  if (!match) return null;
+  const whole = BigInt(match[1] ?? "0");
+  const frac = BigInt((match[2] ?? "").padEnd(5, "0"));
+  const atomic = whole * ATOMIC_PER_DERO + frac;
+  return atomic > 0n ? atomic : null;
+}
+
+function secondsUntil(iso: string): string {
+  const delta = Math.max(0, Math.floor((new Date(iso).getTime() - Date.now()) / 1000));
+  const minutes = Math.floor(delta / 60);
+  const seconds = delta % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 export function PayPage({ linkId }: Props) {
@@ -71,56 +68,58 @@ export function PayPage({ linkId }: Props) {
   >("loading");
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<PaymentLink | null>(null);
-  const [payerAmount, setPayerAmount] = useState("");
+  const [payerAmount, setPayerAmount] = useState("5.0");
   const [invoice, setInvoice] = useState<PublicInvoice | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [redirectIn, setRedirectIn] = useState<number | null>(null);
 
-  // Fetch the link on mount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(
+        const response = await fetch(
           `/api/pay/payment-links/${encodeURIComponent(linkId)}`,
-          { cache: "no-store" }
+          { cache: "no-store" },
         );
         if (cancelled) return;
-        if (r.status === 404) {
-          setError("This payment link doesn't exist.");
+        if (response.status === 404) {
+          setError("This payment link does not exist.");
           setState("error");
           return;
         }
-        if (!r.ok) {
-          setError(`Failed to load link (HTTP ${r.status})`);
+        if (!response.ok) {
+          setError(`Failed to load link (HTTP ${response.status})`);
           setState("error");
           return;
         }
-        const data = (await r.json()) as { link: PaymentLink };
-        const l = data.link;
 
-        if (l.revokedAt) {
-          setLink(l);
+        const data = (await response.json()) as { link: PaymentLink };
+        const nextLink = data.link;
+        if (nextLink.revokedAt) {
+          setLink(nextLink);
           setError("This payment link has been revoked.");
           setState("error");
           return;
         }
-        if (l.expiresAt && l.expiresAt <= Date.now()) {
-          setLink(l);
+        if (nextLink.expiresAt && nextLink.expiresAt <= Date.now()) {
+          setLink(nextLink);
           setError("This payment link has expired.");
           setState("error");
           return;
         }
-        const limit = l.usageLimit ?? l.maxUses ?? null;
-        const used = l.usedCount ?? l.usesCount ?? 0;
+        const limit = nextLink.usageLimit ?? nextLink.maxUses ?? null;
+        const used = nextLink.usedCount ?? nextLink.usesCount ?? 0;
         if (limit !== null && used >= limit) {
-          setLink(l);
+          setLink(nextLink);
           setError("This payment link has reached its usage limit.");
           setState("error");
           return;
         }
 
-        setLink(l);
+        setLink(nextLink);
+        if (nextLink.amountAtomic) {
+          setPayerAmount(formatDero(nextLink.amountAtomic));
+        }
         setState("ready");
       } catch (err) {
         if (cancelled) return;
@@ -133,7 +132,7 @@ export function PayPage({ linkId }: Props) {
     };
   }, [linkId]);
 
-  const isPWYW = useMemo(() => !link?.amountAtomic, [link?.amountAtomic]);
+  const isPayWhatYouWant = useMemo(() => !link?.amountAtomic, [link?.amountAtomic]);
 
   const handlePay = useCallback(async () => {
     if (!link) return;
@@ -141,51 +140,37 @@ export function PayPage({ linkId }: Props) {
     setError(null);
     try {
       const body: Record<string, unknown> = {};
-      if (isPWYW) {
-        const trimmed = payerAmount.trim();
-        if (!trimmed) {
-          setError("Enter an amount.");
-          setSubmitting(false);
-          return;
-        }
-        let atomic: bigint;
-        try {
-          // Parse as DERO with up to 5 decimals, convert to atomic units.
-          const m = trimmed.match(/^(\d+)(?:\.(\d{1,12}))?$/);
-          if (!m) throw new Error("Invalid amount format");
-          const whole = BigInt(m[1]);
-          const fracStr = (m[2] ?? "").padEnd(5, "0");
-          atomic = whole * ATOMIC_PER_DERO + BigInt(fracStr);
-          if (atomic <= 0n) throw new Error("Amount must be positive");
-        } catch {
-          setError("Enter a positive amount in DERO, e.g. `5` or `0.5`.");
+      if (isPayWhatYouWant) {
+        const atomic = parseDeroInput(payerAmount);
+        if (atomic === null) {
+          setError("Enter a positive DERO amount, like 5 or 0.5.");
           setSubmitting(false);
           return;
         }
         body.amount = atomic.toString();
       }
-      const r = await fetch(
+
+      const response = await fetch(
         `/api/pay/payment-links/${encodeURIComponent(linkId)}/use`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
           cache: "no-store",
-        }
+        },
       );
-      const data = (await r.json()) as {
+      const data = (await response.json()) as {
         invoice?: PublicInvoice;
         error?: string;
         message?: string;
       };
-      if (r.status === 410) {
+      if (response.status === 410) {
         setError(data.message ?? "This link is no longer accepting payments.");
         setState("error");
         return;
       }
-      if (!r.ok || !data.invoice) {
-        setError(data.message ?? `Failed to create invoice (HTTP ${r.status})`);
-        setSubmitting(false);
+      if (!response.ok || !data.invoice) {
+        setError(data.message ?? `Failed to create invoice (HTTP ${response.status})`);
         return;
       }
       setInvoice(data.invoice);
@@ -195,263 +180,214 @@ export function PayPage({ linkId }: Props) {
     } finally {
       setSubmitting(false);
     }
-  }, [link, linkId, isPWYW, payerAmount]);
+  }, [isPayWhatYouWant, link, linkId, payerAmount]);
 
-  // Poll invoice status while an invoice is alive.
   useEffect(() => {
     if (!invoice || state === "confirmed") return;
     let cancelled = false;
     const tick = async () => {
       try {
-        const r = await fetch(
+        const response = await fetch(
           `/api/pay/status?invoiceId=${encodeURIComponent(invoice.id)}`,
-          { cache: "no-store" }
+          { cache: "no-store" },
         );
-        if (!r.ok) return;
-        const data = (await r.json()) as PublicInvoice;
+        if (!response.ok) return;
+        const data = (await response.json()) as PublicInvoice;
         if (cancelled) return;
         setInvoice(data);
-        if (data.status === "completed") {
-          setState("confirmed");
-        } else if (data.status === "expired") {
+        if (data.status === "completed") setState("confirmed");
+        if (data.status === "expired") {
           setError("The invoice expired before payment was received.");
           setState("error");
         }
       } catch {
-        // Transient — let the next tick retry.
+        // Let the next polling tick retry.
       }
     };
-    const intervalId = setInterval(tick, 4000);
-    // Fire one immediately so confirmation counts update quickly.
+    const interval = window.setInterval(tick, 4000);
     void tick();
     return () => {
       cancelled = true;
-      clearInterval(intervalId);
+      window.clearInterval(interval);
     };
   }, [invoice, invoice?.id, state]);
 
-  // Redirect countdown after confirmation.
   useEffect(() => {
-    if (state !== "confirmed") return;
-    if (!link?.redirectUrl) return;
+    if (state !== "confirmed" || !link?.redirectUrl) return;
     setRedirectIn(3);
-    const t0 = setInterval(() => {
+    const interval = window.setInterval(() => {
       setRedirectIn((prev) => (prev == null ? prev : prev - 1));
     }, 1000);
-    const t1 = setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       window.location.href = link.redirectUrl!;
     }, 3000);
     return () => {
-      clearInterval(t0);
-      clearTimeout(t1);
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
     };
-  }, [state, link?.redirectUrl]);
+  }, [link?.redirectUrl, state]);
 
   return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 480,
-        background: "var(--ink-elev-1)",
-        border: "1px solid var(--ink-hair)",
-        borderRadius: "var(--radius, 12px)",
-        padding: 28,
-        boxShadow:
-          "0 24px 60px -28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25)",
-      }}
-    >
-      {state === "loading" && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: 220,
-            color: "var(--bone-dim)",
-            fontSize: 13,
-          }}
-        >
-          Loading…
-        </div>
-      )}
-
-      {state === "error" && (
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 36,
-              marginBottom: 12,
-              color: "var(--vermilion)",
-            }}
-            aria-hidden
-          >
-            ✕
-          </div>
-          <h1
-            style={{
-              fontSize: 18,
-              fontWeight: 600,
-              margin: 0,
-              marginBottom: 8,
-            }}
-          >
-            Can't accept payment
-          </h1>
-          <p style={{ color: "var(--bone-dim)", fontSize: 13, margin: 0 }}>
-            {error ?? "This link is unavailable."}
-          </p>
-        </div>
-      )}
-
+    <CheckoutCard>
+      {state === "loading" && <LoadingState />}
+      {state === "error" && <ErrorState message={error ?? "This link is unavailable."} />}
       {state === "ready" && link && (
-        <div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 600,
-              margin: 0,
-              marginBottom: 6,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {link.name}
-          </h1>
-          {link.description && (
-            <p
-              style={{
-                color: "var(--bone-dim)",
-                fontSize: 13.5,
-                margin: 0,
-                marginBottom: 20,
-                lineHeight: 1.5,
-              }}
-            >
-              {link.description}
-            </p>
-          )}
-
-          <div
-            style={{
-              padding: "18px 16px",
-              borderRadius: 10,
-              background: "var(--ink-elev-2)",
-              border: "1px solid var(--ink-hair)",
-              marginBottom: 20,
-              textAlign: "center",
-            }}
-          >
-            {isPWYW ? (
-              <>
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    color: "var(--bone-quiet)",
-                    marginBottom: 10,
-                  }}
-                >
-                  Enter amount (DERO)
-                </div>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={payerAmount}
-                  onChange={(e) => setPayerAmount(e.target.value)}
-                  placeholder="5.0"
-                  aria-label="Amount in DERO"
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    fontSize: 22,
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 600,
-                    textAlign: "center",
-                    background: "var(--ink-deep)",
-                    color: "var(--bone)",
-                    border: "1px solid var(--ink-hair)",
-                    borderRadius: 8,
-                  }}
-                />
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    color: "var(--bone-quiet)",
-                    marginBottom: 6,
-                  }}
-                >
-                  Amount
-                </div>
-                <div
-                  style={{
-                    fontSize: 28,
-                    fontWeight: 600,
-                    fontFamily: "var(--font-mono)",
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {formatDero(link.amountAtomic)}
-                </div>
-              </>
-            )}
-          </div>
-
-          {error && (
-            <div
-              style={{
-                padding: "10px 12px",
-                marginBottom: 12,
-                borderRadius: 8,
-                background: "rgba(224, 93, 68, 0.1)",
-                color: "var(--vermilion)",
-                fontSize: 13,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={handlePay}
-            disabled={submitting}
-            style={{
-              width: "100%",
-              height: 46,
-              background: "var(--dero)",
-              color: "var(--ink-deep)",
-              border: "none",
-              borderRadius: 10,
-              fontSize: 15,
-              fontWeight: 600,
-              letterSpacing: "-0.005em",
-              cursor: submitting ? "wait" : "pointer",
-              opacity: submitting ? 0.7 : 1,
-            }}
-          >
-            {submitting ? "Creating invoice…" : "Pay with DERO"}
-          </button>
-        </div>
+        <ReadyState
+          link={link}
+          amount={payerAmount}
+          isPayWhatYouWant={isPayWhatYouWant}
+          error={error}
+          submitting={submitting}
+          onAmountChange={setPayerAmount}
+          onPay={handlePay}
+        />
       )}
-
       {(state === "invoice" || state === "confirmed") && invoice && (
-        <InvoiceView
+        <InvoiceState
           invoice={invoice}
           link={link}
           confirmed={state === "confirmed"}
           redirectIn={redirectIn}
         />
       )}
+    </CheckoutCard>
+  );
+}
+
+const IS_DEMO_MODE =
+  typeof process !== "undefined" &&
+  process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+function CheckoutCard({ children }: { children: React.ReactNode }) {
+  const isDemo =
+    IS_DEMO_MODE ||
+    (typeof window !== "undefined" && window.location.search.includes("demo=true"));
+
+  return (
+    <section
+      style={{
+        width: "100%",
+        maxWidth: 420,
+        margin: "0 auto",
+        overflow: "hidden",
+        borderRadius: 16,
+        background: "#0a0f0d",
+        border: "1px solid rgba(37, 211, 145, 0.18)",
+        boxShadow: "0 32px 80px rgba(0, 0, 0, 0.55)",
+      }}
+    >
+      {isDemo && (
+        <div
+          style={{
+            height: 28,
+            display: "grid",
+            placeItems: "center",
+            background: "linear-gradient(90deg, #14b978, #25d391)",
+            color: "#03120b",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.01em",
+          }}
+        >
+          Simulation — no real DERO is transferred
+        </div>
+      )}
+      <header
+        style={{
+          height: 56,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "0 24px",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <DeroGlyph />
+        <strong style={{ color: "#f3f6ef", fontSize: 15, fontWeight: 600 }}>
+          DeroPay
+        </strong>
+      </header>
+      <div style={{ padding: "28px 24px 24px" }}>{children}</div>
+      <footer
+        style={{
+          padding: "16px 24px",
+          borderTop: "1px solid rgba(255,255,255,0.06)",
+          textAlign: "center",
+          color: "rgba(243, 246, 239, 0.38)",
+          fontSize: 11.5,
+        }}
+      >
+        Powered by <span style={{ color: "#25d391" }}>DeroPay</span> — Private
+        payments on DERO
+      </footer>
+    </section>
+  );
+}
+
+function ReadyState({
+  link,
+  amount,
+  isPayWhatYouWant,
+  error,
+  submitting,
+  onAmountChange,
+  onPay,
+}: {
+  link: PaymentLink;
+  amount: string;
+  isPayWhatYouWant: boolean;
+  error: string | null;
+  submitting: boolean;
+  onAmountChange: (value: string) => void;
+  onPay: () => void;
+}) {
+  return (
+    <div>
+      <TitleBlock title={link.name} subtitle={link.description ?? undefined} />
+      <div
+        style={{
+          padding: "16px",
+          borderRadius: 12,
+          background: "rgba(94, 196, 134, 0.06)",
+          border: "1px solid rgba(94, 196, 134, 0.12)",
+          marginBottom: 16,
+          textAlign: "center",
+        }}
+      >
+        <div style={eyebrowStyle}>Amount (DERO)</div>
+        {isPayWhatYouWant ? (
+          <input
+            value={amount}
+            onChange={(event) => onAmountChange(event.target.value)}
+            inputMode="decimal"
+            aria-label="Amount in DERO"
+            style={{
+              width: "100%",
+              height: 48,
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 8,
+              background: "#020706",
+              color: "#f3f6ef",
+              textAlign: "center",
+              fontFamily: "var(--font-mono)",
+              fontSize: 21,
+              fontWeight: 700,
+              outline: "none",
+            }}
+          />
+        ) : (
+          <AmountText amount={link.amountAtomic} />
+        )}
+      </div>
+      {error && <InlineError message={error} />}
+      <PrimaryButton onClick={onPay} disabled={submitting}>
+        {submitting ? "Creating invoice..." : "Pay with DERO"}
+      </PrimaryButton>
     </div>
   );
 }
 
-function InvoiceView({
+function InvoiceState({
   invoice,
   link,
   confirmed,
@@ -463,161 +399,357 @@ function InvoiceView({
   redirectIn: number | null;
 }) {
   const confirmations =
-    invoice.payments?.reduce((m, p) => Math.max(m, p.confirmations), 0) ?? 0;
-  const required = invoice.requiredConfirmations;
+    invoice.payments?.reduce((max, payment) => Math.max(max, payment.confirmations), 0) ??
+    0;
+  const isDemo =
+    IS_DEMO_MODE ||
+    (typeof window !== "undefined" && window.location.search.includes("demo=true"));
+
+  const handleSimulate = async () => {
+    try {
+      await fetch(`/api/pay/simulate?invoiceId=${encodeURIComponent(invoice.id)}`, {
+        method: "POST",
+      });
+    } catch {
+      // Simulation endpoint may not exist; ignore
+    }
+  };
 
   return (
     <div>
-      <h1
-        style={{
-          fontSize: 18,
-          fontWeight: 600,
-          margin: 0,
-          marginBottom: 4,
-          letterSpacing: "-0.005em",
-        }}
-      >
-        {link?.name ?? invoice.name}
-      </h1>
-      <div
-        style={{
-          fontSize: 12,
-          color: "var(--bone-mute)",
-          fontFamily: "var(--font-mono)",
-          marginBottom: 18,
-        }}
-      >
-        {formatDero(invoice.amount)} ·{" "}
-        {confirmed
-          ? "Confirmed"
-          : invoice.status === "confirming"
-            ? `Confirming (${confirmations}/${required})`
-            : invoice.amountReceived && invoice.amountReceived !== "0"
-              ? "Detected — waiting for confirmations"
-              : "Waiting for payment"}
-      </div>
-
+      <TitleBlock title={link?.name ?? invoice.name} subtitle={link?.description ?? undefined} />
       {!confirmed && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 10,
-            padding: 20,
-            background: "#ffffff",
-            borderRadius: 12,
-            border: "1px solid var(--ink-hair-strong)",
-            marginBottom: 16,
-          }}
-        >
-          <QRCodeSVG
-            value={invoice.integratedAddress}
-            size={240}
-            bgColor="#ffffff"
-            fgColor="#0a0c0a"
-            level="M"
-            marginSize={2}
-            role="img"
-            aria-label="Payment QR code"
-          />
+        <div style={{ display: "grid", placeItems: "center", marginBottom: 20 }}>
           <div
             style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              color: "#6b6a60",
+              padding: 12,
+              borderRadius: 14,
+              background: "#ffffff",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.4)",
             }}
           >
-            Scan with DERO wallet
+            <QRCodeSVG
+              value={invoice.integratedAddress}
+              size={200}
+              bgColor="#ffffff"
+              fgColor="#0a0c0a"
+              level="M"
+              marginSize={2}
+              role="img"
+              aria-label="Payment QR code"
+            />
           </div>
         </div>
       )}
-
-      {confirmed ? (
+      <AmountText amount={invoice.amount} large />
+      {!confirmed ? (
+        <>
+          <div style={eyebrowStyle}>Send to this address:</div>
+          <AddressBlock value={invoice.integratedAddress} />
+          <StatusPanel>
+            {invoice.status === "confirming"
+              ? `Confirming (${confirmations}/${invoice.requiredConfirmations})`
+              : invoice.amountReceived && invoice.amountReceived !== "0"
+                ? "Payment detected..."
+                : "⏳ Waiting for payment..."}
+          </StatusPanel>
+          <div
+            style={{
+              marginTop: 10,
+              color: "rgba(243,246,239,0.42)",
+              fontSize: 12,
+              textAlign: "center",
+            }}
+          >
+            Expires in {secondsUntil(invoice.expiresAt)}
+          </div>
+          {isDemo && (
+            <button
+              type="button"
+              onClick={handleSimulate}
+              style={{
+                width: "100%",
+                marginTop: 14,
+                height: 44,
+                border: "1.5px solid #25d391",
+                borderRadius: 10,
+                background: "transparent",
+                color: "#25d391",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Simulate Payment
+            </button>
+          )}
+        </>
+      ) : (
         <div
           style={{
             textAlign: "center",
-            padding: "18px 16px",
-            borderRadius: 10,
-            background: "rgba(94, 196, 134, 0.1)",
-            border: "1px solid rgba(94, 196, 134, 0.3)",
+            padding: "20px 16px",
+            borderRadius: 12,
+            background: "rgba(37, 211, 145, 0.08)",
+            border: "1px solid rgba(37, 211, 145, 0.25)",
           }}
         >
-          <div
-            style={{ fontSize: 34, color: "var(--dero)", marginBottom: 6 }}
-            aria-hidden
-          >
-            ✓
+          <Check size={36} color="#25d391" />
+          <div style={{ marginTop: 8, color: "#f3f6ef", fontSize: 17, fontWeight: 700 }}>
+            Payment Confirmed
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
-            Payment confirmed
-          </div>
-          <div style={{ fontSize: 12, color: "var(--bone-dim)" }}>
+          <div style={{ marginTop: 6, color: "rgba(243,246,239,0.55)", fontSize: 13 }}>
             Thank you for paying with DERO.
           </div>
           {redirectIn !== null && link?.redirectUrl && (
-            <div
-              style={{
-                marginTop: 10,
-                fontSize: 11,
-                color: "var(--bone-mute)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              Redirecting in {Math.max(0, redirectIn)}s…
+            <div style={{ marginTop: 12, color: "rgba(243,246,239,0.42)", fontSize: 11.5 }}>
+              Redirecting in {Math.max(0, redirectIn)}s...
             </div>
           )}
         </div>
-      ) : (
-        <>
-          <div
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color: "var(--bone-quiet)",
-              marginBottom: 6,
-            }}
-          >
-            Integrated address
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              background: "var(--ink-elev-2)",
-              padding: 10,
-              borderRadius: 6,
-              wordBreak: "break-all",
-              color: "var(--bone)",
-              border: "1px solid var(--ink-hair)",
-            }}
-          >
-            {invoice.integratedAddress}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(invoice.integratedAddress);
-            }}
-            style={{
-              marginTop: 10,
-              width: "100%",
-              height: 36,
-              background: "var(--ink-elev-2)",
-              color: "var(--bone)",
-              border: "1px solid var(--ink-hair)",
-              borderRadius: 8,
-              fontSize: 12.5,
-              cursor: "pointer",
-            }}
-          >
-            Copy address
-          </button>
-        </>
       )}
     </div>
   );
 }
+
+function LoadingState() {
+  return (
+    <div style={{ minHeight: 260, display: "grid", placeItems: "center", color: "#25d391" }}>
+      <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div style={{ minHeight: 220, display: "grid", placeItems: "center", textAlign: "center" }}>
+      <div>
+        <div style={{ color: "#e05d44", fontSize: 36, marginBottom: 10 }}>×</div>
+        <h1 style={{ margin: 0, color: "#f3f6ef", fontSize: 19 }}>Cannot accept payment</h1>
+        <p style={{ margin: "8px 0 0", color: "rgba(243,246,239,0.58)", fontSize: 13 }}>
+          {message}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TitleBlock({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div style={{ textAlign: "center", marginBottom: 20 }}>
+      <h1
+        style={{
+          margin: 0,
+          color: "#f3f6ef",
+          fontSize: 22,
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {title}
+      </h1>
+      {subtitle && (
+        <p
+          style={{
+            margin: "6px auto 0",
+            maxWidth: 300,
+            color: "rgba(243,246,239,0.5)",
+            fontSize: 13,
+          }}
+        >
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AmountText({
+  amount,
+  large = false,
+}: {
+  amount: string | bigint | null | undefined;
+  large?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        marginBottom: large ? 18 : 0,
+        textAlign: "center",
+        color: "#f3f6ef",
+        fontFamily: "var(--font-mono)",
+        fontSize: large ? 34 : 26,
+        fontWeight: 800,
+        letterSpacing: "-0.03em",
+      }}
+    >
+      {formatDero(amount)}{" "}
+      <span
+        style={{
+          color: "#25d391",
+          fontSize: large ? 14 : 11,
+          fontWeight: 600,
+          letterSpacing: "0.02em",
+        }}
+      >
+        DERO
+      </span>
+    </div>
+  );
+}
+
+function AddressBlock({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        await navigator.clipboard.writeText(value);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      }}
+      style={{
+        width: "100%",
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        alignItems: "center",
+        gap: 12,
+        padding: "12px 14px",
+        borderRadius: 10,
+        border: "1px solid rgba(255,255,255,0.1)",
+        background: "#060a08",
+        color: "#f3f6ef",
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <code
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          lineHeight: 1.4,
+          wordBreak: "break-all",
+          color: "rgba(243,246,239,0.85)",
+        }}
+      >
+        {value}
+      </code>
+      {copied ? (
+        <Check size={16} color="#25d391" />
+      ) : (
+        <Clipboard size={16} color="rgba(243,246,239,0.45)" />
+      )}
+    </button>
+  );
+}
+
+function StatusPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        marginTop: 16,
+        height: 44,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        borderRadius: 10,
+        border: "1.5px solid rgba(37,211,145,0.5)",
+        background: "rgba(37,211,145,0.06)",
+        color: "#f3f6ef",
+        fontSize: 13.5,
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: "100%",
+        height: 48,
+        border: "none",
+        borderRadius: 10,
+        background: "linear-gradient(90deg, #25d391, #6ae0a8)",
+        color: "#03120b",
+        fontWeight: 900,
+        cursor: disabled ? "wait" : "pointer",
+        opacity: disabled ? 0.75 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function InlineError({ message }: { message: string }) {
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        marginBottom: 12,
+        borderRadius: 8,
+        background: "rgba(224, 93, 68, 0.12)",
+        border: "1px solid rgba(224, 93, 68, 0.24)",
+        color: "#ff947f",
+        fontSize: 12.5,
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
+function DeroGlyph() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 100 100"
+      width={24}
+      height={24}
+      aria-hidden
+    >
+      <path
+        d="M23,34.4v31.1l27,15.6,27-15.6v-31.1l-27-15.6-27,15.6ZM50,76.8l-6.1-3.5c.1-.8,2.3-14.4,2.4-15.8l-4.6-2.7v-9.6l8.3-4.8,8.3,4.8v9.6l-4.5,2.6c.2,1.4,2.3,15.1,2.4,15.8l-6.2,3.6ZM73.2,63.4l-13.4,7.7c0-.5-1.6-10.3-1.8-11.7l4.2-2.4v-14.1l-12.2-7-12.2,7v14.1l4.1,2.4c-.2,1.4-1.7,11.2-1.8,11.7l-13.3-7.7v-26.8l23.2-13.4,23.2,13.4v26.8Z"
+        fill="#25d391"
+      />
+      <path
+        d="M50,.3L7,25.2v49.7l43,24.8,43-24.8V25.2L50,.3ZM77,65.6l-27,15.6-27-15.6v-31.1l27-15.6,27,15.6v31.1Z"
+        fill="#0a0f0d"
+      />
+      <path
+        d="M26.8,36.6v26.8l13.3,7.7c0-.4,1.6-10.3,1.8-11.7l-4.1-2.4v-14.1l12.2-7,12.2,7v14.1l-4.2,2.4c.2,1.4,1.7,11.2,1.8,11.7l13.4-7.7v-26.8l-23.2-13.4-23.2,13.4Z"
+        fill="#0a0f0d"
+      />
+      <path
+        d="M58.3,54.8v-9.6l-8.3-4.8-8.3,4.8v9.6l4.6,2.7c-.2,1.4-2.3,15-2.4,15.8l6.1,3.5,6.2-3.6c-.1-.7-2.2-14.4-2.4-15.8l4.5-2.6Z"
+        fill="#0a0f0d"
+      />
+    </svg>
+  );
+}
+
+const eyebrowStyle: React.CSSProperties = {
+  marginBottom: 10,
+  color: "rgba(243,246,239,0.45)",
+  fontFamily: "var(--font-mono)",
+  fontSize: 10,
+  fontWeight: 500,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+};

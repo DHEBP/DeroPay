@@ -31,7 +31,16 @@ export type PaymentLink = {
   metadata: Record<string, unknown>;
 };
 
+export type PaymentLinkStats = {
+  linkId: string;
+  views: number;
+  invoiceStarts: number;
+  paidInvoices: number;
+  conversionRate: number;
+};
+
 const links = new Map<string, PaymentLink>();
+const viewCounts = new Map<string, number>();
 let counter = 0;
 
 function shortToken(): string {
@@ -239,4 +248,26 @@ export function incrementMockPaymentLinkUses(idOrSlug: string): PaymentLink {
   link.usesCount = link.usedCount;
   links.set(link.id, link);
   return link;
+}
+
+export function recordMockPaymentLinkView(idOrSlug: string): PaymentLinkStats | null {
+  const link = getMockPaymentLink(idOrSlug);
+  if (!link) return null;
+  viewCounts.set(link.id, (viewCounts.get(link.id) ?? 0) + 1);
+  return getMockPaymentLinkStats(link.id);
+}
+
+export function getMockPaymentLinkStats(idOrSlug: string): PaymentLinkStats {
+  const link = getMockPaymentLink(idOrSlug);
+  const linkId = link?.id ?? idOrSlug;
+  const invoiceStarts = link?.usedCount ?? link?.usesCount ?? 0;
+  const views = Math.max(viewCounts.get(linkId) ?? 0, invoiceStarts);
+  const paidInvoices = Math.floor(invoiceStarts * 0.45);
+  return {
+    linkId,
+    views,
+    invoiceStarts,
+    paidInvoices,
+    conversionRate: views > 0 ? paidInvoices / views : 0,
+  };
 }

@@ -43,13 +43,20 @@ export default async function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var t=localStorage.getItem('deropay.theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;}}catch(e){}",
+              "try{var t=localStorage.getItem('deropay.theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;}if(location.pathname==='/pay'||location.pathname.indexOf('/pay/')===0){document.documentElement.dataset.publicPay='true';}}catch(e){}",
+          }}
+        />
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              "html[data-public-pay='true'] .demo-mode-banner{display:none!important;}",
           }}
         />
       </head>
       <body>
         {isDemo && (
           <div
+            className="demo-mode-banner"
             style={{
               height: 26,
               display: "flex",

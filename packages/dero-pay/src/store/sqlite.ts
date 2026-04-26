@@ -13,6 +13,9 @@ import type {
   InvoiceStore,
   InvoiceFilter,
   InvoiceStats,
+  CreatePaymentLinkArgs,
+  PaymentLink,
+  PaymentLinkStats,
   X402UsageReservation,
   X402UsageBatchReservationResult,
   X402UsageReservationResult,
@@ -50,6 +53,50 @@ type PaymentRow = {
   detected_at: string;
   destination_port: string;
 };
+
+type PaymentLinkRow = {
+  id: string;
+  slug: string;
+  product_id: string | null;
+  name: string;
+  description: string | null;
+  amount_atomic: string | null;
+  currency: string | null;
+  ttl_seconds: number;
+  uses_count: number;
+  max_uses: number | null;
+  invoice_template_id: string | null;
+  expires_at: number | null;
+  redirect_url: string | null;
+  revoked_at: number | null;
+  created_at: number;
+  archived_at: number | null;
+  metadata: string;
+  views_count: number;
+};
+
+const TOKEN_ALPHABET =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+function generateShortToken(length = 9): string {
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += TOKEN_ALPHABET[Math.floor(Math.random() * TOKEN_ALPHABET.length)];
+  }
+  return out;
+}
+
+function safeJsonObject(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 /** Configuration for SQLite store */
 export type SqliteStoreConfig = {
@@ -140,7 +187,60 @@ export class SqliteInvoiceStore implements InvoiceStore {
 
       CREATE INDEX IF NOT EXISTS idx_x402_usage_windows_window_end
         ON x402_usage_windows(window_end);
+
+      CREATE TABLE IF NOT EXISTS payment_links (
+        id TEXT PRIMARY KEY,
+        slug TEXT UNIQUE NOT NULL,
+        product_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT,
+        amount_atomic TEXT,
+        currency TEXT,
+        ttl_seconds INTEGER NOT NULL DEFAULT 1800,
+        uses_count INTEGER NOT NULL DEFAULT 0,
+        max_uses INTEGER,
+        invoice_template_id TEXT,
+        expires_at INTEGER,
+        redirect_url TEXT,
+        revoked_at INTEGER,
+        created_at INTEGER NOT NULL,
+        archived_at INTEGER,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        views_count INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_payment_links_slug ON payment_links(slug);
+      CREATE INDEX IF NOT EXISTS idx_payment_links_created_at ON payment_links(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_payment_links_active
+        ON payment_links(revoked_at) WHERE revoked_at IS NULL;
     `);
+
+    this.migratePaymentLinks();
+  }
+
+  private migratePaymentLinks(): void {
+    const cols = this.db
+      .prepare("PRAGMA table_info(payment_links)")
+      .all() as Array<{ name: string }>;
+    if (cols.length === 0) return;
+
+    const addColumnIfMissing = (column: string, ddl: string) => {
+      if (cols.some((c) => c.name === column)) return;
+      try {
+        this.db.exec(`ALTER TABLE payment_links ADD COLUMN ${column} ${ddl}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/duplicate column/i.test(msg)) throw err;
+      }
+    };
+
+    addColumnIfMissing("description", "TEXT");
+    addColumnIfMissing("invoice_template_id", "TEXT");
+    addColumnIfMissing("expires_at", "INTEGER");
+    addColumnIfMissing("redirect_url", "TEXT");
+    addColumnIfMissing("revoked_at", "INTEGER");
+    addColumnIfMissing("metadata", "TEXT NOT NULL DEFAULT '{}'");
+    addColumnIfMissing("views_count", "INTEGER NOT NULL DEFAULT 0");
   }
 
   async createInvoice(invoice: Invoice): Promise<void> {
@@ -541,8 +641,251 @@ export class SqliteInvoiceStore implements InvoiceStore {
     return transaction() as X402UsageBatchReservationResult;
   }
 
+  createPaymentLink(args: CreatePaymentLinkArgs): PaymentLink {
+    const token = generateShortToken();
+    const id = `pl_${token}`;
+    const slug = args.slug ?? token;
+    const now = Date.now();
+    const usageLimit = args.usageLimit ?? args.maxUses ?? null;
+
+    this.db
+      .prepare(
+        `INSERT INTO payment_links (
+          id, slug, product_id, name, description, amount_atomic, currency,
+          ttl_seconds, uses_count, max_uses, invoice_template_id,
+          expires_at, redirect_url, revoked_at, created_at, archived_at,
+          metadata, views_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, NULL, ?, 0)`
+      )
+      .run(
+        id,
+        slug,
+        args.productId ?? null,
+        args.name,
+        args.description ?? null,
+        args.amountAtomic !== undefined ? args.amountAtomic.toString() : null,
+        args.currency ?? "DERO",
+        args.ttlSeconds ?? 1800,
+        usageLimit,
+        args.invoiceTemplateId ?? null,
+        args.expiresAt ?? null,
+        args.redirectUrl ?? null,
+        now,
+        JSON.stringify(args.metadata ?? {})
+      );
+
+    const row = this.db
+      .prepare("SELECT * FROM payment_links WHERE id = ?")
+      .get(id) as PaymentLinkRow;
+    return this.rowToPaymentLink(row);
+  }
+
+  listPaymentLinks(filter?: {
+    includeArchived?: boolean;
+    includeRevoked?: boolean;
+    limit?: number;
+  }): PaymentLink[] {
+    const conditions: string[] = [];
+    if (!filter?.includeArchived) conditions.push("archived_at IS NULL");
+    if (!filter?.includeRevoked) conditions.push("revoked_at IS NULL");
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limit = Math.max(1, Math.min(filter?.limit ?? 100, 500));
+
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM payment_links ${where}
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(limit) as PaymentLinkRow[];
+    return rows.map((row) => this.rowToPaymentLink(row));
+  }
+
+  getPaymentLink(id: string): PaymentLink | null {
+    const row = this.db
+      .prepare("SELECT * FROM payment_links WHERE id = ?")
+      .get(id) as PaymentLinkRow | undefined;
+    return row ? this.rowToPaymentLink(row) : null;
+  }
+
+  getPaymentLinkBySlug(slug: string): PaymentLink | null {
+    const row = this.db
+      .prepare("SELECT * FROM payment_links WHERE slug = ?")
+      .get(slug) as PaymentLinkRow | undefined;
+    return row ? this.rowToPaymentLink(row) : null;
+  }
+
+  updatePaymentLink(
+    id: string,
+    patch: {
+      name?: string;
+      description?: string | null;
+      amountAtomic?: bigint | null;
+      usageLimit?: number | null;
+      expiresAt?: number | null;
+      redirectUrl?: string | null;
+      metadata?: Record<string, unknown>;
+      invoiceTemplateId?: string | null;
+    }
+  ): PaymentLink {
+    const existing = this.db
+      .prepare("SELECT * FROM payment_links WHERE id = ?")
+      .get(id) as PaymentLinkRow | undefined;
+    if (!existing) throw new Error(`Payment link not found: ${id}`);
+
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    if (patch.name !== undefined) {
+      sets.push("name = ?");
+      values.push(patch.name);
+    }
+    if (patch.description !== undefined) {
+      sets.push("description = ?");
+      values.push(patch.description);
+    }
+    if (patch.amountAtomic !== undefined) {
+      sets.push("amount_atomic = ?");
+      values.push(patch.amountAtomic === null ? null : patch.amountAtomic.toString());
+    }
+    if (patch.usageLimit !== undefined) {
+      sets.push("max_uses = ?");
+      values.push(patch.usageLimit);
+    }
+    if (patch.expiresAt !== undefined) {
+      sets.push("expires_at = ?");
+      values.push(patch.expiresAt);
+    }
+    if (patch.redirectUrl !== undefined) {
+      sets.push("redirect_url = ?");
+      values.push(patch.redirectUrl);
+    }
+    if (patch.metadata !== undefined) {
+      sets.push("metadata = ?");
+      values.push(JSON.stringify(patch.metadata));
+    }
+    if (patch.invoiceTemplateId !== undefined) {
+      sets.push("invoice_template_id = ?");
+      values.push(patch.invoiceTemplateId);
+    }
+
+    if (sets.length > 0) {
+      values.push(id);
+      this.db
+        .prepare(`UPDATE payment_links SET ${sets.join(", ")} WHERE id = ?`)
+        .run(...values);
+    }
+
+    const row = this.db
+      .prepare("SELECT * FROM payment_links WHERE id = ?")
+      .get(id) as PaymentLinkRow;
+    return this.rowToPaymentLink(row);
+  }
+
+  revokePaymentLink(id: string): PaymentLink {
+    const existing = this.db
+      .prepare("SELECT * FROM payment_links WHERE id = ?")
+      .get(id) as PaymentLinkRow | undefined;
+    if (!existing) throw new Error(`Payment link not found: ${id}`);
+
+    if (existing.revoked_at == null) {
+      this.db
+        .prepare("UPDATE payment_links SET revoked_at = ? WHERE id = ?")
+        .run(Date.now(), id);
+    }
+
+    const row = this.db
+      .prepare("SELECT * FROM payment_links WHERE id = ?")
+      .get(id) as PaymentLinkRow;
+    return this.rowToPaymentLink(row);
+  }
+
+  incrementPaymentLinkUses(id: string): PaymentLink {
+    const transaction = this.db.transaction(() => {
+      const row = this.db
+        .prepare("SELECT * FROM payment_links WHERE id = ?")
+        .get(id) as PaymentLinkRow | undefined;
+      if (!row) throw new Error(`Payment link not found: ${id}`);
+      if (row.archived_at !== null) throw new Error(`Payment link is archived: ${id}`);
+      if (row.revoked_at !== null) throw new Error(`Payment link is revoked: ${id}`);
+      if (row.expires_at !== null && row.expires_at <= Date.now()) {
+        throw new Error(`Payment link is expired: ${id}`);
+      }
+      if (row.max_uses !== null && row.uses_count >= row.max_uses) {
+        throw new Error(`Payment link has reached usage limit (${row.max_uses}): ${id}`);
+      }
+
+      this.db
+        .prepare("UPDATE payment_links SET uses_count = uses_count + 1 WHERE id = ?")
+        .run(id);
+      const updated = this.db
+        .prepare("SELECT * FROM payment_links WHERE id = ?")
+        .get(id) as PaymentLinkRow;
+      return this.rowToPaymentLink(updated);
+    });
+
+    return transaction() as PaymentLink;
+  }
+
+  recordPaymentLinkView(idOrSlug: string): PaymentLinkStats | null {
+    const link = this.getPaymentLink(idOrSlug) ?? this.getPaymentLinkBySlug(idOrSlug);
+    if (!link) return null;
+    this.db
+      .prepare("UPDATE payment_links SET views_count = views_count + 1 WHERE id = ?")
+      .run(link.id);
+    return this.getPaymentLinkStats(link.id);
+  }
+
+  getPaymentLinkStats(id: string): PaymentLinkStats {
+    const row = this.db
+      .prepare("SELECT views_count, uses_count FROM payment_links WHERE id = ?")
+      .get(id) as { views_count: number; uses_count: number } | undefined;
+    const paidRow = this.db
+      .prepare(
+        `SELECT COUNT(*) as paid
+         FROM invoices
+         WHERE status = 'completed'
+           AND json_extract(metadata, '$.paymentLinkId') = ?`
+      )
+      .get(id) as { paid: number } | undefined;
+
+    const views = row?.views_count ?? 0;
+    const invoiceStarts = row?.uses_count ?? 0;
+    const paidInvoices = paidRow?.paid ?? 0;
+    return {
+      linkId: id,
+      views,
+      invoiceStarts,
+      paidInvoices,
+      conversionRate: views > 0 ? paidInvoices / views : 0,
+    };
+  }
+
   async close(): Promise<void> {
     this.db.close();
+  }
+
+  private rowToPaymentLink(row: PaymentLinkRow): PaymentLink {
+    return {
+      id: row.id,
+      slug: row.slug,
+      productId: row.product_id,
+      name: row.name,
+      description: row.description ?? null,
+      amountAtomic: row.amount_atomic,
+      currency: row.currency as "DERO" | null,
+      ttlSeconds: row.ttl_seconds,
+      usedCount: row.uses_count,
+      usesCount: row.uses_count,
+      usageLimit: row.max_uses,
+      maxUses: row.max_uses,
+      invoiceTemplateId: row.invoice_template_id,
+      expiresAt: row.expires_at,
+      redirectUrl: row.redirect_url,
+      revokedAt: row.revoked_at,
+      createdAt: row.created_at,
+      archivedAt: row.archived_at,
+      metadata: safeJsonObject(row.metadata),
+    };
   }
 
   private rowToInvoice(row: InvoiceRow, paymentRows: PaymentRow[]): Invoice {

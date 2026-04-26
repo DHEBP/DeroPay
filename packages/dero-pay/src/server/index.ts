@@ -34,6 +34,9 @@ export type {
   InvoiceStore,
   InvoiceFilter,
   InvoiceStats,
+  PaymentLink,
+  PaymentLinkStats,
+  CreatePaymentLinkArgs,
 } from "../store/types.js";
 
 export { MemoryInvoiceStore } from "../store/memory.js";

@@ -4,9 +4,9 @@
 
 Culture Kings-inspired, original HOLOGRAM streetwear storefront with a Vite + React frontend and a Medusa v2 backend prepared for Stripe and DeroPay checkout.
 
-![HOLOGRAM Store Hero](docs/hologram-store-hero.png)
+![HOLOGRAM Store Hero](assets/hologram-store-hero.png)
 
-![HOLOGRAM Store Products](docs/hologram-store-products.png)
+![HOLOGRAM Store Products](assets/hologram-store-products.png)
 
 ## Apps
 

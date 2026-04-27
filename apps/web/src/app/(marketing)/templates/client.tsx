@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Image from "next/image";
 import {
   ArrowRight,
   Github,
@@ -21,6 +22,7 @@ type Template = {
   stack: string[];
   github: string;
   icon: React.ReactNode;
+  thumbnail: string;
 };
 
 const templates: Template[] = [
@@ -40,6 +42,7 @@ const templates: Template[] = [
     stack: ["Medusa v2", "React", "Vite", "TypeScript", "medusa-payment-deropay"],
     github: "https://github.com/DHEBP/DeroPay/tree/main/templates/hologram-store",
     icon: <ShoppingBag size={24} />,
+    thumbnail: "/images/template-hologram-store.png",
   },
   {
     id: "marketplace",
@@ -58,6 +61,7 @@ const templates: Template[] = [
     stack: ["Next.js 16", "React 19", "SQLite", "TypeScript", "Tailwind CSS"],
     github: "https://github.com/DHEBP/DeroPay/tree/main/templates/marketplace",
     icon: <Store size={24} />,
+    thumbnail: "/images/template-marketplace.png",
   },
 ];
 
@@ -150,6 +154,35 @@ export const TemplatesPageClient = () => (
                 }}
                 className="template-card"
               >
+                {/* Thumbnail */}
+                <div
+                  style={{
+                    margin: "-32px -32px 28px",
+                    borderRadius: "16px 16px 0 0",
+                    overflow: "hidden",
+                    borderBottom: "1px solid #1e2a24",
+                    aspectRatio: "4 / 3",
+                    position: "relative",
+                    background: "#0a0f0d",
+                  }}
+                >
+                  <Image
+                    src={template.thumbnail}
+                    alt={`${template.title} preview`}
+                    fill
+                    style={{ objectFit: "cover", objectPosition: "top center" }}
+                    sizes="(max-width: 900px) 100vw, 50vw"
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "linear-gradient(to bottom, transparent 70%, rgba(10,15,13,0.85) 100%)",
+                      pointerEvents: "none",
+                    }}
+                  />
+                </div>
+
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", marginBottom: "20px" }}>
                   <div style={{

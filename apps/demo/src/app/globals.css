@@ -30,6 +30,19 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Anchor targets sit beneath an 80px sticky header — give them room
+   so smooth-scrolled landings don't tuck the section title under it. */
+#demo-experience,
+#collection {
+  scroll-margin-top: 6rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 body {
   background:
     radial-gradient(circle at top left, rgba(49, 223, 144, 0.08), transparent 28%),
@@ -140,4 +153,22 @@ button {
   height: 0.45rem;
   margin-right: 0.65rem;
   width: 0.65rem;
+}
+
+/* Focus states for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Remove default focus outline only when focus-visible applies */
+:focus:not(:focus-visible) {
+  outline: none;
 }

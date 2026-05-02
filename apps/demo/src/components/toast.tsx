@@ -31,18 +31,18 @@ const ICONS = {
 const STYLES = {
   success: {
     border: "border-emerald-500/30",
-    icon: "text-emerald-500",
-    bg: "bg-white dark:bg-gray-900",
+    icon: "text-emerald-400",
+    bg: "bg-[var(--panel-bg-strong)]",
   },
   error: {
     border: "border-red-500/30",
-    icon: "text-red-500",
-    bg: "bg-white dark:bg-gray-900",
+    icon: "text-red-400",
+    bg: "bg-[var(--panel-bg-strong)]",
   },
   info: {
     border: "border-blue-500/30",
-    icon: "text-blue-500",
-    bg: "bg-white dark:bg-gray-900",
+    icon: "text-blue-400",
+    bg: "bg-[var(--panel-bg-strong)]",
   },
 };
 
@@ -66,18 +66,19 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
     >
       <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${style.icon}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug">
+        <p className="text-sm font-semibold text-white leading-snug">
           {toast.title}
         </p>
         {toast.message && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5 leading-snug">
             {toast.message}
           </p>
         )}
       </div>
       <button
         onClick={() => onDismiss(toast.id)}
-        className="shrink-0 p-1 -mr-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md transition-colors active:scale-95"
+        aria-label="Dismiss notification"
+        className="shrink-0 p-1 -mr-1 text-[var(--text-muted)] hover:text-white rounded-md transition-colors active:scale-95"
       >
         <X className="w-3.5 h-3.5" />
       </button>

@@ -191,7 +191,7 @@ export default function CheckoutPage() {
             </p>
             <button
               onClick={() => router.push("/")}
-              className="mt-8 inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)]"
+              className="mt-8 inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] transition-colors hover:bg-[var(--accent-strong)]"
             >
               Go back to store
             </button>
@@ -297,11 +297,11 @@ export default function CheckoutPage() {
 
   return (
     <StoreShell>
-      <section className="px-6 pb-18 pt-10 md:px-10 md:pb-24 md:pt-14">
+      <section className="px-6 pb-20 pt-12 md:px-10 md:pb-28 md:pt-16">
         <div className="mx-auto w-full max-w-7xl">
           <div className="mb-8 max-w-3xl space-y-3">
             <p className="section-kicker">Checkout</p>
-            <h1 className="font-display text-4xl font-semibold tracking-[-0.05em] text-white md:text-6xl">
+            <h1 className="font-display text-4xl font-semibold tracking-[-0.05em] text-white md:text-6xl text-balance">
               Generate the invoice and close the loop.
             </h1>
             <p className="text-sm leading-7 text-[var(--text-secondary)] md:text-base">
@@ -382,7 +382,7 @@ export default function CheckoutPage() {
                     <span className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">
                       Total due
                     </span>
-                    <span className="font-display text-3xl font-semibold text-white">
+                    <span className="font-display text-3xl font-semibold tabular-nums text-white">
                       {formatDero(stagedTotal)}
                     </span>
                   </div>
@@ -444,12 +444,12 @@ export default function CheckoutPage() {
                   <button
                     onClick={handleCreateInvoice}
                     disabled={isCreating}
-                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] transition-colors hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isCreating ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Generating invoice...
+                        Generating invoice…
                       </>
                     ) : (
                       "Generate invoice"
@@ -485,7 +485,10 @@ export default function CheckoutPage() {
                     </h2>
                   </div>
                   {activeInvoice ? (
-                    <span className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    <span
+                      aria-live="polite"
+                      className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]"
+                    >
                       {activeInvoice.status}
                     </span>
                   ) : null}
@@ -511,7 +514,7 @@ export default function CheckoutPage() {
                       {isSimulating ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Sending...
+                          Sending…
                         </>
                       ) : (
                         "Simulate payment"

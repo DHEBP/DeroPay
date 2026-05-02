@@ -77,9 +77,6 @@
         "typescript": "^5.7.0",
       },
     },
-    "apps/tela": {
-      "name": "deropay-tela",
-    },
     "apps/web": {
       "name": "deropay.com",
       "version": "0.1.0",
@@ -1232,8 +1229,6 @@
     "deropay-dashboard": ["deropay-dashboard@workspace:apps/dashboard"],
 
     "deropay-gateway": ["deropay-gateway@workspace:apps/gateway"],
-
-    "deropay-tela": ["deropay-tela@workspace:apps/tela"],
 
     "deropay-widget": ["deropay-widget@workspace:packages/deropay-widget"],
 

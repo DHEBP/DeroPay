@@ -12,10 +12,10 @@ export default function PrivacyPage() {
       {/* Hero */}
       <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-          <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.10) 0%, transparent 65%)", filter: "blur(100px)" }} />
+          <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.10) 0%, transparent 65%)", filter: "blur(100px)" }} />
         </div>
         <div style={{ position: "relative", maxWidth: "720px", margin: "0 auto", padding: "48px 24px 40px", textAlign: "center" }}>
-          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>Legal</p>
+          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>Legal</p>
           <h1 style={{ fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>Privacy Policy</h1>
           <p style={{ marginTop: "16px", fontSize: "14px", color: "#4a6356" }}>Last updated: March 2, 2026</p>
         </div>
@@ -93,7 +93,7 @@ export default function PrivacyPage() {
 
           <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#f0fdf4", marginBottom: "16px" }}>Contact</h2>
           <p>
-            For privacy-related inquiries: <a href="mailto:legal@dhebp.org" style={{ color: "#10b981", textDecoration: "underline", textUnderlineOffset: "4px" }}>legal@dhebp.org</a>
+            For privacy-related inquiries: <a href="mailto:legal@dhebp.org" style={{ color: "#31df90", textDecoration: "underline", textUnderlineOffset: "4px" }}>legal@dhebp.org</a>
           </p>
         </div>
       </section>

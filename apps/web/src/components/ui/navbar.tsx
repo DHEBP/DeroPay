@@ -7,7 +7,13 @@ import { DeroIcon } from "@/components/icons/dero-icon";
 import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 
-const links = [
+type NavLink = {
+  href: string;
+  label: string;
+  external?: true;
+};
+
+const links: NavLink[] = [
   { href: "/auth", label: "Auth" },
   { href: "/pay", label: "Pay" },
   { href: "/x402", label: "x402" },
@@ -34,40 +40,43 @@ export const Navbar = () => {
     <header
       className={`fixed top-0 z-50 w-full transition-all duration-200 ${
         scrolled
-          ? "bg-black/90 backdrop-blur-md border-b border-[#1e2a24]"
-          : "bg-black border-b border-transparent"
+          ? "border-b border-[var(--color-border-soft)] bg-[rgba(6,8,6,0.78)] backdrop-blur-xl"
+          : "border-b border-transparent bg-[var(--color-background)]"
       }`}
     >
-      <nav className="mx-auto flex h-16 max-w-[1200px] items-center px-6 lg:px-8">
-        {/* Logo - always visible */}
-        <Link href="/" className="mr-10 flex items-center gap-2 shrink-0">
-          <DeroIcon size={28} className="text-[#10b981]" />
-          <span className="text-xl font-black tracking-tight text-white">
+      <nav className="mx-auto flex h-20 max-w-[1280px] items-center justify-between gap-4 px-6 lg:px-8">
+        <Link
+          href="/"
+          className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-85"
+        >
+          <DeroIcon size={26} className="text-[var(--color-accent-strong)]" />
+          <span className="font-display text-xl font-bold tracking-tight text-[var(--color-text-primary)]">
             DeroPay
           </span>
         </Link>
 
-        {/* Desktop Nav Links - inline, always rendered, hidden on small screens via CSS */}
-        <div className="flex-1 justify-end" style={{ display: "var(--nav-display, none)" }}>
-          <div className="flex items-center gap-7">
+        <div
+          className="flex-1 justify-center"
+          style={{ display: "var(--nav-display, none)" }}
+        >
+          <div className="flex items-center gap-1 rounded-full border border-[var(--color-border-soft)] bg-white/[0.04] p-1 backdrop-blur-sm">
             {links.map((link) => {
               const isActive =
                 pathname === link.href ||
                 pathname.startsWith(link.href + "/");
-              const El = "external" in link ? "a" : Link;
-              const extra =
-                "external" in link
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {};
+              const extra = link.external
+                ? { target: "_blank", rel: "noopener noreferrer" }
+                : {};
               return (
                 <Link
                   key={link.href}
                   href={link.href}
                   {...extra}
-                  className={`whitespace-nowrap text-sm font-bold transition-colors ${
+                  aria-current={isActive ? "page" : undefined}
+                  className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
                     isActive
-                      ? "text-white"
-                      : "text-[#6b7f75] hover:text-[#f0fdf4]"
+                      ? "bg-white text-[#071008] shadow-[0_8px_24px_-12px_rgba(255,255,255,0.18)]"
+                      : "text-[var(--color-text-secondary)] hover:bg-white/[0.04] hover:text-[var(--color-text-primary)]"
                   }`}
                 >
                   {link.label}
@@ -77,33 +86,38 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Right CTA - hidden on small screens */}
         <div
-          className="flex items-center shrink-0 ml-8"
+          className="shrink-0 items-center"
           style={{ display: "var(--nav-display, none)" }}
         >
-          <Link href="https://deropay.derod.org" className="btn-accent px-5 py-2 text-sm whitespace-nowrap">
-            Get Started
+          <Link
+            href="https://deropay.derod.org"
+            className="btn-accent whitespace-nowrap"
+            style={{ padding: "10px 20px", fontSize: "0.85rem" }}
+          >
+            Get started
           </Link>
         </div>
 
-        {/* Mobile hamburger - shown only on small screens */}
         <button
+          type="button"
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-menu"
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="ml-auto text-white"
+          className="ml-auto text-[var(--color-text-primary)]"
           style={{ display: "var(--burger-display, block)" }}
         >
           {mobileOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </nav>
 
-      {/* Responsive CSS using a style tag so we don't rely on Tailwind responsive */}
       <style>{`
         :root {
           --nav-display: none;
           --burger-display: block;
         }
-        @media (min-width: 768px) {
+        @media (min-width: 1024px) {
           :root {
             --nav-display: flex;
             --burger-display: none;
@@ -111,33 +125,33 @@ export const Navbar = () => {
         }
       `}</style>
 
-      {/* Mobile Menu */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
+            id="mobile-menu"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="border-b border-[#1e2a24] bg-black"
+            className="border-b border-[var(--color-border-soft)] bg-[var(--color-background)]"
           >
-            <div className="flex flex-col p-6 space-y-4">
+            <div className="flex flex-col space-y-4 p-6">
               {links.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   onClick={() => setMobileOpen(false)}
-                  className="text-lg font-bold text-white"
+                  className="text-lg font-semibold text-[var(--color-text-primary)]"
                 >
                   {link.label}
                 </Link>
               ))}
-              <div className="h-px bg-[#1e2a24] my-4" />
+              <div className="my-4 h-px bg-[var(--color-border-soft)]" />
               <Link
                 href="https://deropay.derod.org"
                 className="btn-accent w-full text-center"
                 onClick={() => setMobileOpen(false)}
               >
-                Get Started
+                Get started
               </Link>
             </div>
           </motion.div>

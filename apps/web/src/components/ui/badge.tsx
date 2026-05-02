@@ -3,9 +3,12 @@ import type { ReactNode } from "react";
 type BadgeVariant = "default" | "outline" | "accent";
 
 const variants: Record<BadgeVariant, string> = {
-  default: "border-[#1e2a24] bg-[#0a0f0d] text-[#10b981]",
-  outline: "border-[#1e2a24] bg-transparent text-[#6b7f75]",
-  accent: "border-[#10b981] text-[#10b981] bg-transparent",
+  default:
+    "border-[var(--color-border-soft)] bg-[var(--color-accent-dim)] text-[var(--color-accent-strong)]",
+  outline:
+    "border-[var(--color-border-soft)] bg-transparent text-[var(--color-text-secondary)]",
+  accent:
+    "border-[var(--color-border-strong)] text-[var(--color-accent-strong)] bg-transparent",
 };
 
 export const Badge = ({

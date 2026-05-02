@@ -20,12 +20,12 @@ const MockDashboard = () => (
       {/* Sidebar */}
       <div style={{ width: "180px", borderRight: "1px solid #1e2a24", background: "#0a0f0d", padding: "16px", flexShrink: 0 }} className="mock-sidebar">
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "24px" }}>
-          <LayoutDashboard size={16} color="#10b981" />
+          <LayoutDashboard size={16} color="#31df90" />
           <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4" }}>DeroPay</span>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           {["Dashboard", "Invoices", "Escrow", "Settings"].map((item, i) => (
-            <div key={item} style={{ borderRadius: "8px", padding: "8px 12px", fontSize: "12px", fontWeight: 500, background: i === 0 ? "rgba(16,185,129,0.1)" : "transparent", color: i === 0 ? "#10b981" : "#6b7f75" }}>
+            <div key={item} style={{ borderRadius: "8px", padding: "8px 12px", fontSize: "12px", fontWeight: 500, background: i === 0 ? "rgba(49,223,144,0.1)" : "transparent", color: i === 0 ? "#31df90" : "#6b7f75" }}>
               {item}
             </div>
           ))}
@@ -40,7 +40,7 @@ const MockDashboard = () => (
             <p style={{ fontSize: "12px", color: "#4a6356" }}>Welcome back &middot; Wallet connected</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981" }} />
+            <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#31df90" }} />
             <span style={{ fontSize: "12px", color: "#6b7f75" }}>Synced</span>
           </div>
         </div>
@@ -55,7 +55,7 @@ const MockDashboard = () => (
           ].map((stat) => (
             <div key={stat.label} style={{ borderRadius: "8px", border: "1px solid #1e2a24", background: "#0a0f0d", padding: "12px" }}>
               <p style={{ fontSize: "10px", color: "#4a6356" }}>{stat.label}</p>
-              <p style={{ marginTop: "4px", fontFamily: "monospace", fontSize: "14px", fontWeight: 700, color: "#10b981" }}>{stat.value}</p>
+              <p style={{ marginTop: "4px", fontFamily: "monospace", fontSize: "14px", fontWeight: 700, color: "#31df90" }}>{stat.value}</p>
             </div>
           ))}
         </div>
@@ -67,7 +67,7 @@ const MockDashboard = () => (
           </div>
           {[
             { id: "INV-0342", amount: "5.0", status: "completed", color: "#34d399" },
-            { id: "INV-0341", amount: "25.0", status: "confirming", color: "#10b981" },
+            { id: "INV-0341", amount: "25.0", status: "confirming", color: "#31df90" },
             { id: "INV-0340", amount: "12.5", status: "pending", color: "#facc15" },
             { id: "INV-0339", amount: "100.0", status: "expired", color: "#4a6356" },
           ].map((inv) => (
@@ -102,9 +102,9 @@ export const DashboardPageClient = () => (
           transition={{ duration: 0.6 }}
           style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}
         >
-          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>Self-Hosted</p>
+          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>Self-Hosted</p>
           <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
-            Merchant <span style={{ color: "#10b981" }}>Dashboard</span>
+            Merchant <span style={{ color: "#31df90" }}>Dashboard</span>
           </h1>
           <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
             A self-hosted admin UI for managing invoices, payments, escrow operations, and wallet status. Runs on your infrastructure.

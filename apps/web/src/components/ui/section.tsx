@@ -4,15 +4,17 @@ export const Section = ({
   children,
   className = "",
   id,
-  style,
 }: {
   children: ReactNode;
   className?: string;
   id?: string;
-  style?: React.CSSProperties;
 }) => (
-  <section id={id} className={`relative ${className}`} style={{ padding: "96px 0", ...style }}>
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 24px" }}>{children}</div>
+  <section
+    id={id}
+    className={`relative overflow-hidden py-20 md:py-28 ${className}`}
+    style={{ scrollMarginTop: "5rem" }}
+  >
+    <div className="mx-auto w-full max-w-[1200px] px-6 lg:px-8">{children}</div>
   </section>
 );
 
@@ -27,17 +29,13 @@ export const SectionHeader = ({
   description?: string;
   className?: string;
 }) => (
-  <div className={className} style={{ maxWidth: "720px", margin: "0 auto 64px", textAlign: "center" }}>
-    {eyebrow && (
-      <p style={{ marginBottom: "16px", fontSize: "13px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.16em", color: "#10b981" }}>
-        {eyebrow}
-      </p>
-    )}
-    <h2 style={{ fontSize: "clamp(2rem, 4.5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.08, color: "#f0fdf4" }}>
+  <div className={`mx-auto mb-16 max-w-[760px] text-center ${className}`}>
+    {eyebrow && <p className="section-kicker mb-5">{eyebrow}</p>}
+    <h2 className="text-balance font-display text-[clamp(2rem,4.5vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.04em] text-[var(--color-text-primary)]">
       {title}
     </h2>
     {description && (
-      <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
+      <p className="mx-auto mt-5 max-w-[580px] text-pretty text-base font-medium leading-7 text-[var(--color-text-secondary)] md:text-lg md:leading-8">
         {description}
       </p>
     )}

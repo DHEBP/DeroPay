@@ -7,36 +7,51 @@ import { Check, ArrowRight } from "lucide-react";
 
 export const Hero = () => {
   return (
-    <section style={{ position: "relative", overflow: "hidden", borderBottom: "1px solid #1e2a24", background: "#000" }}>
-      {/* Gradient Orbs — more visible purple */}
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-        <div style={{
-          position: "absolute", top: "-25%", left: "-5%", width: "800px", height: "800px", borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(16,185,129,0.18) 0%, transparent 65%)", filter: "blur(100px)",
-        }} />
-        <div style={{
-          position: "absolute", top: "5%", right: "-10%", width: "700px", height: "700px", borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(147,51,234,0.20) 0%, transparent 60%)", filter: "blur(100px)",
-        }} />
-        <div style={{
-          position: "absolute", bottom: "-20%", left: "40%", width: "500px", height: "500px", borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(16,185,129,0.10) 0%, transparent 70%)", filter: "blur(80px)",
-        }} />
+    <section className="relative overflow-hidden border-b border-[var(--color-border-soft)] bg-[var(--color-background)]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="ambient-grid" />
+        <div
+          className="ambient-orb"
+          style={{
+            background: "rgba(49, 223, 144, 0.18)",
+            height: "800px",
+            width: "800px",
+            top: "-25%",
+            left: "-5%",
+            filter: "blur(100px)",
+          }}
+        />
+        <div
+          className="ambient-orb"
+          style={{
+            background: "rgba(217, 198, 163, 0.12)",
+            height: "700px",
+            width: "700px",
+            top: "5%",
+            right: "-10%",
+            filter: "blur(100px)",
+          }}
+        />
+        <div
+          className="ambient-orb"
+          style={{
+            background: "rgba(49, 223, 144, 0.10)",
+            height: "500px",
+            width: "500px",
+            bottom: "-20%",
+            left: "40%",
+            filter: "blur(80px)",
+          }}
+        />
       </div>
 
-      <div className="bg-grid-pattern" style={{ position: "absolute", inset: 0, opacity: 0.08 }} />
-
-      <div
-        className="hero-grid"
-        style={{ position: "relative", zIndex: 1, maxWidth: "1400px", margin: "0 auto", padding: "56px 24px 80px", display: "grid", gridTemplateColumns: "1fr", gap: "48px", alignItems: "center" }}
-      >
-        {/* Left: Text */}
+      <div className="hero-grid relative z-10 mx-auto grid max-w-[1400px] grid-cols-1 items-center gap-12 px-6 py-14 md:py-20">
         <div>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            style={{ marginBottom: "20px", fontSize: "13px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.16em", color: "#10b981" }}
+            className="section-kicker mb-5"
           >
             DeroPay
           </motion.p>
@@ -45,35 +60,51 @@ export const Hero = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            style={{ fontSize: "clamp(2.8rem, 6vw, 5rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.0, color: "#f0fdf4" }}
+            className="text-balance font-display text-[clamp(3rem,7vw,5.5rem)] font-semibold leading-[1.04] tracking-[-0.04em] text-[var(--color-text-primary)]"
           >
-            The fastest way<br />to accept <span style={{ color: "#10b981" }}>DERO</span>
+            The fastest way to accept{" "}
+            <span className="text-[var(--color-accent)]">DERO</span>.
           </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            style={{ marginTop: "24px", maxWidth: "480px", fontSize: "18px", fontWeight: 500, lineHeight: 1.65, color: "#6b7f75" }}
+            className="mt-7 max-w-[520px] text-pretty text-base leading-7 text-[var(--color-text-secondary)] md:text-lg md:leading-8"
           >
             Unlock a suite of tools to accept payments, manage{" "}
-            <span style={{ color: "#f0fdf4", textDecoration: "underline", textDecorationColor: "#1e2a24", textUnderlineOffset: "4px" }}>invoices</span>,
-            build{" "}
-            <span style={{ color: "#f0fdf4", textDecoration: "underline", textDecorationColor: "#1e2a24", textUnderlineOffset: "4px" }}>escrow</span>{" "}
+            <span className="text-[var(--color-text-primary)] underline decoration-[var(--color-border-soft)] underline-offset-4">
+              invoices
+            </span>
+            , build{" "}
+            <span className="text-[var(--color-text-primary)] underline decoration-[var(--color-border-soft)] underline-offset-4">
+              escrow
+            </span>{" "}
             contracts, and get real-time payment{" "}
-            <span style={{ color: "#f0fdf4", textDecoration: "underline", textDecorationColor: "#1e2a24", textUnderlineOffset: "4px" }}>insights</span>.
+            <span className="text-[var(--color-text-primary)] underline decoration-[var(--color-border-soft)] underline-offset-4">
+              insights
+            </span>
+            .
           </motion.p>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            style={{ marginTop: "32px", display: "flex", flexWrap: "wrap", gap: "16px" }}
+            className="mt-8 flex flex-wrap gap-4"
           >
-            <Link href="/playground" className="btn-accent" style={{ fontSize: "16px", padding: "14px 28px" }}>
+            <Link
+              href="/playground"
+              className="btn-accent text-base"
+              style={{ padding: "14px 28px" }}
+            >
               Try it now <ArrowRight size={18} />
             </Link>
-            <a href="https://deropay.derod.org" className="btn-secondary" style={{ fontSize: "16px", padding: "14px 28px" }}>
+            <a
+              href="https://deropay.derod.org"
+              className="btn-secondary text-base"
+              style={{ padding: "14px 28px" }}
+            >
               Documentation
             </a>
           </motion.div>
@@ -82,54 +113,44 @@ export const Hero = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.5 }}
-            style={{ marginTop: "32px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "20px", fontSize: "14px", fontWeight: 700, color: "#4a6356" }}
+            className="mt-8 flex flex-wrap items-center gap-5 text-sm font-bold text-[var(--color-text-tertiary)]"
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Check color="#10b981" size={16} />
+            <div className="flex items-center gap-2">
+              <Check className="text-[var(--color-accent)]" size={16} />
               <span>Zero Fees</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Check color="#10b981" size={16} />
+            <div className="flex items-center gap-2">
+              <Check className="text-[var(--color-accent)]" size={16} />
               <span>Self-Hosted</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Check color="#10b981" size={16} />
+            <div className="flex items-center gap-2">
+              <Check className="text-[var(--color-accent)]" size={16} />
               <span>MIT License</span>
             </div>
           </motion.div>
         </div>
 
-        {/* Right: Hero Image — large, seamlessly integrated */}
         <motion.div
           initial={{ opacity: 0, x: 40 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, delay: 0.3 }}
-          className="hero-image-wrapper"
-          style={{
-            position: "relative",
-            minHeight: "min(70vh, 520px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-end",
-          }}
+          className="hero-image-wrapper relative flex items-center justify-end"
+          style={{ minHeight: "min(70vh, 520px)" }}
         >
-          {/* Ambient glow behind image */}
-          <div style={{
-            position: "absolute", top: "50%", right: "0", transform: "translateY(-50%)",
-            width: "90%", height: "120%",
-            background: "radial-gradient(ellipse at 70% 50%, rgba(16,185,129,0.15) 0%, rgba(147,51,234,0.08) 35%, transparent 70%)",
-            filter: "blur(60px)", pointerEvents: "none",
-          }} />
-          {/* Image container — no border, edge fades blend into page */}
           <div
-            className="hero-image-container"
+            className="pointer-events-none absolute"
             style={{
-              position: "relative",
-              width: "100%",
-              aspectRatio: "3/2",
-              overflow: "hidden",
+              top: "50%",
+              right: "0",
+              transform: "translateY(-50%)",
+              width: "90%",
+              height: "120%",
+              background:
+                "radial-gradient(ellipse at 70% 50%, rgba(49,223,144,0.16) 0%, rgba(49,223,144,0.06) 35%, transparent 70%)",
+              filter: "blur(60px)",
             }}
-          >
+          />
+          <div className="relative aspect-[3/2] w-full overflow-hidden">
             <Image
               src="/images/hero_img.png"
               alt="DeroPay Dashboard"
@@ -139,26 +160,21 @@ export const Hero = () => {
               priority
               style={{ objectFit: "cover", objectPosition: "center" }}
             />
-            {/* Gradient overlays — fade edges into page background for seamless blend */}
             <div
+              className="pointer-events-none absolute inset-0"
               style={{
-                position: "absolute",
-                inset: 0,
                 background: `
-                  linear-gradient(to right, #000 0%, transparent 18%),
-                  linear-gradient(to bottom, transparent 60%, #000 100%),
-                  linear-gradient(to right, transparent 85%, #000 100%)
+                  linear-gradient(to right, var(--color-background) 0%, transparent 12%),
+                  linear-gradient(to bottom, transparent 60%, var(--color-background) 100%),
+                  linear-gradient(to right, transparent 85%, var(--color-background) 100%)
                 `,
-                pointerEvents: "none",
               }}
             />
-            {/* Subtle emerald tint overlay for brand cohesion */}
             <div
+              className="pointer-events-none absolute inset-0"
               style={{
-                position: "absolute",
-                inset: 0,
-                background: "linear-gradient(135deg, rgba(16,185,129,0.06) 0%, transparent 50%)",
-                pointerEvents: "none",
+                background:
+                  "linear-gradient(135deg, rgba(49,223,144,0.06) 0%, transparent 50%)",
               }}
             />
           </div>

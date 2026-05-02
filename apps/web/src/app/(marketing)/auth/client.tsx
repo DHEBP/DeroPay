@@ -80,7 +80,7 @@ export const AuthPageClient = () => (
     <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
       {/* Gradient orbs */}
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-        <div style={{ position: "absolute", top: "-30%", left: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.15) 0%, transparent 65%)", filter: "blur(100px)" }} />
+        <div style={{ position: "absolute", top: "-30%", left: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.15) 0%, transparent 65%)", filter: "blur(100px)" }} />
         <div style={{ position: "absolute", top: "-10%", right: "10%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(147,51,234,0.18) 0%, transparent 60%)", filter: "blur(100px)" }} />
       </div>
       <div className="bg-grid-pattern" style={{ position: "absolute", inset: 0, opacity: 0.1 }} />
@@ -91,12 +91,12 @@ export const AuthPageClient = () => (
           transition={{ duration: 0.6 }}
           style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}
         >
-          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>
             DeroAuth
           </p>
           <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
             Sign in with your<br />
-            <span style={{ color: "#10b981" }}>DERO wallet</span>
+            <span style={{ color: "#31df90" }}>DERO wallet</span>
           </h1>
           <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
             No email. No password. Just a cryptographic proof of wallet
@@ -126,7 +126,7 @@ export const AuthPageClient = () => (
         </div>
         <div style={{ maxWidth: "480px", margin: "0 auto", position: "relative" }}>
           {/* Glow behind demo */}
-          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "140%", height: "140%", background: "radial-gradient(ellipse, rgba(16,185,129,0.1) 0%, rgba(147,51,234,0.05) 50%, transparent 80%)", filter: "blur(50px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "140%", height: "140%", background: "radial-gradient(ellipse, rgba(49,223,144,0.1) 0%, rgba(147,51,234,0.05) 50%, transparent 80%)", filter: "blur(50px)", pointerEvents: "none" }} />
           <div style={{ position: "relative" }}>
             <AuthFlowDemo />
           </div>
@@ -138,7 +138,7 @@ export const AuthPageClient = () => (
     <section style={{ background: "#000", padding: "80px 24px", borderBottom: "1px solid #1e2a24" }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: "48px" }}>
-          <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>Features</p>
+          <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>Features</p>
           <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>Built for privacy</h2>
           <p style={{ marginTop: "12px", fontSize: "16px", color: "#6b7f75", maxWidth: "560px", margin: "12px auto 0" }}>
             Unlike Ethereum auth, authenticating with DERO doesn't expose your transaction history.

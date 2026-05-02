@@ -20,7 +20,7 @@ const features = [
 
 const statusCodes = [
   { code: 0, label: "awaiting_deposit", color: "#6b7f75" },
-  { code: 1, label: "funded", color: "#10b981" },
+  { code: 1, label: "funded", color: "#31df90" },
   { code: 2, label: "released", color: "#34d399" },
   { code: 3, label: "refunded", color: "#facc15" },
   { code: 4, label: "expired_claimed", color: "#f97316" },
@@ -54,7 +54,7 @@ export const EscrowPageClient = () => (
     <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
         <div style={{ position: "absolute", top: "-30%", left: "30%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(147,51,234,0.20) 0%, transparent 60%)", filter: "blur(100px)" }} />
-        <div style={{ position: "absolute", top: "-10%", right: "20%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
+        <div style={{ position: "absolute", top: "-10%", right: "20%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
       </div>
       <div className="bg-grid-pattern" style={{ position: "absolute", inset: 0, opacity: 0.1 }} />
       <div style={{ position: "relative", maxWidth: "1200px", margin: "0 auto", padding: "48px 24px 56px", zIndex: 1 }}>
@@ -64,9 +64,9 @@ export const EscrowPageClient = () => (
           transition={{ duration: 0.6 }}
           style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}
         >
-          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>Escrow</p>
+          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>Escrow</p>
           <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
-            Trustless payments with<br /><span style={{ color: "#10b981" }}>smart contract escrow</span>
+            Trustless payments with<br /><span style={{ color: "#31df90" }}>smart contract escrow</span>
           </h1>
           <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
             Each transaction deploys a fresh smart contract — isolated state, buyer protection, arbitration, and dispute resolution. One contract per deal, no shared risk.
@@ -97,7 +97,7 @@ export const EscrowPageClient = () => (
           </p>
         </div>
         <div style={{ maxWidth: "480px", margin: "0 auto", position: "relative" }}>
-          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "140%", height: "140%", background: "radial-gradient(ellipse, rgba(147,51,234,0.1) 0%, rgba(16,185,129,0.05) 50%, transparent 80%)", filter: "blur(50px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "140%", height: "140%", background: "radial-gradient(ellipse, rgba(147,51,234,0.1) 0%, rgba(49,223,144,0.05) 50%, transparent 80%)", filter: "blur(50px)", pointerEvents: "none" }} />
           <div style={{ position: "relative" }}>
             <EscrowFlowDemo />
           </div>
@@ -162,7 +162,7 @@ export const EscrowPageClient = () => (
     {/* Escrow vs Router callout */}
     <section style={{ background: "#000", padding: "48px 24px 80px" }}>
       <div style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center", padding: "32px 24px", borderRadius: "16px", border: "1px solid #1e2a24", background: "#0a0f0d" }}>
-        <p style={{ fontSize: "14px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "#10b981", marginBottom: "12px" }}>Need faster payments?</p>
+        <p style={{ fontSize: "14px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "#31df90", marginBottom: "12px" }}>Need faster payments?</p>
         <h3 style={{ fontSize: "22px", fontWeight: 800, color: "#f0fdf4", marginBottom: "12px" }}>Escrow vs. Payment Router</h3>
         <p style={{ fontSize: "15px", lineHeight: 1.6, color: "#6b7f75", marginBottom: "20px", maxWidth: "500px", marginLeft: "auto", marginRight: "auto" }}>
           Escrow deploys a fresh contract per transaction for buyer protection. The Payment Router deploys once and handles unlimited instant payments. Use both, or pick the one that fits.

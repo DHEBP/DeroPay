@@ -1,8 +1,13 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Manrope, Space_Grotesk } from "next/font/google";
 
-export const fontSans = Geist({
+export const fontSans = Manrope({
   subsets: ["latin"],
-  variable: "--font-geist-sans",
+  variable: "--font-manrope",
+});
+
+export const fontDisplay = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
 });
 
 export const fontMono = Geist_Mono({

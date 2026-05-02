@@ -53,7 +53,7 @@ export const PlaygroundClient = () => {
       {/* Hero */}
       <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-          <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.15) 0%, transparent 65%)", filter: "blur(100px)" }} />
+          <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.15) 0%, transparent 65%)", filter: "blur(100px)" }} />
           <div style={{ position: "absolute", top: "-10%", left: "10%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(147,51,234,0.18) 0%, transparent 60%)", filter: "blur(100px)" }} />
         </div>
         <div className="bg-grid-pattern" style={{ position: "absolute", inset: 0, opacity: 0.1 }} />
@@ -64,9 +64,9 @@ export const PlaygroundClient = () => {
             transition={{ duration: 0.6 }}
             style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}
           >
-            <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>Interactive Demo</p>
+            <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>Interactive Demo</p>
             <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
-              Try DeroPay <span style={{ color: "#10b981" }}>right now</span>
+              Try DeroPay <span style={{ color: "#31df90" }}>right now</span>
             </h1>
             <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
               Click the button below. No wallet, no backend, no setup. This is the real widget running in simulation mode.
@@ -132,7 +132,7 @@ export const PlaygroundClient = () => {
                 <h2 style={{ fontSize: "24px", fontWeight: 900, color: "#f0fdf4" }}>Embed Code</h2>
                 <button
                   onClick={handleCopy}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "transparent", border: "1px solid #1e2a24", borderRadius: "8px", color: copied ? "#10b981" : "#6b7f75", cursor: "pointer", fontSize: "12px", fontWeight: 600, transition: "all 0.15s" }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "transparent", border: "1px solid #1e2a24", borderRadius: "8px", color: copied ? "#31df90" : "#6b7f75", cursor: "pointer", fontSize: "12px", fontWeight: 600, transition: "all 0.15s" }}
                 >
                   {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
                 </button>
@@ -184,7 +184,7 @@ export const PlaygroundClient = () => {
               style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
               className="demo-card"
             >
-              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#10b981" }}>
+              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#31df90" }}>
                 <Store size={22} />
               </div>
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Demo Store</h3>
@@ -197,7 +197,7 @@ export const PlaygroundClient = () => {
               style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
               className="demo-card"
             >
-              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#10b981" }}>
+              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#31df90" }}>
                 <ArrowRight size={22} />
               </div>
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Checkout Page</h3>
@@ -210,7 +210,7 @@ export const PlaygroundClient = () => {
               style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
               className="demo-card"
             >
-              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#10b981" }}>
+              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#31df90" }}>
                 <BookOpen size={22} />
               </div>
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Dashboard</h3>

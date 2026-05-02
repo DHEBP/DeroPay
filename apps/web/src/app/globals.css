@@ -1,46 +1,66 @@
 @import "tailwindcss";
 
 @theme {
-  /* DeroPay Emerald Palette */
-  --color-background: #000000;
+  /* Surfaces */
+  --color-background: #060806;
   --color-surface: #0a0f0d;
   --color-surface-hover: #111a16;
   --color-border: #1e2a24;
   --color-border-hover: #4a6356;
+  --color-border-soft: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(99, 255, 181, 0.18);
 
   /* Text */
   --color-text-primary: #f0fdf4;
   --color-text-secondary: #6b7f75;
   --color-text-tertiary: #4a6356;
+  --color-text-muted: rgba(244, 248, 244, 0.46);
 
-  /* Brand — Emerald */
-  --color-accent: #10b981;
-  --color-accent-hover: #059669;
-  --color-accent-dim: rgba(16, 185, 129, 0.14);
+  /* Brand — Emerald (warm, retail-luxury) */
+  --color-accent: #31df90;
+  --color-accent-hover: #2cc882;
+  --color-accent-strong: #8ff4bf;
+  --color-accent-dim: rgba(49, 223, 144, 0.14);
+  --color-accent-glow: rgba(49, 223, 144, 0.28);
 
-  /* Compat aliases */
-  --color-accent-teal: #10b981;
-  --color-accent-blue: #10b981;
-  --color-accent-purple: #10b981;
-  --color-accent-gold: #10b981;
+  /* Secondary brand — warm cream */
+  --color-warm: #d9c6a3;
+
+  /* Compat aliases — map to current accent */
+  --color-accent-teal: #31df90;
+  --color-accent-blue: #31df90;
+  --color-accent-purple: #31df90;
+  --color-accent-gold: #31df90;
+
+  /* Fonts */
+  --font-sans: var(--font-manrope);
+  --font-display: var(--font-space-grotesk);
+  --font-mono: var(--font-geist-mono);
 }
 
 /* Base */
 html {
   scroll-behavior: smooth;
+  color-scheme: dark;
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
+  font-family: var(--font-manrope), system-ui, -apple-system, sans-serif;
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background: rgba(16, 185, 129, 0.25);
-  color: #10b981;
+  background: rgba(49, 223, 144, 0.24);
+  color: #ffffff;
+}
+
+/* Display utility */
+.font-display {
+  font-family: var(--font-space-grotesk), system-ui, -apple-system, sans-serif;
 }
 
 /* Grid Background */
@@ -71,17 +91,26 @@ body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 2rem;
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 600;
   line-height: 1;
+  letter-spacing: -0.005em;
   border-radius: 9999px;
-  background-color: #e2e8f0;
-  color: #0f1419;
-  transition: background-color 0.2s;
+  background-color: #ffffff;
+  color: #071008;
+  transition:
+    background-color 0.2s,
+    transform 0.2s;
+  will-change: transform;
 }
 
 .btn-primary:hover {
-  background-color: #cbd5e1;
+  background-color: var(--color-accent-strong);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
 }
 
 /* Secondary — ghost outline */
@@ -91,19 +120,29 @@ body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 2rem;
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 600;
   line-height: 1;
+  letter-spacing: -0.005em;
   border-radius: 9999px;
-  background-color: transparent;
-  color: #f0fdf4;
-  border: 1px solid #1e2a24;
-  transition: background-color 0.2s, border-color 0.2s;
+  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-soft);
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
+  will-change: transform;
 }
 
 .btn-secondary:hover {
-  background-color: rgba(16, 185, 129, 0.08);
-  border-color: #4a6356;
+  background-color: var(--color-accent-dim);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
 }
 
 /* Accent — emerald pill, dark text */
@@ -113,17 +152,129 @@ body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 2rem;
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 600;
   line-height: 1;
+  letter-spacing: -0.005em;
   border-radius: 9999px;
-  background-color: #10b981;
-  color: #000000;
-  transition: background-color 0.2s;
+  background-color: var(--color-accent);
+  color: #051008;
+  transition:
+    background-color 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
+  will-change: transform;
 }
 
 .btn-accent:hover {
-  background-color: #059669;
+  background-color: var(--color-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 32px -12px var(--color-accent-glow);
+}
+
+.btn-accent:active {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-accent {
+    transition: background-color 0.2s, border-color 0.2s;
+  }
+  .btn-primary:hover,
+  .btn-secondary:hover,
+  .btn-accent:hover,
+  .btn-primary:active,
+  .btn-secondary:active,
+  .btn-accent:active {
+    transform: none;
+  }
+}
+
+/* =====================
+   ATMOSPHERIC PRIMITIVES
+   (shared visual vocabulary with apps/demo)
+   ===================== */
+
+.section-kicker {
+  color: var(--color-accent-strong);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.eyebrow-dot::before {
+  background: var(--color-accent);
+  border-radius: 9999px;
+  content: "";
+  display: inline-flex;
+  height: 0.45rem;
+  margin-right: 0.65rem;
+  width: 0.65rem;
+}
+
+.glass-panel {
+  background: linear-gradient(180deg, rgba(21, 27, 23, 0.88), rgba(10, 13, 11, 0.86));
+  border: 1px solid var(--color-border-soft);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+}
+
+.glass-panel-strong {
+  background:
+    linear-gradient(180deg, rgba(18, 24, 20, 0.95), rgba(9, 11, 10, 0.93)),
+    radial-gradient(circle at top left, rgba(49, 223, 144, 0.08), transparent 44%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 36px 100px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+}
+
+.soft-outline {
+  position: relative;
+}
+
+.soft-outline::after {
+  border: 1px solid rgba(143, 244, 191, 0.08);
+  border-radius: inherit;
+  content: "";
+  inset: 1px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.ambient-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 72px 72px;
+  inset: 0;
+  mask-image: radial-gradient(circle at center, black 34%, transparent 84%);
+  opacity: 0.34;
+  position: absolute;
+}
+
+.ambient-orb {
+  border-radius: 9999px;
+  filter: blur(95px);
+  position: absolute;
+}
+
+.ambient-orb-left {
+  background: rgba(49, 223, 144, 0.18);
+  height: 360px;
+  left: -80px;
+  top: 96px;
+  width: 360px;
+}
+
+.ambient-orb-right {
+  background: rgba(217, 198, 163, 0.14);
+  height: 320px;
+  right: -40px;
+  top: 180px;
+  width: 320px;
 }
 
 /* Scrollbar */
@@ -132,14 +283,14 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #000000;
+  background: var(--color-background);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e2a24;
+  background: var(--color-border);
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a6356;
+  background: var(--color-border-hover);
 }

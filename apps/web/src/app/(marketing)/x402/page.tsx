@@ -53,18 +53,18 @@ export default function X402Page() {
     <>
       <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-          <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
+          <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
           <div style={{ position: "absolute", top: "-10%", left: "10%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(147,51,234,0.15) 0%, transparent 60%)", filter: "blur(100px)" }} />
         </div>
         <div className="bg-grid-pattern" style={{ position: "absolute", inset: 0, opacity: 0.1 }} />
         <div style={{ position: "relative", maxWidth: "1200px", margin: "0 auto", padding: "56px 24px 72px", zIndex: 1 }}>
           <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
-            <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+            <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>
               x402 + DERO
             </p>
             <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.6rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
               The internet-native payment rail<br />
-              <span style={{ color: "#10b981" }}>for agentic commerce</span>
+              <span style={{ color: "#31df90" }}>for agentic commerce</span>
             </h1>
             <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "620px", marginLeft: "auto", marginRight: "auto" }}>
               DeroPay implements x402 as a DERO-native protocol loop so APIs can monetize per request with machine-readable payment challenges and proof-based retries.
@@ -84,7 +84,7 @@ export default function X402Page() {
       <section style={{ background: "#000", padding: "72px 24px", borderBottom: "1px solid #1e2a24" }}>
         <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: "40px" }}>
-            <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+            <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>
               Request Loop
             </p>
             <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>
@@ -101,7 +101,7 @@ export default function X402Page() {
       <section style={{ background: "#000", padding: "80px 24px", borderBottom: "1px solid #1e2a24" }}>
         <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: "48px" }}>
-            <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+            <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>
               Why x402
             </p>
             <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>
@@ -111,7 +111,7 @@ export default function X402Page() {
           <div style={{ display: "grid", gap: "16px", gridTemplateColumns: "repeat(2, 1fr)" }} className="x402-pillars-grid">
             {pillars.map((pillar) => (
               <div key={pillar.title} style={{ padding: "24px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px" }}>
-                <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(16,185,129,0.14)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", marginBottom: "14px" }}>
+                <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(49,223,144,0.14)", display: "flex", alignItems: "center", justifyContent: "center", color: "#31df90", marginBottom: "14px" }}>
                   {pillar.icon}
                 </div>
                 <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#f0fdf4", marginBottom: "8px" }}>{pillar.title}</h3>
@@ -125,7 +125,7 @@ export default function X402Page() {
       <section style={{ background: "#000", padding: "80px 24px" }}>
         <div style={{ maxWidth: "840px", margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: "36px" }}>
-            <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+            <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>
               Developer Flow
             </p>
             <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>

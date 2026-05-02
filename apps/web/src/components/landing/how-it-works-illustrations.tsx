@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 
-const C = "#10b981";
+const C = "#31df90";
 
 const Defs = ({ id }: { id: string }) => (
   <defs>

@@ -43,6 +43,7 @@
         "lucide-react": "^0.575.0",
         "next": "16.1.6",
         "nuqs": "^2.8.9",
+        "qrcode.react": "^4.0.0",
         "react": "19.2.3",
         "react-dom": "19.2.3",
         "zod": "^4.3.6",
@@ -75,6 +76,9 @@
         "tsx": "^4.0.0",
         "typescript": "^5.7.0",
       },
+    },
+    "apps/tela": {
+      "name": "deropay-tela",
     },
     "apps/web": {
       "name": "deropay.com",
@@ -1228,6 +1232,8 @@
     "deropay-dashboard": ["deropay-dashboard@workspace:apps/dashboard"],
 
     "deropay-gateway": ["deropay-gateway@workspace:apps/gateway"],
+
+    "deropay-tela": ["deropay-tela@workspace:apps/tela"],
 
     "deropay-widget": ["deropay-widget@workspace:packages/deropay-widget"],
 

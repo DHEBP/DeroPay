@@ -86,7 +86,7 @@ export const PaymentFlowDemo = () => {
     <div style={{ position: "relative", maxWidth: "420px", margin: "0 auto", overflow: "hidden", borderRadius: "16px", border: "1px solid #1e2a24", background: "#0a0f0d" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: "1px solid #1e2a24", padding: "14px 20px" }}>
-        <CreditCard size={16} color="#10b981" />
+        <CreditCard size={16} color="#31df90" />
         <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7f75" }}>
           DeroPay — Payment Flow
         </span>
@@ -109,7 +109,7 @@ export const PaymentFlowDemo = () => {
                     <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>Premium Plan</p>
                     <p style={{ marginTop: "4px", fontSize: "12px", color: "#4a6356" }}>Monthly subscription</p>
                   </div>
-                  <p style={{ fontSize: "20px", fontWeight: 800, color: "#10b981" }}>25.0 DERO</p>
+                  <p style={{ fontSize: "20px", fontWeight: 800, color: "#31df90" }}>25.0 DERO</p>
                 </div>
                 <div style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#4a6356" }}>
                   <Clock size={12} />
@@ -138,7 +138,7 @@ export const PaymentFlowDemo = () => {
                   borderRadius: "10px",
                   background: "#ffffff",
                   padding: "10px",
-                  boxShadow: "0 0 40px -10px rgba(16,185,129,0.3)",
+                  boxShadow: "0 0 40px -10px rgba(49,223,144,0.3)",
                 }}
               >
                 <div
@@ -173,8 +173,8 @@ export const PaymentFlowDemo = () => {
               exit={{ opacity: 0, y: -12 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}
             >
-              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Loader2 size={24} color="#10b981" className="animate-spin" />
+              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(49,223,144,0.25)", background: "rgba(49,223,144,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Loader2 size={24} color="#31df90" className="animate-spin" />
               </div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>Payment detected</p>
@@ -197,14 +197,14 @@ export const PaymentFlowDemo = () => {
                 <svg width="80" height="80" viewBox="0 0 80 80" style={{ transform: "rotate(-90deg)" }}>
                   <circle cx="40" cy="40" r="35" fill="none" stroke="#1e2a24" strokeWidth="4" />
                   <motion.circle
-                    cx="40" cy="40" r="35" fill="none" stroke="#10b981" strokeWidth="4" strokeLinecap="round"
+                    cx="40" cy="40" r="35" fill="none" stroke="#31df90" strokeWidth="4" strokeLinecap="round"
                     strokeDasharray={2 * Math.PI * 35}
                     animate={{ strokeDashoffset: 2 * Math.PI * 35 * (1 - confirmations / 8) }}
                     transition={{ duration: 0.3 }}
                   />
                 </svg>
                 <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontFamily: "monospace", fontSize: "18px", fontWeight: 800, color: "#10b981" }}>
+                  <span style={{ fontFamily: "monospace", fontSize: "18px", fontWeight: 800, color: "#31df90" }}>
                     {confirmations}/8
                   </span>
                 </div>
@@ -230,9 +230,9 @@ export const PaymentFlowDemo = () => {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", bounce: 0.5 }}
-                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(16,185,129,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(49,223,144,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                <CheckCircle2 size={28} color="#10b981" />
+                <CheckCircle2 size={28} color="#31df90" />
               </motion.div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4" }}>Payment confirmed</p>
@@ -260,7 +260,7 @@ export const PaymentFlowDemo = () => {
               flex: 1,
               borderRadius: "2px",
               transition: "background-color 0.3s",
-              background: i <= stepIndex ? "#10b981" : "#1e2a24",
+              background: i <= stepIndex ? "#31df90" : "#1e2a24",
             }}
           />
         ))}

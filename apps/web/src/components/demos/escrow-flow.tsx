@@ -18,9 +18,9 @@ const Actor = ({ label, icon, active = false }: { label: string; icon: React.Rea
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", transition: "all 0.3s", transform: active ? "scale(1.08)" : "scale(1)", opacity: active ? 1 : 0.45 }}>
     <div style={{
       width: "44px", height: "44px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-      border: active ? "1.5px solid rgba(16,185,129,0.4)" : "1px solid #1e2a24",
-      background: active ? "rgba(16,185,129,0.08)" : "#000",
-      color: active ? "#10b981" : "#4a6356",
+      border: active ? "1.5px solid rgba(49,223,144,0.4)" : "1px solid #1e2a24",
+      background: active ? "rgba(49,223,144,0.08)" : "#000",
+      color: active ? "#31df90" : "#4a6356",
     }}>
       {icon}
     </div>
@@ -46,7 +46,7 @@ export const EscrowFlowDemo = () => {
     <div style={{ position: "relative", maxWidth: "420px", margin: "0 auto", overflow: "hidden", borderRadius: "16px", border: "1px solid #1e2a24", background: "#0a0f0d" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: "1px solid #1e2a24", padding: "14px 20px" }}>
-        <Lock size={16} color="#10b981" />
+        <Lock size={16} color="#31df90" />
         <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7f75" }}>
           Escrow — Smart Contract Flow
         </span>
@@ -65,8 +65,8 @@ export const EscrowFlowDemo = () => {
           {currentStep === "deploy" && (
             <motion.div key="deploy" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
-              <div style={{ width: "48px", height: "48px", borderRadius: "50%", border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Loader2 size={20} color="#10b981" className="animate-spin" />
+              <div style={{ width: "48px", height: "48px", borderRadius: "50%", border: "1px solid rgba(49,223,144,0.25)", background: "rgba(49,223,144,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Loader2 size={20} color="#31df90" className="animate-spin" />
               </div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>Deploying escrow contract</p>
@@ -84,14 +84,14 @@ export const EscrowFlowDemo = () => {
             <motion.div key="deposit" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
               <motion.div animate={{ y: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                <ArrowDown size={24} color="#10b981" />
+                <ArrowDown size={24} color="#31df90" />
               </motion.div>
-              <div style={{ borderRadius: "10px", border: "1px solid rgba(16,185,129,0.2)", background: "rgba(16,185,129,0.06)", padding: "14px 20px", textAlign: "center" }}>
-                <p style={{ fontFamily: "monospace", fontSize: "20px", fontWeight: 800, color: "#10b981" }}>100.0 DERO</p>
+              <div style={{ borderRadius: "10px", border: "1px solid rgba(49,223,144,0.2)", background: "rgba(49,223,144,0.06)", padding: "14px 20px", textAlign: "center" }}>
+                <p style={{ fontFamily: "monospace", fontSize: "20px", fontWeight: 800, color: "#31df90" }}>100.0 DERO</p>
                 <p style={{ marginTop: "4px", fontSize: "11px", color: "#4a6356" }}>Buyer depositing into contract</p>
               </div>
               <p style={{ fontSize: "12px", color: "#6b7f75" }}>
-                Status: <span style={{ color: "#facc15" }}>awaiting_deposit</span> &rarr; <span style={{ color: "#10b981" }}>funded</span>
+                Status: <span style={{ color: "#facc15" }}>awaiting_deposit</span> &rarr; <span style={{ color: "#31df90" }}>funded</span>
               </p>
             </motion.div>
           )}
@@ -100,14 +100,14 @@ export const EscrowFlowDemo = () => {
             <motion.div key="funded" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
               <motion.div
-                animate={{ boxShadow: ["0 0 0 0 rgba(16,185,129,0)", "0 0 24px 6px rgba(16,185,129,0.15)", "0 0 0 0 rgba(16,185,129,0)"] }}
+                animate={{ boxShadow: ["0 0 0 0 rgba(49,223,144,0)", "0 0 24px 6px rgba(49,223,144,0.15)", "0 0 0 0 rgba(49,223,144,0)"] }}
                 transition={{ repeat: Infinity, duration: 2.5 }}
-                style={{ width: "52px", height: "52px", borderRadius: "50%", border: "1.5px solid rgba(16,185,129,0.35)", background: "rgba(16,185,129,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Lock size={22} color="#10b981" />
+                style={{ width: "52px", height: "52px", borderRadius: "50%", border: "1.5px solid rgba(49,223,144,0.35)", background: "rgba(49,223,144,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Lock size={22} color="#31df90" />
               </motion.div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>Funds locked in contract</p>
-                <p style={{ marginTop: "4px", fontFamily: "monospace", fontSize: "13px", color: "#10b981" }}>100.0 DERO secured</p>
+                <p style={{ marginTop: "4px", fontFamily: "monospace", fontSize: "13px", color: "#31df90" }}>100.0 DERO secured</p>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
                 <span style={{ borderRadius: "9999px", border: "1px solid rgba(52,211,153,0.25)", background: "rgba(52,211,153,0.06)", padding: "4px 12px", fontSize: "11px", fontWeight: 600, color: "#34d399" }}>ConfirmDelivery</span>
@@ -120,12 +120,12 @@ export const EscrowFlowDemo = () => {
           {currentStep === "resolve" && (
             <motion.div key="resolve" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
-              <ShieldAlert size={26} color="#10b981" />
+              <ShieldAlert size={26} color="#31df90" />
               <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>Buyer confirms delivery</p>
               <div style={{ width: "100%", borderRadius: "10px", border: "1px solid #1e2a24", background: "#000", padding: "14px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "13px" }}>
                   <span style={{ color: "#6b7f75" }}>Seller receives:</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#10b981" }}>98.0 DERO</span>
+                  <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#31df90" }}>98.0 DERO</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "13px", marginTop: "6px" }}>
                   <span style={{ color: "#6b7f75" }}>Platform fee (2%):</span>
@@ -139,13 +139,13 @@ export const EscrowFlowDemo = () => {
             <motion.div key="released" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", bounce: 0.5 }}
-                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(16,185,129,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <CheckCircle2 size={28} color="#10b981" />
+                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(49,223,144,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <CheckCircle2 size={28} color="#31df90" />
               </motion.div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4" }}>Escrow released</p>
                 <p style={{ marginTop: "4px", fontSize: "13px", color: "#6b7f75" }}>
-                  Status: <span style={{ color: "#10b981" }}>released</span> &middot; funds sent to seller
+                  Status: <span style={{ color: "#31df90" }}>released</span> &middot; funds sent to seller
                 </p>
                 <div style={{ marginTop: "12px", borderRadius: "8px", border: "1px solid #1e2a24", background: "#000", padding: "8px 14px" }}>
                   <p style={{ fontFamily: "monospace", fontSize: "11px", color: "#4a6356" }}>
@@ -161,7 +161,7 @@ export const EscrowFlowDemo = () => {
       {/* Progress */}
       <div style={{ display: "flex", gap: "5px", borderTop: "1px solid #1e2a24", padding: "14px 20px" }}>
         {steps.map((step, i) => (
-          <div key={step.id} style={{ height: "4px", flex: 1, borderRadius: "2px", transition: "background-color 0.3s", background: i <= stepIndex ? "#10b981" : "#1e2a24" }} />
+          <div key={step.id} style={{ height: "4px", flex: 1, borderRadius: "2px", transition: "background-color 0.3s", background: i <= stepIndex ? "#31df90" : "#1e2a24" }} />
         ))}
       </div>
     </div>

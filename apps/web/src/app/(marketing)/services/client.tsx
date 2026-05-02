@@ -180,7 +180,7 @@ export const ServicesPageClient = () => (
             height: "700px",
             borderRadius: "50%",
             background:
-              "radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 65%)",
+              "radial-gradient(circle, rgba(49,223,144,0.12) 0%, transparent 65%)",
             filter: "blur(100px)",
           }}
         />
@@ -224,7 +224,7 @@ export const ServicesPageClient = () => (
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
-              color: "#10b981",
+              color: "#31df90",
             }}
           >
             Merchant Onboarding
@@ -240,7 +240,7 @@ export const ServicesPageClient = () => (
           >
             Accept crypto privately.
             <br />
-            <span style={{ color: "#10b981" }}>We&apos;ll set it up for you.</span>
+            <span style={{ color: "#31df90" }}>We&apos;ll set it up for you.</span>
           </h1>
           <p
             style={{
@@ -294,7 +294,7 @@ export const ServicesPageClient = () => (
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
-              color: "#10b981",
+              color: "#31df90",
             }}
           >
             Who It&apos;s For
@@ -350,7 +350,7 @@ export const ServicesPageClient = () => (
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#10b981",
+                  color: "#31df90",
                   marginBottom: "14px",
                 }}
               >
@@ -399,7 +399,7 @@ export const ServicesPageClient = () => (
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
-              color: "#10b981",
+              color: "#31df90",
             }}
           >
             Service Tiers
@@ -425,7 +425,7 @@ export const ServicesPageClient = () => (
                 padding: "28px 24px",
                 background: "#0a0f0d",
                 border: tier.featured
-                  ? "1px solid #10b981"
+                  ? "1px solid #31df90"
                   : "1px solid #1e2a24",
                 borderRadius: "12px",
                 display: "flex",
@@ -440,7 +440,7 @@ export const ServicesPageClient = () => (
                     top: "-1px",
                     left: "50%",
                     transform: "translateX(-50%)",
-                    background: "#10b981",
+                    background: "#31df90",
                     color: "#000",
                     fontSize: "10px",
                     fontWeight: 800,
@@ -476,7 +476,7 @@ export const ServicesPageClient = () => (
                   style={{
                     fontSize: "28px",
                     fontWeight: 900,
-                    color: "#10b981",
+                    color: "#31df90",
                   }}
                 >
                   {tier.price}
@@ -527,7 +527,7 @@ export const ServicesPageClient = () => (
                     <Check
                       size={14}
                       style={{
-                        color: "#10b981",
+                        color: "#31df90",
                         flexShrink: 0,
                         marginTop: "2px",
                       }}
@@ -570,7 +570,7 @@ export const ServicesPageClient = () => (
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
-              color: "#10b981",
+              color: "#31df90",
             }}
           >
             How It Works
@@ -609,7 +609,7 @@ export const ServicesPageClient = () => (
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#10b981",
+                  color: "#31df90",
                   margin: "0 auto 14px",
                   position: "relative",
                 }}
@@ -623,7 +623,7 @@ export const ServicesPageClient = () => (
                     width: "18px",
                     height: "18px",
                     borderRadius: "50%",
-                    background: "#10b981",
+                    background: "#31df90",
                     color: "#000",
                     fontSize: "10px",
                     fontWeight: 800,
@@ -673,7 +673,7 @@ export const ServicesPageClient = () => (
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
-              color: "#10b981",
+              color: "#31df90",
             }}
           >
             Privacy Audit
@@ -699,7 +699,7 @@ export const ServicesPageClient = () => (
               href="https://defaultprivacy.com"
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: "#10b981", textDecoration: "none" }}
+              style={{ color: "#31df90", textDecoration: "none" }}
             >
               Default Privacy
             </a>
@@ -734,7 +734,7 @@ export const ServicesPageClient = () => (
               <span
                 style={{
                   fontSize: "12px",
-                  color: "#10b981",
+                  color: "#31df90",
                   fontWeight: 600,
                   whiteSpace: "nowrap",
                 }}
@@ -764,7 +764,7 @@ export const ServicesPageClient = () => (
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
-              color: "#10b981",
+              color: "#31df90",
             }}
           >
             Two Platforms
@@ -813,7 +813,7 @@ export const ServicesPageClient = () => (
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#10b981",
+                color: "#31df90",
                 marginBottom: "14px",
               }}
             >
@@ -848,7 +848,7 @@ export const ServicesPageClient = () => (
                   marginBottom: "8px",
                 }}
               >
-                <ArrowRight size={12} style={{ color: "#10b981" }} />
+                <ArrowRight size={12} style={{ color: "#31df90" }} />
                 {item}
               </div>
             ))}
@@ -870,7 +870,7 @@ export const ServicesPageClient = () => (
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#10b981",
+                color: "#31df90",
                 marginBottom: "14px",
               }}
             >
@@ -912,7 +912,7 @@ export const ServicesPageClient = () => (
                   marginBottom: "8px",
                 }}
               >
-                <ArrowRight size={12} style={{ color: "#10b981" }} />
+                <ArrowRight size={12} style={{ color: "#31df90" }} />
                 {item}
               </div>
             ))}

@@ -42,7 +42,7 @@ export const AboutPageClient = () => (
     {/* Hero */}
     <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-        <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
+        <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
         <div style={{ position: "absolute", top: "-10%", left: "10%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(147,51,234,0.15) 0%, transparent 60%)", filter: "blur(100px)" }} />
       </div>
       <div style={{ position: "relative", maxWidth: "1200px", margin: "0 auto", padding: "48px 24px 56px", zIndex: 1 }}>
@@ -52,10 +52,10 @@ export const AboutPageClient = () => (
           transition={{ duration: 0.6 }}
           style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}
         >
-          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>About</p>
+          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>About</p>
           <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
             Payment infrastructure<br />
-            <span style={{ color: "#10b981" }}>that respects privacy</span>
+            <span style={{ color: "#31df90" }}>that respects privacy</span>
           </h1>
           <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
             DeroPay is free, open-source, self-hosted payment infrastructure for DERO.
@@ -87,7 +87,7 @@ export const AboutPageClient = () => (
     <section style={{ background: "#000", padding: "80px 24px", borderBottom: "1px solid #1e2a24" }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: "48px" }}>
-          <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>Principles</p>
+          <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>Principles</p>
           <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>How we build</h2>
         </div>
         <div style={{ display: "grid", gap: "16px", gridTemplateColumns: "repeat(2, 1fr)" }} className="about-principles-grid">
@@ -96,7 +96,7 @@ export const AboutPageClient = () => (
               key={p.title}
               style={{ padding: "24px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px" }}
             >
-              <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "#0a1f17", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", marginBottom: "14px" }}>
+              <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "#0a1f17", display: "flex", alignItems: "center", justifyContent: "center", color: "#31df90", marginBottom: "14px" }}>
                 {p.icon}
               </div>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4", marginBottom: "8px" }}>{p.title}</h3>

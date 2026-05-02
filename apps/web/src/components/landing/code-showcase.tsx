@@ -56,29 +56,33 @@ export const CodeShowcase = () => {
   };
 
   return (
-    <Section className="bg-black border-t border-border">
+    <Section className="border-t border-[var(--color-border-soft)] bg-[var(--color-background)]">
       <SectionHeader
         eyebrow="Developers"
-        title="SHIP FASTER"
+        title="Ship faster"
         description="Drop-in components and framework integrations. From sign-in to checkout in a few lines of code."
       />
 
       <div className="mx-auto max-w-4xl">
-        <div className="overflow-hidden rounded-3xl border border-border bg-[#000000]">
-          <div className="flex items-center justify-between border-b border-border bg-surface-hover px-6 py-4">
-            <div className="flex gap-2">
+        <div className="glass-panel soft-outline overflow-hidden rounded-[1.5rem]">
+          <div className="flex items-center justify-between border-b border-[var(--color-border-soft)] bg-[var(--color-surface-hover)]/40 px-6 py-4">
+            <div className="flex gap-2" aria-hidden="true">
               <div className="h-3 w-3 rounded-full bg-[#ff5f57]" />
               <div className="h-3 w-3 rounded-full bg-[#febc2e]" />
               <div className="h-3 w-3 rounded-full bg-[#28c840]" />
             </div>
-            
-            <div className="flex gap-4">
+
+            <div role="tablist" className="flex gap-4">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`text-sm font-bold transition-colors ${
-                    activeTab === tab.id ? "text-white" : "text-text-tertiary hover:text-text-secondary"
+                    activeTab === tab.id
+                      ? "text-[var(--color-text-primary)]"
+                      : "text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
                   }`}
                 >
                   {tab.label}
@@ -87,10 +91,16 @@ export const CodeShowcase = () => {
             </div>
 
             <button
+              type="button"
               onClick={copyCode}
-              className="text-text-tertiary hover:text-white transition-colors"
+              aria-label={copied ? "Copied" : "Copy code"}
+              className="text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-primary)]"
             >
-              {copied ? <Check size={16} className="text-[#10b981]" /> : <Copy size={16} />}
+              {copied ? (
+                <Check size={16} className="text-[var(--color-accent)]" />
+              ) : (
+                <Copy size={16} />
+              )}
             </button>
           </div>
 
@@ -102,7 +112,7 @@ export const CodeShowcase = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
-                className="font-mono text-sm leading-relaxed text-text-secondary overflow-x-auto"
+                className="overflow-x-auto font-mono text-sm leading-relaxed text-[var(--color-text-secondary)]"
               >
                 <code>{active.code}</code>
               </motion.pre>

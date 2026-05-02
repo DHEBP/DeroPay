@@ -99,7 +99,7 @@ export const TemplatesPageClient = () => (
     {/* Hero */}
     <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-        <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
+        <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.12) 0%, transparent 65%)", filter: "blur(100px)" }} />
         <div style={{ position: "absolute", top: "-10%", left: "10%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(147,51,234,0.15) 0%, transparent 60%)", filter: "blur(100px)" }} />
       </div>
       <div style={{ position: "relative", maxWidth: "1200px", margin: "0 auto", padding: "48px 24px 56px", zIndex: 1 }}>
@@ -109,12 +109,12 @@ export const TemplatesPageClient = () => (
           transition={{ duration: 0.6 }}
           style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}
         >
-          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+          <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>
             Starter Templates
           </p>
           <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
             Clone, configure,<br />
-            <span style={{ color: "#10b981" }}>start selling</span>
+            <span style={{ color: "#31df90" }}>start selling</span>
           </h1>
           <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
             Production-ready starter templates for building DERO commerce applications. 
@@ -160,13 +160,13 @@ export const TemplatesPageClient = () => (
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "#10b981",
+                    color: "#31df90",
                     flexShrink: 0,
                   }}>
                     {template.icon}
                   </div>
                   <div>
-                    <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "#10b981", marginBottom: "4px" }}>
+                    <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "#31df90", marginBottom: "4px" }}>
                       {template.tagline}
                     </p>
                     <h3 style={{ fontSize: "22px", fontWeight: 800, color: "#f0fdf4" }}>
@@ -188,7 +188,7 @@ export const TemplatesPageClient = () => (
                   <ul style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {template.features.map((feature) => (
                       <li key={feature} style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontSize: "14px", color: "#9ca3af" }}>
-                        <span style={{ color: "#10b981", marginTop: "2px" }}>•</span>
+                        <span style={{ color: "#31df90", marginTop: "2px" }}>•</span>
                         {feature}
                       </li>
                     ))}
@@ -243,7 +243,7 @@ export const TemplatesPageClient = () => (
     <section style={{ background: "#000", padding: "80px 24px", borderBottom: "1px solid #1e2a24" }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: "48px" }}>
-          <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#10b981" }}>
+          <p style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>
             Why Templates
           </p>
           <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4" }}>
@@ -269,7 +269,7 @@ export const TemplatesPageClient = () => (
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#10b981",
+                color: "#31df90",
                 marginBottom: "14px",
               }}>
                 {benefit.icon}
@@ -296,7 +296,7 @@ export const TemplatesPageClient = () => (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <div style={{ padding: "24px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-              <span style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#10b981", color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700 }}>1</span>
+              <span style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#31df90", color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700 }}>1</span>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4" }}>Clone the template</h3>
             </div>
             <pre style={{ padding: "16px", background: "#111916", borderRadius: "8px", fontSize: "14px", color: "#9ca3af", overflow: "auto" }}>
@@ -306,7 +306,7 @@ export const TemplatesPageClient = () => (
 
           <div style={{ padding: "24px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-              <span style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#10b981", color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700 }}>2</span>
+              <span style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#31df90", color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700 }}>2</span>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4" }}>Configure environment</h3>
             </div>
             <p style={{ fontSize: "14px", lineHeight: 1.6, color: "#6b7f75" }}>
@@ -317,7 +317,7 @@ export const TemplatesPageClient = () => (
 
           <div style={{ padding: "24px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-              <span style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#10b981", color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700 }}>3</span>
+              <span style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#31df90", color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700 }}>3</span>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4" }}>Start building</h3>
             </div>
             <p style={{ fontSize: "14px", lineHeight: 1.6, color: "#6b7f75" }}>

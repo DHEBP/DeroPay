@@ -13,50 +13,21 @@
  */
 
 import type { WalletStatus } from "../core/types.js";
+import {
+  XSWDConnector,
+  type XSWDAppData,
+  type XSWDConnectorEvents,
+} from "./connectors/xswd/XSWDConnector.js";
+import {
+  defaultWalletConnectorPolicy,
+  type WalletConnectorPolicy,
+} from "./connectors/index.js";
 
 /** XSWD application registration data */
-export type XSWDPayAppData = {
-  id: string;
-  name: string;
-  description: string;
-  url: string;
-};
-
-/** XSWD JSON-RPC response */
-type XSWDResponse<T = unknown> = {
-  jsonrpc?: string;
-  id?: string;
-  result?: T;
-  error?: { code: number; message: string };
-  message?: string;
-  accepted?: boolean;
-};
+export type XSWDPayAppData = XSWDAppData;
 
 /** Events emitted by the XSWD pay client */
-export type XSWDPayEvents = {
-  statusChange: (status: WalletStatus) => void;
-  addressReceived: (address: string) => void;
-  error: (error: Error) => void;
-};
-
-/**
- * Generate a random 64-character hex ID for XSWD registration.
- */
-function generateAppId(): string {
-  const bytes = new Uint8Array(32);
-  if (typeof globalThis.crypto !== "undefined") {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 32; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-const DEFAULT_XSWD_URL = "ws://localhost:44326/xswd";
+export type XSWDPayEvents = XSWDConnectorEvents;
 
 /**
  * XSWD client extended with payment methods for customer-side usage.
@@ -69,79 +40,47 @@ const DEFAULT_XSWD_URL = "ws://localhost:44326/xswd";
  * ```
  */
 export class XSWDPayClient {
-  private socket: WebSocket | null = null;
-  private status: WalletStatus = "disconnected";
-  private requestCounter = 1;
-  private pendingRequests = new Map<
-    string,
-    { resolve: (value: unknown) => void; reject: (reason: Error) => void }
-  >();
-  private listeners: Partial<{
-    [K in keyof XSWDPayEvents]: XSWDPayEvents[K][];
-  }> = {};
-  private url: string;
-  private appData: XSWDPayAppData;
-  private connectTimeoutMs: number;
+  private readonly connector: XSWDConnector;
+  private readonly appName: string;
   private walletAddress: string | null = null;
+  private readonly policy: WalletConnectorPolicy;
 
   constructor(options?: {
     url?: string;
     appName?: string;
     appDescription?: string;
     connectTimeoutMs?: number;
+    policy?: Partial<WalletConnectorPolicy>;
   }) {
-    this.url = options?.url ?? DEFAULT_XSWD_URL;
-    this.connectTimeoutMs = options?.connectTimeoutMs ?? 120_000;
-    this.appData = {
-      id: generateAppId(),
-      name: options?.appName ?? "DeroPay",
-      description:
-        options?.appDescription ?? "Pay with your DERO wallet",
-      url:
-        typeof window !== "undefined"
-          ? window.location.origin
-          : "http://localhost",
+    this.appName = options?.appName ?? "DeroPay";
+    this.policy = {
+      ...defaultWalletConnectorPolicy,
+      ...options?.policy,
     };
+    this.connector = new XSWDConnector({
+      url: options?.url,
+      appName: this.appName,
+      appDescription: options?.appDescription,
+      connectTimeoutMs: options?.connectTimeoutMs,
+    });
+    this.connector.on("addressReceived", (address) => {
+      this.walletAddress = address;
+    });
   }
 
   /** Get the current connection status */
   getStatus(): WalletStatus {
-    return this.status;
+    return this.connector.getStatus();
   }
 
   /** Get the connected wallet address (null if not connected) */
   getAddress(): string | null {
-    return this.walletAddress;
+    return this.walletAddress ?? this.connector.getState().address ?? null;
   }
 
   /** Register an event listener */
   on<K extends keyof XSWDPayEvents>(event: K, callback: XSWDPayEvents[K]): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
-    (this.listeners[event] as XSWDPayEvents[K][]).push(callback);
-    return () => {
-      const arr = this.listeners[event] as XSWDPayEvents[K][];
-      const idx = arr.indexOf(callback);
-      if (idx !== -1) arr.splice(idx, 1);
-    };
-  }
-
-  private emit<K extends keyof XSWDPayEvents>(
-    event: K,
-    ...args: Parameters<XSWDPayEvents[K]>
-  ): void {
-    const callbacks = this.listeners[event] as XSWDPayEvents[K][] | undefined;
-    if (callbacks) {
-      for (const cb of callbacks) {
-        (cb as (...a: unknown[]) => void)(...args);
-      }
-    }
-  }
-
-  private setStatus(status: WalletStatus): void {
-    this.status = status;
-    this.emit("statusChange", status);
+    return this.connector.on(event, callback);
   }
 
   /**
@@ -149,151 +88,19 @@ export class XSWDPayClient {
    * @returns The wallet's DERO address
    */
   async connect(): Promise<string> {
-    if (
-      this.socket &&
-      (this.socket.readyState === WebSocket.OPEN ||
-        this.socket.readyState === WebSocket.CONNECTING)
-    ) {
-      throw new Error("Already connected or connecting");
-    }
-
-    this.appData.id = generateAppId();
-    if (typeof window !== "undefined") {
-      this.appData.url = window.location.origin;
-    }
-
-    this.setStatus("connecting");
-
-    return new Promise<string>((resolve, reject) => {
-      const timeoutSec = Math.round(this.connectTimeoutMs / 1000);
-      const timeoutId = setTimeout(() => {
-        this.disconnect();
-        reject(new Error(`Connection timeout (${timeoutSec}s). Is the wallet running?`));
-      }, this.connectTimeoutMs);
-
-      try {
-        this.socket = new WebSocket(this.url);
-      } catch {
-        clearTimeout(timeoutId);
-        this.setStatus("error");
-        reject(new Error(`Failed to create WebSocket connection to ${this.url}`));
-        return;
-      }
-
-      this.socket.onopen = () => {
-        this.socket!.send(JSON.stringify(this.appData));
-      };
-
-      this.socket.onmessage = (event) => {
-        try {
-          const response = JSON.parse(event.data) as XSWDResponse;
-
-          if (response.accepted === false) {
-            clearTimeout(timeoutId);
-            this.setStatus("error");
-            const err = new Error(response.message ?? "Connection rejected by wallet");
-            this.emit("error", err);
-            reject(err);
-            return;
-          }
-
-          if (response.accepted === true) {
-            this.setStatus("connected");
-
-            this.sendRequest<string | { address: string }>("GetAddress")
-              .then((result) => {
-                const address =
-                  typeof result === "object" && result !== null && "address" in result
-                    ? (result as { address: string }).address
-                    : String(result);
-                this.walletAddress = address;
-                clearTimeout(timeoutId);
-                this.emit("addressReceived", address);
-                resolve(address);
-              })
-              .catch((err) => {
-                clearTimeout(timeoutId);
-                reject(err);
-              });
-            return;
-          }
-
-          // Handle JSON-RPC responses
-          const responseId = response.id
-            ? String(response.id).replace(/^"|"$/g, "")
-            : undefined;
-          if (responseId && this.pendingRequests.has(responseId)) {
-            const pending = this.pendingRequests.get(responseId)!;
-            this.pendingRequests.delete(responseId);
-
-            if (response.error) {
-              pending.reject(new Error(response.error.message));
-            } else {
-              pending.resolve(response.result);
-            }
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      };
-
-      this.socket.onerror = () => {
-        clearTimeout(timeoutId);
-        this.setStatus("error");
-        const err = new Error("WebSocket error. Is the DERO wallet running?");
-        this.emit("error", err);
-        reject(err);
-      };
-
-      this.socket.onclose = () => {
-        this.setStatus("disconnected");
-        this.walletAddress = null;
-      };
+    const state = await this.connector.connect({
+      appName: this.appName,
+      policy: this.policy,
+      nativeWalletConfirmation: true,
     });
+    this.walletAddress = state.address ?? null;
+    return this.walletAddress ?? (await this.connector.getAddress());
   }
 
   /** Disconnect from the wallet */
   disconnect(): void {
-    if (this.socket) {
-      try {
-        this.socket.close();
-      } catch {
-        // Ignore close errors
-      }
-      this.socket = null;
-    }
+    void this.connector.disconnect();
     this.walletAddress = null;
-    this.setStatus("disconnected");
-  }
-
-  /**
-   * Send a JSON-RPC request to the wallet.
-   */
-  private async sendRequest<T = unknown>(
-    method: string,
-    params?: unknown
-  ): Promise<T> {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      throw new Error("Not connected to wallet");
-    }
-
-    return new Promise<T>((resolve, reject) => {
-      const id = String(this.requestCounter++);
-      const request: Record<string, unknown> = {
-        jsonrpc: "2.0",
-        id,
-        method,
-      };
-      if (params !== undefined) {
-        request.params = params;
-      }
-
-      this.pendingRequests.set(id, {
-        resolve: resolve as (value: unknown) => void,
-        reject,
-      });
-      this.socket!.send(JSON.stringify(request));
-    });
   }
 
   /**
@@ -311,13 +118,8 @@ export class XSWDPayClient {
     amount: bigint,
     ringsize: number = 16
   ): Promise<string> {
-    const result = await this.sendRequest<{ txid: string }>("transfer", {
-      transfers: [
-        {
-          destination,
-          amount: Number(amount),
-        },
-      ],
+    const result = await this.connector.transfer({
+      transfers: [{ destination, amountAtomic: amount }],
       ringsize,
     });
     return result.txid;
@@ -332,14 +134,10 @@ export class XSWDPayClient {
     balance: bigint;
     unlockedBalance: bigint;
   }> {
-    const params = scid ? { scid } : {};
-    const result = await this.sendRequest<{
-      balance: number;
-      unlocked_balance: number;
-    }>("GetBalance", params);
+    const result = await this.connector.getBalance(scid);
     return {
-      balance: BigInt(result.balance),
-      unlockedBalance: BigInt(result.unlocked_balance),
+      balance: result.totalAtomic,
+      unlockedBalance: result.unlockedAtomic,
     };
   }
 
@@ -371,17 +169,12 @@ export class XSWDPayClient {
       ...(args ?? []),
     ];
 
-    const params: Record<string, unknown> = {
+    const result = await this.connector.scInvoke({
       scid,
-      sc_rpc: scRpc,
+      scRpc,
       ringsize,
-    };
-
-    if (deposit !== undefined && deposit > 0n) {
-      params.sc_dero_deposit = Number(deposit);
-    }
-
-    const result = await this.sendRequest<{ txid: string }>("scinvoke", params);
+      deroDepositAtomic: deposit,
+    });
     return result.txid;
   }
 

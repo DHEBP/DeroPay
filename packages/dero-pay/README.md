@@ -12,7 +12,7 @@ Payment processing SDK for DERO — Accept DERO payments with invoices, payment 
 - **Pluggable Storage** — In-memory (dev) and SQLite (production) backends, or bring your own
 - **React Components** — Drop-in `<PayWithDero>`, `<InvoiceView>`, `<PaymentStatus>` components
 - **Next.js Integration** — Ready-made API route handlers and middleware
-- **XSWD Client** — Browser-side wallet connection for "pay from wallet" UX
+- **Wallet Connectors** — XSWD-first browser payments with optional gated advanced connectors
 - **Self-Hosted Dashboard** — Admin UI for invoice management, payment history, wallet status
 
 ## Quick Start
@@ -277,7 +277,7 @@ dero-pay/
 │   ├── webhook/     # HMAC-signed webhook dispatcher with retry
 │   ├── store/       # Pluggable storage (memory, SQLite)
 │   ├── server/      # Invoice engine orchestrator
-│   ├── client/      # Browser XSWD client + payment session
+│   ├── client/      # Browser wallet connectors + payment session
 │   ├── react/       # React components (Provider, PayWithDero, InvoiceView)
 │   └── next/        # Next.js API handlers + middleware
 └── dashboard/       # Self-hosted admin dashboard (Next.js app)
@@ -290,7 +290,7 @@ dero-pay/
 | `dero-pay` | Core types, payment ID generation, pricing utilities |
 | `dero-pay/rpc` | Wallet and Daemon RPC clients |
 | `dero-pay/server` | Invoice engine, storage, monitor, webhooks |
-| `dero-pay/client` | Browser-side XSWD payment client |
+| `dero-pay/client` | Browser-side wallet connectors, XSWD client, and payment session |
 | `dero-pay/react` | React components and provider |
 | `dero-pay/next` | Next.js API route handlers and middleware |
 
@@ -302,6 +302,14 @@ dero-pay/
 4. Customer sends DERO to the integrated address
 5. DeroPay monitors the wallet for matching transactions
 6. Once confirmed, DeroPay fires a webhook and marks the invoice complete
+
+## Wallet Connectors
+
+Browser payment submission runs through a wallet connector abstraction. XSWD is the default connector and preserves the existing "pay from wallet" flow. The WASM webwallet connector is experimental and only available when `allowWasmConnector` is explicitly enabled in connector policy; DeroPay will not silently fall back from XSWD to WASM.
+
+Server-side invoice creation, payment monitoring, receipts, and x402 guards remain authoritative and continue to use server wallet/daemon RPC.
+
+WASM connector probing uses strict ABI validation. DeroPay will only accept bridges that expose a callable address method, either via object methods (`getAddress`/`GetAddress`) or flat globals like `DERO_JS_GetAddress`. Malformed bridge symbols fail fast with typed transport errors.
 
 ## Invoice States
 

@@ -46,3 +46,4 @@ apps/tela/
 
 # Misc
 *.tsbuildinfo
+*.code-workspace

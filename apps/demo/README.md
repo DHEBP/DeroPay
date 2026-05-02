@@ -1,4 +1,4 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is the DeroPay demo storefront built with Next.js.
 
 ## Getting Started
 
@@ -15,6 +15,21 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Wallet Connector Modes
+
+The demo keeps XSWD as the default connector path.
+
+- Default behavior: open checkout normally and use XSWD.
+- Experimental WASM mode:
+  1. Set `NEXT_PUBLIC_DEROPAY_EXPERIMENTAL_WASM=true`.
+  2. Open checkout with `?wallet=wasm` (example: `/checkout?wallet=wasm`).
+  3. The demo will force the WASM connector path and show an advanced warning.
+
+Notes:
+- WASM remains an advanced/experimental connector.
+- There is no silent fallback from XSWD to WASM.
+- In demo mode, WASM spend operations are policy-disabled by default.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

@@ -14,3 +14,5 @@ export {
   PaymentSession,
   type PaymentSessionEvents,
 } from "./payment-session.js";
+
+export * from "./connectors/index.js";

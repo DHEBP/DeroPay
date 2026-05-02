@@ -37,7 +37,7 @@ export function ProductList() {
 
   return (
     <>
-      <section id="collection" className="px-6 pb-18 md:px-10 md:pb-24">
+      <section id="collection" className="px-6 pb-20 md:px-10 md:pb-28">
         <div className="mx-auto w-full max-w-7xl">
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div className="max-w-2xl space-y-3">
@@ -52,7 +52,7 @@ export function ProductList() {
             </div>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid auto-rows-fr gap-6 md:grid-cols-2 xl:grid-cols-3">
             {storeProducts.map((product) => {
               const added = addedIds.has(product.id);
 
@@ -61,6 +61,7 @@ export function ProductList() {
                   key={product.id}
                   role="button"
                   tabIndex={0}
+                  aria-label={`View ${product.name} details`}
                   onClick={() => openQuickView(product.id)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -68,7 +69,7 @@ export function ProductList() {
                       openQuickView(product.id);
                     }
                   }}
-                  className="glass-panel soft-outline group cursor-pointer overflow-hidden rounded-[2rem] p-4"
+                  className="glass-panel soft-outline group flex cursor-pointer flex-col overflow-hidden rounded-[2rem] p-5 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--page-bg)]"
                 >
                   <div className="relative overflow-hidden rounded-[1.5rem] border border-white/[0.08] bg-black/25">
                     <Image
@@ -80,9 +81,9 @@ export function ProductList() {
                     />
                   </div>
 
-                  <div className="space-y-4 px-2 pb-2 pt-5">
+                  <div className="flex flex-1 flex-col gap-4 pt-5">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-[var(--text-muted)]">
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                         {product.category}
                       </span>
                       <span className="rounded-full bg-[var(--accent-dim)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-strong)]">
@@ -94,21 +95,21 @@ export function ProductList() {
                       <h3 className="font-display text-2xl font-semibold tracking-[-0.03em] text-white">
                         {product.name}
                       </h3>
-                      <p className="text-sm leading-6 text-[var(--text-secondary)] text-pretty">
+                      <p className="line-clamp-2 text-sm leading-6 text-[var(--text-secondary)]">
                         {product.description}
                       </p>
                     </div>
 
-                    <p className="text-xs text-[var(--text-muted)] text-pretty">
+                    <p className="text-xs text-[var(--text-muted)]">
                       Preview how {product.demoKey === "payment" ? "payment" : product.demoKey === "auth" ? "wallet sign-in" : "escrow"} fits this product.
                     </p>
 
-                    <div className="flex items-center justify-between gap-4 pt-1">
+                    <div className="mt-auto flex flex-wrap items-end justify-between gap-3 pt-4">
                       <div>
-                        <p className="text-[11px] font-semibold text-[var(--text-muted)]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
                           Price
                         </p>
-                        <p className="font-display text-3xl font-semibold tracking-[-0.04em] text-white">
+                        <p className="whitespace-nowrap font-display text-2xl font-semibold tabular-nums tracking-[-0.03em] text-white">
                           {formatDero(product.price)}
                         </p>
                       </div>
@@ -118,7 +119,7 @@ export function ProductList() {
                           event.stopPropagation();
                           handleAdd(product);
                         }}
-                        className={`inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold ${
+                        className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
                           added
                             ? "bg-[var(--accent)] text-[#051008]"
                             : "border border-white/10 bg-white/[0.04] text-white hover:border-[var(--border-strong)] hover:bg-[var(--accent-dim)]"

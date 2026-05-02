@@ -12,11 +12,11 @@ export default function CartPage() {
 
   return (
     <StoreShell>
-      <section className="px-6 pb-18 pt-10 md:px-10 md:pb-24 md:pt-14">
+      <section className="px-6 pb-20 pt-12 md:px-10 md:pb-28 md:pt-16">
         <div className="mx-auto w-full max-w-7xl">
           <div className="mb-8 max-w-2xl space-y-3">
             <p className="section-kicker">Cart</p>
-            <h1 className="font-display text-4xl font-semibold tracking-[-0.05em] text-white md:text-6xl">
+            <h1 className="font-display text-4xl font-semibold tracking-[-0.05em] text-white md:text-6xl text-balance">
               Review the drop before you mint the invoice.
             </h1>
             <p className="text-sm leading-7 text-[var(--text-secondary)] md:text-base">
@@ -35,7 +35,7 @@ export default function CartPage() {
               </p>
               <Link
                 href="/"
-                className="mt-8 inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)]"
+                className="mt-8 inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] transition-colors hover:bg-[var(--accent-strong)]"
               >
                 Continue shopping
               </Link>
@@ -91,14 +91,15 @@ export default function CartPage() {
                         <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
                           Unit price
                         </p>
-                        <p className="font-display text-2xl font-semibold text-white">
+                        <p className="font-display text-2xl font-semibold tabular-nums text-white">
                           {formatDero(item.price)}
                         </p>
                       </div>
 
                       <button
                         onClick={() => removeItem(item.id)}
-                        className="inline-flex items-center gap-2 rounded-full border border-red-500/20 bg-red-500/[0.08] px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/[0.16]"
+                        aria-label={`Remove ${item.name} from cart`}
+                        className="inline-flex items-center gap-2 rounded-full border border-red-500/20 bg-red-500/[0.08] px-4 py-2 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/[0.16]"
                       >
                         <Trash2 className="h-4 w-4" />
                         Remove
@@ -131,7 +132,7 @@ export default function CartPage() {
                     <span className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">
                       Total
                     </span>
-                    <span className="font-display text-3xl font-semibold text-white">
+                    <span className="font-display text-3xl font-semibold tabular-nums text-white">
                       {formatDero(totalPrice)}
                     </span>
                   </div>
@@ -139,7 +140,7 @@ export default function CartPage() {
 
                 <Link
                   href="/checkout"
-                  className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)]"
+                  className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] transition-colors hover:bg-[var(--accent-strong)]"
                 >
                   Proceed to checkout
                 </Link>

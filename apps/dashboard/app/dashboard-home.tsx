@@ -12,7 +12,7 @@ import { Sparkline, walkData } from "@/components/sparkline";
 import { ChartCard } from "@/components/chart-card";
 import { KpiSkeleton, ChartSkeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast";
-import { Button } from "@/components/ui";
+import { Button, PanelHeader } from "@/components/ui";
 import { GettingStarted } from "@/components/onboarding/GettingStarted";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { WidgetZone } from "@/components/widget-zone";
@@ -564,43 +564,24 @@ export function DashboardHome() {
           className="surface"
           style={{ padding: 0, display: "flex", flexDirection: "column", minHeight: 320 }}
         >
-          <div
-            style={{
-              padding: "14px 18px",
-              borderBottom: "1px solid var(--ink-hair)",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 14,
-                fontWeight: 500,
-                color: "var(--bone)",
-                letterSpacing: "-0.005em",
-              }}
-            >
-              Recent invoices
-            </span>
-            <span aria-hidden style={{ flex: 1 }} />
-            <a
-              href="/invoices"
-              style={{
-                color: "var(--bone-dim)",
-                textDecoration: "none",
-                fontSize: 12.5,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 3,
-                transition: "color 0.15s",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--bone)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--bone-dim)")}
-            >
-              View all <ArrowUpRight size={12} />
-            </a>
-          </div>
+          <PanelHeader
+            glyph="hex"
+            title="Recent invoices"
+            actions={
+              <a
+                href="/invoices"
+                className="btn-link"
+                style={{
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                }}
+              >
+                View all <ArrowUpRight size={12} />
+              </a>
+            }
+          />
           <InvoiceTable invoices={recentInvoices ?? []} />
         </motion.div>
 
@@ -670,11 +651,12 @@ function ComboCard({ label, value, delta, data, tone, loading }: ComboCardProps)
           className="display"
           style={{
             fontSize: 30,
-            fontWeight: 700,
-            letterSpacing: "-0.028em",
+            fontWeight: 600,
+            letterSpacing: "-0.012em",
             color: "var(--bone)",
             lineHeight: 1,
             fontVariantNumeric: "tabular-nums slashed-zero",
+            fontFamily: "var(--font-mono)",
           }}
         >
           {value}

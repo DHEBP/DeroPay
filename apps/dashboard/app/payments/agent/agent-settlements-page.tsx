@@ -75,7 +75,7 @@ function formatAtomic(amount: string | null): string {
   return n.toLocaleString("en-US");
 }
 
-type Source = "loading" | "facilitator" | "demo-fallback";
+type Source = "loading" | "facilitator" | "facilitator-empty" | "demo-fallback";
 
 export function AgentSettlementsPage() {
   const [settlements, setSettlements] = useState<Settlement[]>(DEMO_SETTLEMENTS);
@@ -88,12 +88,19 @@ export function AgentSettlementsPage() {
         const res = await fetch("/api/pay/settlements?limit=50", { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as SettlementsApiResponse;
-        if (!cancelled) {
-          setSettlements(body.items.length > 0 ? body.items : DEMO_SETTLEMENTS);
-          setSource(body.items.length > 0 ? "facilitator" : "demo-fallback");
+        if (cancelled) return;
+        if (body.items.length > 0) {
+          setSettlements(body.items);
+          setSource("facilitator");
+        } else {
+          setSettlements([]);
+          setSource("facilitator-empty");
         }
       } catch {
-        if (!cancelled) setSource("demo-fallback");
+        if (!cancelled) {
+          setSettlements(DEMO_SETTLEMENTS);
+          setSource("demo-fallback");
+        }
       }
     };
     void tick();
@@ -191,22 +198,40 @@ export function AgentSettlementsPage() {
           description="Each row is a verified payment from an agent. The signed receipt is auditable end-to-end."
           meta={
             <StatusDot
-              tone={source === "facilitator" ? "live" : "idle"}
-              pulse={source === "facilitator"}
+              tone={
+                source === "facilitator" || source === "facilitator-empty"
+                  ? "live"
+                  : "idle"
+              }
+              pulse={source === "facilitator" || source === "facilitator-empty"}
               ariaLabel={
                 source === "facilitator"
                   ? "Live data from facilitator"
-                  : "Demo data — facilitator unreachable"
+                  : source === "facilitator-empty"
+                    ? "Facilitator connected, no settlements yet"
+                    : source === "loading"
+                      ? "Connecting to facilitator"
+                      : "Demo data — facilitator unreachable"
               }
             />
           }
           actions={
-            <EyebrowLabel tone={source === "facilitator" ? "accent" : "dim"}>
+            <EyebrowLabel
+              tone={
+                source === "facilitator"
+                  ? "accent"
+                  : source === "facilitator-empty"
+                    ? "default"
+                    : "dim"
+              }
+            >
               {source === "facilitator"
                 ? `${settlements.length} of ${settlements.length}`
-                : source === "loading"
-                  ? "loading…"
-                  : "demo data"}
+                : source === "facilitator-empty"
+                  ? "0 of 0 · live"
+                  : source === "loading"
+                    ? "loading…"
+                    : "demo data"}
             </EyebrowLabel>
           }
         />
@@ -229,7 +254,23 @@ export function AgentSettlementsPage() {
               </tr>
             </thead>
             <tbody>
-              {settlements.map((s) => (
+              {source === "facilitator-empty" && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      padding: "40px 22px",
+                      color: "var(--bone-mute)",
+                      fontSize: 13,
+                      textAlign: "center",
+                    }}
+                  >
+                    No settlements yet. Once an agent pays your x402 rail,
+                    receipts will appear here.
+                  </td>
+                </tr>
+              )}
+              {source !== "facilitator-empty" && settlements.map((s) => (
                 <tr
                   key={s.payloadHash}
                   style={{ borderBottom: "1px solid var(--ink-hair-faint)" }}
@@ -272,20 +313,20 @@ export function AgentSettlementsPage() {
           }}
         >
           <Zap size={12} />
-          {source === "facilitator"
+          {source === "facilitator" || source === "facilitator-empty"
             ? "Live from facilitator. Polls every 15s."
             : source === "loading"
               ? "Connecting to facilitator…"
-              : "Facilitator unreachable — showing demo data. Configure FACILITATOR_URL or enable the rail in"}
-          {source !== "facilitator" && source !== "loading" && (
-            <>
-              {" "}
-              <a href="/settings#agent-payments" className="btn-link">
-                settings
-              </a>
-              .
-            </>
-          )}
+              : (
+                <>
+                  Facilitator unreachable — showing demo data. Configure
+                  FACILITATOR_URL or enable the rail in{" "}
+                  <a href="/settings#agent-payments" className="btn-link">
+                    settings
+                  </a>
+                  .
+                </>
+              )}
         </div>
       </div>
     </DashboardShell>

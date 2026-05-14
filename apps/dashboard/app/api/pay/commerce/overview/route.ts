@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { listInvoicesHandler } from "@/lib/engine";
 import {
   activePriceLists,

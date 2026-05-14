@@ -6,7 +6,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["bun-types"],
+    "types": ["@types/bun"],
     "lib": ["ES2022"],
     "rootDir": "src",
     "outDir": "dist"

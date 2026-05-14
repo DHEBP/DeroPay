@@ -5,6 +5,7 @@ import { Menu, X } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
+import { DotGridBackdrop } from "./ui/hologram";
 import { useLiveFetch } from "@/lib/useLiveFetch";
 import { useKeyboardNav } from "@/lib/useKeyboardNav";
 
@@ -126,6 +127,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             position: "relative",
           }}
         >
+          <DotGridBackdrop />
           {layout === "drawer" && (
             <button
               type="button"
@@ -157,6 +159,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               maxWidth: "var(--content-max)",
               margin: "0 auto",
               width: "100%",
+              position: "relative",
+              zIndex: 1,
             }}
           >
             {children}

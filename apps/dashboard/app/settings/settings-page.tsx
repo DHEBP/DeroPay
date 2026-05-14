@@ -13,7 +13,7 @@ import {
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/page-header";
 import { InvoiceTemplatesSection } from "@/components/invoice-templates-section";
-import { PanelHeader, EyebrowLabel, StatusDot } from "@/components/ui";
+import { PanelHeader, EyebrowLabel, StatusDot, FilledGlyph } from "@/components/ui";
 import { formatDero } from "@/lib/format";
 
 type Health = {
@@ -142,7 +142,8 @@ export function SettingsPage() {
             marginBottom: 18,
           }}
         >
-          <span className="eyebrow">
+          <span className="eyebrow" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <FilledGlyph name="ring" size={11} color="var(--dero)" />
             <span style={{ color: "var(--bone-quiet)" }}>a</span>
             <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
             Connection
@@ -293,7 +294,8 @@ export function SettingsPage() {
             marginBottom: 16,
           }}
         >
-          <span className="eyebrow">
+          <span className="eyebrow" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <FilledGlyph name="hex" size={11} color="var(--dero)" />
             <span style={{ color: "var(--bone-quiet)" }}>b</span>
             <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
             Environment
@@ -384,7 +386,8 @@ export function SettingsPage() {
             marginBottom: 14,
           }}
         >
-          <span className="eyebrow">
+          <span className="eyebrow" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <FilledGlyph name="grid" size={11} color="var(--dero)" />
             <span style={{ color: "var(--bone-quiet)" }}>c</span>
             <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
             API Surface

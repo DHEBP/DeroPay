@@ -49,6 +49,10 @@
     "./x402/types": {
       "types": "./dist/x402/types.d.ts",
       "import": "./dist/x402/types.js"
+    },
+    "./x402/server": {
+      "types": "./dist/x402/server.d.ts",
+      "import": "./dist/x402/server.js"
     }
   },
   "sideEffects": false,

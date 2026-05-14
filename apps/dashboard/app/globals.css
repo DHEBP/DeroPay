@@ -601,6 +601,19 @@ tbody tr:last-child td {
   animation: ticker 0.45s var(--ease-out) both;
 }
 
+/* Hologram live-pulse: halo breath cycle for status dots in "live" tone */
+@keyframes hologram-pulse {
+  0%   { box-shadow: 0 0 0 0   var(--live-pulse); }
+  70%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0   transparent; }
+}
+.hologram-pulse {
+  animation: hologram-pulse 2.4s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hologram-pulse { animation: none; }
+}
+
 /* ---------- Utilities ---------- */
 .row { display: flex; }
 .col { display: flex; flex-direction: column; }

@@ -98,12 +98,12 @@ export function KpiTile({
           className="display"
           style={{
             fontSize: 30,
-            fontWeight: 700,
-            letterSpacing: "-0.028em",
+            fontWeight: 600,
+            letterSpacing: "-0.012em",
             color: "var(--bone)",
             lineHeight: 1,
             fontVariantNumeric: "tabular-nums slashed-zero",
-            fontFamily: "var(--font-display)",
+            fontFamily: "var(--font-mono)",
           }}
         >
           {prefix}

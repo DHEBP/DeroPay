@@ -30,6 +30,23 @@ export function SettingsPage() {
   const [health, setHealth] = useState<Health>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [x402RailOn, setX402RailOn] = useState(false);
+
+  useEffect(() => {
+    const stored = typeof window === "undefined" ? null : localStorage.getItem("deropay.x402.advertise");
+    if (stored === "1") setX402RailOn(true);
+  }, []);
+
+  const toggleX402Rail = useCallback(() => {
+    setX402RailOn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("deropay.x402.advertise", next ? "1" : "0");
+      } catch {
+      }
+      return next;
+    });
+  }, []);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -452,7 +469,13 @@ export function SettingsPage() {
           title="Agent Payments (x402)"
           description="Accept HTTP-native payments from AI agents over the Dero rail. Privacy-preserving by default — no off-chain identity required."
           meta={<EyebrowLabel tone="accent">beta</EyebrowLabel>}
-          actions={<StatusDot tone="idle" ariaLabel="Rail status: idle" />}
+          actions={
+            <StatusDot
+              tone={x402RailOn ? "live" : "idle"}
+              pulse={x402RailOn}
+              ariaLabel={x402RailOn ? "Rail status: live" : "Rail status: idle"}
+            />
+          }
         />
         <div style={{ padding: "20px 24px 22px", display: "grid", gap: 18 }}>
           <div
@@ -477,18 +500,20 @@ export function SettingsPage() {
             </div>
             <button
               type="button"
-              aria-pressed="false"
+              onClick={toggleX402Rail}
+              aria-pressed={x402RailOn}
               style={{
                 position: "relative",
                 width: 38,
                 height: 22,
                 borderRadius: 999,
-                border: "1px solid var(--ink-hair)",
-                background: "var(--ink-deep)",
+                border: `1px solid ${x402RailOn ? "var(--dero-hair)" : "var(--ink-hair)"}`,
+                background: x402RailOn ? "var(--dero-wash)" : "var(--ink-deep)",
                 cursor: "pointer",
                 flexShrink: 0,
+                transition: "background 180ms var(--ease-out), border-color 180ms var(--ease-out)",
               }}
-              aria-label="Toggle x402 rail (demo)"
+              aria-label={x402RailOn ? "Disable x402 rail advertising" : "Enable x402 rail advertising"}
             >
               <span
                 aria-hidden
@@ -499,8 +524,10 @@ export function SettingsPage() {
                   width: 16,
                   height: 16,
                   borderRadius: "50%",
-                  background: "var(--bone-quiet)",
-                  transition: "transform 180ms var(--ease-out)",
+                  background: x402RailOn ? "var(--dero)" : "var(--bone-quiet)",
+                  transform: x402RailOn ? "translateX(16px)" : "translateX(0)",
+                  transition:
+                    "transform 180ms var(--ease-out), background 180ms var(--ease-out)",
                 }}
               />
             </button>

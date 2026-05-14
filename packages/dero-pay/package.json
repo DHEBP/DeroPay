@@ -57,6 +57,10 @@
     "./x402/client": {
       "types": "./dist/x402/client.d.ts",
       "import": "./dist/x402/client.js"
+    },
+    "./x402/next": {
+      "types": "./dist/x402/next.d.ts",
+      "import": "./dist/x402/next.js"
     }
   },
   "sideEffects": false,

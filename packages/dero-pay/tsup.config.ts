@@ -15,6 +15,7 @@ export default defineConfig({
     "x402/types": "src/x402/types.ts",
     "x402/server": "src/x402/server.ts",
     "x402/client": "src/x402/client.ts",
+    "x402/next": "src/x402/next.ts",
   },
   format: ["esm"],
   dts: true,

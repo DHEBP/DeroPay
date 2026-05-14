@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -14,78 +14,106 @@ import { truncate, timeAgo } from "@/lib/format";
 import { ArrowUpRight, Zap } from "lucide-react";
 
 type Settlement = {
-  id: string;
+  payloadHash: string;
   payer: string;
-  amount: string;
-  txid: string;
-  scheme: "dero-exact";
-  merchantId: string;
-  orderId: string;
-  paidAtHeight: number;
+  amount: string | null;
+  transaction: string;
+  network: string;
+  paidAtHeight: number | null;
   confirmedAt: string;
+};
+
+type SettlementsApiResponse = {
+  items: Settlement[];
+  total: number;
+  limit: number;
 };
 
 const DEMO_SETTLEMENTS: Settlement[] = [
   {
-    id: "stl_01",
+    payloadHash: "demo-1",
     payer: "deto1qyagentalpha000000000000000000000000000000000000000000000000",
     amount: "1500",
-    txid: "f3a91c2e7b4d56890a1c4e7b2d916a4f3c8e1d2a5b7c9e0d3f5a7c9e1b3d5f70",
-    scheme: "dero-exact",
-    merchantId: "shop-1",
-    orderId: "ord-9182",
+    transaction: "f3a91c2e7b4d56890a1c4e7b2d916a4f3c8e1d2a5b7c9e0d3f5a7c9e1b3d5f70",
+    network: "dero-mainnet",
     paidAtHeight: 4_521_910,
     confirmedAt: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
   },
   {
-    id: "stl_02",
+    payloadHash: "demo-2",
     payer: "deto1qyagentbeta00000000000000000000000000000000000000000000000000",
     amount: "750",
-    txid: "0e2a4c6b8d1f3a5c7e9b0d2f4a6c8e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a30",
-    scheme: "dero-exact",
-    merchantId: "shop-1",
-    orderId: "ord-9183",
+    transaction: "0e2a4c6b8d1f3a5c7e9b0d2f4a6c8e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a30",
+    network: "dero-mainnet",
     paidAtHeight: 4_521_888,
     confirmedAt: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
   },
   {
-    id: "stl_03",
+    payloadHash: "demo-3",
     payer: "deto1qyagentgamma0000000000000000000000000000000000000000000000000",
     amount: "2200",
-    txid: "9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c10",
-    scheme: "dero-exact",
-    merchantId: "shop-1",
-    orderId: "ord-9184",
+    transaction: "9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c10",
+    network: "dero-mainnet",
     paidAtHeight: 4_521_872,
     confirmedAt: new Date(Date.now() - 1000 * 60 * 27).toISOString(),
   },
   {
-    id: "stl_04",
+    payloadHash: "demo-4",
     payer: "deto1qyagentdelta0000000000000000000000000000000000000000000000000",
     amount: "1000",
-    txid: "2b4d6f8a0c2e4b6d8a0c2e4b6d8a0c2e4b6d8a0c2e4b6d8a0c2e4b6d8a0c2e40",
-    scheme: "dero-exact",
-    merchantId: "shop-1",
-    orderId: "ord-9185",
+    transaction: "2b4d6f8a0c2e4b6d8a0c2e4b6d8a0c2e4b6d8a0c2e4b6d8a0c2e4b6d8a0c2e40",
+    network: "dero-mainnet",
     paidAtHeight: 4_521_840,
     confirmedAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
   },
 ];
 
-function formatAtomic(amount: string): string {
+function formatAtomic(amount: string | null): string {
+  if (!amount) return "—";
   const n = Number(amount);
+  if (!Number.isFinite(n)) return amount;
   return n.toLocaleString("en-US");
 }
 
+type Source = "loading" | "facilitator" | "demo-fallback";
+
 export function AgentSettlementsPage() {
-  const settlements = DEMO_SETTLEMENTS;
+  const [settlements, setSettlements] = useState<Settlement[]>(DEMO_SETTLEMENTS);
+  const [source, setSource] = useState<Source>("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/pay/settlements?limit=50", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as SettlementsApiResponse;
+        if (!cancelled) {
+          setSettlements(body.items.length > 0 ? body.items : DEMO_SETTLEMENTS);
+          setSource(body.items.length > 0 ? "facilitator" : "demo-fallback");
+        }
+      } catch {
+        if (!cancelled) setSource("demo-fallback");
+      }
+    };
+    void tick();
+    const id = setInterval(() => void tick(), 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const stats = useMemo(() => {
     const total = settlements.length;
-    const totalAmount = settlements.reduce(
-      (acc, s) => acc + BigInt(s.amount),
-      0n,
-    );
+    const totalAmount = settlements.reduce((acc, s) => {
+      if (!s.amount) return acc;
+      try {
+        return acc + BigInt(s.amount);
+      } catch {
+        return acc;
+      }
+    }, 0n);
     const distinctAgents = new Set(settlements.map((s) => s.payer)).size;
     const latest = settlements[0]?.confirmedAt;
     return { total, totalAmount: totalAmount.toString(), distinctAgents, latest };
@@ -161,10 +189,24 @@ export function AgentSettlementsPage() {
           glyph="hex"
           title="Settlement log"
           description="Each row is a verified payment from an agent. The signed receipt is auditable end-to-end."
-          meta={<StatusDot tone="live" pulse ariaLabel="Live SSE" />}
+          meta={
+            <StatusDot
+              tone={source === "facilitator" ? "live" : "idle"}
+              pulse={source === "facilitator"}
+              ariaLabel={
+                source === "facilitator"
+                  ? "Live data from facilitator"
+                  : "Demo data — facilitator unreachable"
+              }
+            />
+          }
           actions={
-            <EyebrowLabel tone="dim">
-              {settlements.length} of {settlements.length}
+            <EyebrowLabel tone={source === "facilitator" ? "accent" : "dim"}>
+              {source === "facilitator"
+                ? `${settlements.length} of ${settlements.length}`
+                : source === "loading"
+                  ? "loading…"
+                  : "demo data"}
             </EyebrowLabel>
           }
         />
@@ -181,7 +223,7 @@ export function AgentSettlementsPage() {
                 <Th>Time</Th>
                 <Th>Payer</Th>
                 <Th align="right">Amount</Th>
-                <Th>Order</Th>
+                <Th>Network</Th>
                 <Th>Height</Th>
                 <Th>Tx</Th>
               </tr>
@@ -189,7 +231,7 @@ export function AgentSettlementsPage() {
             <tbody>
               {settlements.map((s) => (
                 <tr
-                  key={s.id}
+                  key={s.payloadHash}
                   style={{ borderBottom: "1px solid var(--ink-hair-faint)" }}
                 >
                   <Td mono>{timeAgo(s.confirmedAt)}</Td>
@@ -197,18 +239,20 @@ export function AgentSettlementsPage() {
                   <Td mono align="right">
                     {formatAtomic(s.amount)}
                   </Td>
-                  <Td mono>{s.orderId}</Td>
-                  <Td mono>{s.paidAtHeight.toLocaleString()}</Td>
+                  <Td mono>{s.network}</Td>
+                  <Td mono>
+                    {s.paidAtHeight ? s.paidAtHeight.toLocaleString() : "—"}
+                  </Td>
                   <Td mono>
                     <a
-                      href={`#tx/${s.txid}`}
+                      href={`#tx/${s.transaction}`}
                       className="btn-link"
                       style={{
                         textDecoration: "none",
                         color: "var(--bone-dim)",
                       }}
                     >
-                      {truncate(s.txid, 6, 4)}
+                      {truncate(s.transaction, 6, 4)}
                     </a>
                   </Td>
                 </tr>
@@ -228,11 +272,20 @@ export function AgentSettlementsPage() {
           }}
         >
           <Zap size={12} />
-          Demo data — connect the facilitator settlements endpoint in{" "}
-          <a href="/settings#agent-payments" className="btn-link">
-            settings
-          </a>{" "}
-          to see real data.
+          {source === "facilitator"
+            ? "Live from facilitator. Polls every 15s."
+            : source === "loading"
+              ? "Connecting to facilitator…"
+              : "Facilitator unreachable — showing demo data. Configure FACILITATOR_URL or enable the rail in"}
+          {source !== "facilitator" && source !== "loading" && (
+            <>
+              {" "}
+              <a href="/settings#agent-payments" className="btn-link">
+                settings
+              </a>
+              .
+            </>
+          )}
         </div>
       </div>
     </DashboardShell>

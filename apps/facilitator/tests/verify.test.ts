@@ -122,3 +122,40 @@ test("returns malformed_payload for unparseable body", async () => {
   expect(body.isValid).toBe(false);
   expect(body.invalidReason).toBe("malformed_payload");
 });
+
+test("rejects when finality not reached (confirmations required)", async () => {
+  const client = new DeroClient(daemon.url);
+  const appWithConfirms = new Hono();
+  appWithConfirms.route("/", buildVerifyRoute({ client, confirmations: 10 }));
+  const res = await appWithConfirms.request("/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      paymentPayload: {
+        x402Version: 1,
+        scheme: "dero-exact",
+        network: "dero-mainnet",
+        payload: {
+          txHash: "f".repeat(64),
+          scid: SCID,
+          merchantId: "shop-1",
+          orderId: "ord-42",
+          payer: AGENT,
+          amount: "1500",
+        },
+      },
+      paymentRequirements: {
+        scheme: "dero-exact",
+        network: "dero-mainnet",
+        asset: "DERO",
+        payTo: SCID,
+        maxAmountRequired: "1000",
+        resource: "https://api.example.com/data",
+        extra: { merchantId: "shop-1", orderId: "ord-42" },
+      },
+    }),
+  });
+  // topoHeight is 1_000_005, payment height is 1_000_000, gap is 5 < 10 → rejected
+  const body = await res.json();
+  expect(body.invalidReason).toBe("not_finalized");
+});

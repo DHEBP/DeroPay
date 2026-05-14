@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ZoomIn, X as XIcon } from "lucide-react";
 
 type ChartCardProps = {
@@ -51,10 +51,8 @@ export function ChartCard({
   onSelectRange,
 }: ChartCardProps) {
   const stroke = tone === "positive" ? "var(--dero)" : "var(--bone-dim)";
-  const gradientId = useMemo(
-    () => `chart-grad-${Math.random().toString(36).slice(2, 9)}`,
-    [],
-  );
+  const reactId = useId();
+  const gradientId = `chart-grad-${reactId.replace(/[^a-zA-Z0-9]/g, "")}`;
 
   const hasData = data && data.length > 1;
   const svgRef = useRef<SVGSVGElement>(null);

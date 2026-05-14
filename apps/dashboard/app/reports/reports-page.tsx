@@ -10,6 +10,7 @@ import { walkData } from "@/components/sparkline";
 import { formatDero } from "@/lib/format";
 import { useInitialTestMode } from "@/lib/test-mode-context";
 import { Download, Calendar } from "lucide-react";
+import { SectionTitle, EyebrowLabel } from "@/components/ui";
 
 type Range = "7d" | "30d" | "90d" | "12m";
 type Bucket = "day" | "week" | "month";
@@ -205,28 +206,9 @@ function StatusBreakdownCard({
         gap: 14,
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-        <h3
-          className="display"
-          style={{
-            fontSize: 17,
-            fontWeight: 600,
-            letterSpacing: "-0.014em",
-            color: "var(--bone)",
-            margin: 0,
-          }}
-        >
-          Paid vs expired
-        </h3>
-        <span
-          style={{
-            fontSize: 12,
-            color: "var(--bone-mute)",
-            fontFamily: "var(--font-sans)",
-          }}
-        >
-          Paid / Expired / Partial
-        </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 0 }}>
+        <SectionTitle glyph="diamond">Paid vs expired</SectionTitle>
+        <EyebrowLabel tone="dim">paid / expired / partial</EyebrowLabel>
       </div>
 
       {!hasData ? (
@@ -487,12 +469,9 @@ export function ReportsPage() {
           flexWrap: "wrap",
         }}
       >
-        <span
-          className="eyebrow"
-          style={{ marginRight: 6, display: "inline-flex", alignItems: "center", gap: 6 }}
-        >
-          <Calendar size={12} /> Range
-        </span>
+        <EyebrowLabel className="inline-with-glyph">
+          <Calendar size={12} style={{ marginRight: 6, verticalAlign: "-2px" }} /> Range
+        </EyebrowLabel>
         {RANGES.map((r) => {
           const active = r.id === range;
           return (

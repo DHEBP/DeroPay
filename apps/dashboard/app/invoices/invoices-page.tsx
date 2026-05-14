@@ -20,7 +20,7 @@ import {
 import { CreateInvoiceForm } from "@/components/create-invoice-form";
 import { InvoiceDetailDrawer } from "@/components/invoices/InvoiceDetailDrawer";
 import { useToast } from "@/components/toast";
-import { Button, ListShell } from "@/components/ui";
+import { Button, ListShell, EyebrowLabel } from "@/components/ui";
 import { BulkToolbar, type BulkAction } from "@/components/bulk-toolbar";
 import { useLiveFetch } from "@/lib/useLiveFetch";
 import { useQueryParam } from "@/lib/useQueryParam";
@@ -655,11 +655,8 @@ export function InvoicesPage() {
         drawer={
           showCreateForm && (
             <div className="surface corner-ticks" style={{ padding: "20px 22px" }}>
-              <div
-                className="eyebrow"
-                style={{ marginBottom: 14, color: "var(--dero)" }}
-              >
-                New Invoice · Draft
+              <div style={{ marginBottom: 14 }}>
+                <EyebrowLabel tone="accent">New Invoice · Draft</EyebrowLabel>
               </div>
               <CreateInvoiceForm
                 onCreated={() => {

@@ -90,6 +90,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       { id: "nav.invoices", href: "/invoices", label: "Invoices", Icon: Receipt },
       { id: "nav.payment-links", href: "/payment-links", label: "Payment links", Icon: Link2 },
       { id: "nav.escrow", href: "/escrow", label: "Escrow", Icon: ShieldCheck },
+      { id: "nav.agent-payments", href: "/payments/agent", label: "Agent payments", Icon: Zap },
       { id: "nav.payouts", href: "/payouts", label: "Payouts", Icon: ArrowUpFromLine },
     ],
   },

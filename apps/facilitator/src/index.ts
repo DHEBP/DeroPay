@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { supportedRoute } from "./routes/supported";
 import { buildVerifyRoute } from "./routes/verify";
 import { buildSettleRoute } from "./routes/settle";
+import { buildSettlementsRoute } from "./routes/settlements";
 import { DeroClient } from "./dero/client";
 import { ReceiptStore } from "./receipts/store";
 import { loadConfig } from "./config";
@@ -15,6 +16,7 @@ app.get("/", (c) => c.text("DeroPay x402 facilitator"));
 app.route("/", supportedRoute);
 app.route("/", buildVerifyRoute({ client, confirmations: config.confirmations }));
 app.route("/", buildSettleRoute({ client, store, signingKey: config.receiptSigningKey, confirmations: config.confirmations }));
+app.route("/", buildSettlementsRoute({ store }));
 
 export default {
   port: config.port,

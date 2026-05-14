@@ -9,10 +9,16 @@ export interface Receipt {
   signed: string;
 }
 
+export interface ReceiptRow extends Receipt {
+  payloadHash: string;
+  createdAt: number;
+}
+
 export class ReceiptStore {
   private db: Database;
   private putStmt: Statement;
   private lookupStmt: Statement;
+  private listStmt: Statement;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -25,6 +31,9 @@ export class ReceiptStore {
     this.lookupStmt = this.db.prepare(
       'SELECT "transaction", network, payer, signed FROM receipts WHERE payload_hash = ?',
     );
+    this.listStmt = this.db.prepare(
+      'SELECT payload_hash AS payloadHash, "transaction", network, payer, signed, created_at AS createdAt FROM receipts ORDER BY created_at DESC, payload_hash DESC LIMIT ?',
+    );
   }
 
   put(payloadHash: string, r: Receipt): void {
@@ -34,5 +43,10 @@ export class ReceiptStore {
   lookup(payloadHash: string): Receipt | null {
     const row = this.lookupStmt.get(payloadHash) as Receipt | undefined;
     return row ?? null;
+  }
+
+  list(limit = 50): ReceiptRow[] {
+    const clamped = Math.min(Math.max(1, Math.floor(limit)), 500);
+    return this.listStmt.all(clamped) as ReceiptRow[];
   }
 }

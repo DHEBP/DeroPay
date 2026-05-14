@@ -11,6 +11,8 @@ export default defineConfig({
     "gateway/index": "src/gateway/index.ts",
     "react/index": "src/react/index.ts",
     "next/index": "src/next/index.ts",
+    "x402/index": "src/x402/index.ts",
+    "x402/types": "src/x402/types.ts",
   },
   format: ["esm"],
   dts: true,

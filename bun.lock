@@ -66,6 +66,7 @@
       "name": "@deropay/facilitator",
       "dependencies": {
         "@noble/ed25519": "^2.1.0",
+        "dero-pay": "workspace:*",
         "hono": "^4.6.0",
         "zod": "^3.23.0",
       },
@@ -130,6 +131,9 @@
     "packages/dero-pay": {
       "name": "dero-pay",
       "version": "0.3.0",
+      "dependencies": {
+        "zod": "^3.23.0",
+      },
       "devDependencies": {
         "@types/better-sqlite3": "^7.6.0",
         "@types/node": "^22.0.0",

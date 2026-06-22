@@ -1105,6 +1105,10 @@ export class SqliteInvoiceStore implements InvoiceStore {
       .prepare(`SELECT status FROM webhook_outbox WHERE id = ?`)
       .get(event.id) as { status: OutboxStatus } | undefined;
 
+    // next_attempt_at=0 => immediately due on the next worker tick, regardless
+    // of which clock source the worker uses (the row carries no scheduling
+    // assumption until it first fails and gets a real backoff stamp). created_at
+    // keeps a real wall-clock timestamp for forensics/pruning.
     const now = Date.now();
     if (!existing) {
       this.db
@@ -1113,7 +1117,7 @@ export class SqliteInvoiceStore implements InvoiceStore {
              (id, event_type, invoice_id, payload, status, attempts,
               next_attempt_at, lease_until, last_error, created_at, delivered_at)
            VALUES (@id, @event_type, @invoice_id, @payload, 'pending', 0,
-                   @now, 0, NULL, @now, NULL)`
+                   0, 0, NULL, @now, NULL)`
         )
         .run({
           id: event.id,
@@ -1129,12 +1133,12 @@ export class SqliteInvoiceStore implements InvoiceStore {
       this.db
         .prepare(
           `UPDATE webhook_outbox
-             SET status='pending', attempts=0, next_attempt_at=@now,
+             SET status='pending', attempts=0, next_attempt_at=0,
                  lease_until=0, last_error=NULL, payload=@payload,
                  delivered_at=NULL
            WHERE id=@id`
         )
-        .run({ id: event.id, payload: event.payload, now });
+        .run({ id: event.id, payload: event.payload });
     }
     // pending/delivering/delivered: DO NOTHING.
   }

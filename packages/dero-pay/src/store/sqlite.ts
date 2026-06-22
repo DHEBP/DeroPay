@@ -344,11 +344,17 @@ export class SqliteInvoiceStore implements InvoiceStore {
       )
     `);
 
-    const updateReceived = this.db.prepare(`
-      UPDATE invoices SET amount_received = (
-        SELECT COALESCE(SUM(CAST(amount AS INTEGER)), 0) FROM payments WHERE invoice_id = @invoice_id
-      ) WHERE id = @invoice_id
-    `);
+    // Sum payment amounts in app-side bigint, never via SQL SUM(CAST(amount AS
+    // INTEGER)): amount is a TEXT column holding the full atomic value, and
+    // CAST clamps at the signed-i64 boundary while better-sqlite3 (no
+    // safeIntegers) would round the aggregate to a double. Read the rows and
+    // reduce as bigint inside the same transaction so the write is exact. (O3/O37)
+    const selectAmounts = this.db.prepare(
+      `SELECT amount FROM payments WHERE invoice_id = @invoice_id`
+    );
+    const updateReceived = this.db.prepare(
+      `UPDATE invoices SET amount_received = @amount_received WHERE id = @invoice_id`
+    );
 
     const transaction = this.db.transaction(() => {
       insertPayment.run({
@@ -362,7 +368,14 @@ export class SqliteInvoiceStore implements InvoiceStore {
         detected_at: payment.detectedAt,
         destination_port: payment.destinationPort.toString(),
       });
-      updateReceived.run({ invoice_id: invoiceId });
+      const amounts = selectAmounts.all({ invoice_id: invoiceId }) as {
+        amount: string;
+      }[];
+      const total = amounts.reduce((sum, r) => sum + BigInt(r.amount || "0"), 0n);
+      updateReceived.run({
+        invoice_id: invoiceId,
+        amount_received: total.toString(),
+      });
     });
 
     transaction();
@@ -445,12 +458,19 @@ export class SqliteInvoiceStore implements InvoiceStore {
   }
 
   async getStats(): Promise<InvoiceStats> {
-    const rows = this.db
-      .prepare(
-        `SELECT status, COUNT(*) as count, SUM(CAST(amount_received AS INTEGER)) as total_received
-         FROM invoices GROUP BY status`
-      )
-      .all() as { status: string; count: number; total_received: number }[];
+    // amount_received is a TEXT column holding the full atomic-unit value. We
+    // must NOT sum it in SQL via SUM(CAST(... AS INTEGER)): SQLite INTEGER is a
+    // signed 64-bit int (clamps > 2^63) AND better-sqlite3 here returns the
+    // aggregate as a JS number (no safeIntegers set on the Database), so any
+    // total > 2^53 is already rounded to a double before BigInt() ever runs.
+    // Read the per-status rows and reduce in app-side bigint instead. (O37)
+    const counts = this.db
+      .prepare(`SELECT status, COUNT(*) as count FROM invoices GROUP BY status`)
+      .all() as { status: string; count: number }[];
+
+    const received = this.db
+      .prepare(`SELECT amount_received FROM invoices`)
+      .all() as { amount_received: string }[];
 
     const stats: InvoiceStats = {
       total: 0,
@@ -463,11 +483,14 @@ export class SqliteInvoiceStore implements InvoiceStore {
       totalAmountReceived: 0n,
     };
 
-    for (const row of rows) {
+    for (const row of counts) {
       const status = row.status as InvoiceStatus;
       stats[status] = row.count;
       stats.total += row.count;
-      stats.totalAmountReceived += BigInt(row.total_received || 0);
+    }
+
+    for (const row of received) {
+      stats.totalAmountReceived += BigInt(row.amount_received || "0");
     }
 
     return stats;

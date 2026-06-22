@@ -8,7 +8,7 @@
  * lose a notification — the row is already on disk.
  */
 
-import type { WebhookEventType } from "../core/types.js";
+import type { Payment, WebhookEventType } from "../core/types.js";
 
 export type OutboxStatus = "pending" | "delivering" | "delivered" | "dead";
 
@@ -93,10 +93,12 @@ export type OutboxStore = {
  */
 export type WebhookSink = {
   /**
-   * A payment arrived (new txid). The sink re-sums in-tx (single writer),
-   * decides the resulting status, and enqueues the matching event.
+   * A payment arrived (new txid). The sink OWNS the write: it re-sums in-tx
+   * (single writer of amount_received), decides the resulting status from the
+   * committed total, and enqueues the matching event(s). The engine must not
+   * separately store.addPayment when a sink is present.
    */
-  onPaymentDetected(invoiceId: string, txid: string): Promise<void>;
+  onPaymentDetected(invoiceId: string, payment: Payment): Promise<void>;
   /**
    * A confirmation-depth crossing. The sink re-reads store-authoritative
    * totals and enqueues completion/confirming on the confirmation edge.

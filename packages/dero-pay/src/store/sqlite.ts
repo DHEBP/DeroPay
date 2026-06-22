@@ -8,7 +8,12 @@
  *   bun add better-sqlite3
  */
 
-import type { Invoice, InvoiceStatus, Payment } from "../core/types.js";
+import type {
+  Invoice,
+  InvoiceStatus,
+  Payment,
+  WebhookEventType,
+} from "../core/types.js";
 import type {
   InvoiceStore,
   InvoiceFilter,
@@ -20,6 +25,11 @@ import type {
   X402UsageBatchReservationResult,
   X402UsageReservationResult,
 } from "./types.js";
+import type {
+  OutboxEvent,
+  OutboxRecord,
+  OutboxStatus,
+} from "../webhook/outbox-types.js";
 
 /** SQLite row for invoices table */
 type InvoiceRow = {
@@ -96,6 +106,37 @@ function safeJsonObject(raw: string | null | undefined): Record<string, unknown>
   } catch {
     return {};
   }
+}
+
+/** SQLite row for the webhook_outbox table. */
+type OutboxRow = {
+  id: string;
+  event_type: string;
+  invoice_id: string;
+  payload: string;
+  status: string;
+  attempts: number;
+  next_attempt_at: number;
+  lease_until: number;
+  last_error: string | null;
+  created_at: number;
+  delivered_at: number | null;
+};
+
+function rowToOutbox(row: OutboxRow): OutboxRecord {
+  return {
+    id: row.id,
+    eventType: row.event_type as WebhookEventType,
+    invoiceId: row.invoice_id,
+    payload: row.payload,
+    status: row.status as OutboxStatus,
+    attempts: row.attempts,
+    nextAttemptAt: row.next_attempt_at,
+    leaseUntil: row.lease_until,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    deliveredAt: row.delivered_at,
+  };
 }
 
 /** Configuration for SQLite store */
@@ -213,9 +254,50 @@ export class SqliteInvoiceStore implements InvoiceStore {
       CREATE INDEX IF NOT EXISTS idx_payment_links_created_at ON payment_links(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_payment_links_active
         ON payment_links(revoked_at) WHERE revoked_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS webhook_outbox (
+        id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        invoice_id TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at INTEGER NOT NULL DEFAULT 0,
+        lease_until INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at INTEGER NOT NULL,
+        delivered_at INTEGER
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_webhook_outbox_due
+        ON webhook_outbox(status, next_attempt_at);
     `);
 
     this.migratePaymentLinks();
+    this.migrateWebhookOutbox();
+  }
+
+  private migrateWebhookOutbox(): void {
+    // Additive migration mirroring migratePaymentLinks: a pre-outbox DB gets the
+    // table from CREATE TABLE IF NOT EXISTS above; this guards future column
+    // additions the same idempotent way.
+    const cols = this.db
+      .prepare("PRAGMA table_info(webhook_outbox)")
+      .all() as Array<{ name: string }>;
+    if (cols.length === 0) return;
+
+    const addColumnIfMissing = (column: string, ddl: string) => {
+      if (cols.some((c) => c.name === column)) return;
+      try {
+        this.db.exec(`ALTER TABLE webhook_outbox ADD COLUMN ${column} ${ddl}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/duplicate column/i.test(msg)) throw err;
+      }
+    };
+
+    // (no post-v1 columns yet; this keeps the migration shape consistent)
+    void addColumnIfMissing;
   }
 
   private migratePaymentLinks(): void {
@@ -881,6 +963,287 @@ export class SqliteInvoiceStore implements InvoiceStore {
       paidInvoices,
       conversionRate: views > 0 ? paidInvoices / views : 0,
     };
+  }
+
+  // ===========================================================================
+  // Webhook outbox (durable at-least-once delivery spine).
+  //
+  // The two `apply*WithOutbox` methods are the ONLY writers of amount_received
+  // on the bridge path, and they do the invoice mutation + the outbox row in a
+  // SINGLE synchronous better-sqlite3 transaction (invariant 7). better-sqlite3
+  // db.transaction(fn) is synchronous and THROWS on an async fn, so no await can
+  // interleave between the two writes — both land or neither does.
+  // ===========================================================================
+
+  /**
+   * Apply a newly-detected payment AND enqueue its webhook in one transaction.
+   *
+   * The bigint re-sum here is the SOLE writer of amount_received (invariant 1).
+   * The caller (the engine, via OutboxWebhookSink) passes a builder that, given
+   * the freshly-committed total, returns the outbox event to enqueue (its
+   * deterministic id + frozen signed payload reflect that exact committed sum).
+   * Returns the post-commit invoice + total so the caller can decide status.
+   */
+  applyPaymentWithOutbox(
+    invoiceId: string,
+    payment: Payment,
+    buildEvent: (committedTotal: bigint, invoice: Invoice) => OutboxEvent | null
+  ): { invoice: Invoice; total: bigint } {
+    const insertPayment = this.db.prepare(`
+      INSERT OR IGNORE INTO payments (
+        txid, invoice_id, amount, height, topo_height,
+        confirmations, status, detected_at, destination_port
+      ) VALUES (
+        @txid, @invoice_id, @amount, @height, @topo_height,
+        @confirmations, @status, @detected_at, @destination_port
+      )
+    `);
+    const selectAmounts = this.db.prepare(
+      `SELECT amount FROM payments WHERE invoice_id = @invoice_id`
+    );
+    const updateReceived = this.db.prepare(
+      `UPDATE invoices SET amount_received = @amount_received WHERE id = @invoice_id`
+    );
+
+    const tx = this.db.transaction(() => {
+      insertPayment.run({
+        txid: payment.txid,
+        invoice_id: invoiceId,
+        amount: payment.amount.toString(),
+        height: payment.height,
+        topo_height: payment.topoHeight,
+        confirmations: payment.confirmations,
+        status: payment.status,
+        detected_at: payment.detectedAt,
+        destination_port: payment.destinationPort.toString(),
+      });
+
+      const amounts = selectAmounts.all({ invoice_id: invoiceId }) as {
+        amount: string;
+      }[];
+      const total = amounts.reduce((s, r) => s + BigInt(r.amount || "0"), 0n);
+      updateReceived.run({
+        invoice_id: invoiceId,
+        amount_received: total.toString(),
+      });
+
+      const invoice = this.getInvoiceSync(invoiceId);
+      if (!invoice) {
+        throw new Error(`applyPaymentWithOutbox: invoice ${invoiceId} not found`);
+      }
+
+      const event = buildEvent(total, invoice);
+      if (event) this.upsertOutboxSync(event);
+
+      return { invoice, total };
+    });
+
+    return tx();
+  }
+
+  /**
+   * Apply an invoice status/amount update AND enqueue its webhook in one
+   * transaction (the confirmation edge, the expiry edge, etc.). Same atomicity
+   * guarantee as applyPaymentWithOutbox; does NOT recompute amount_received
+   * unless explicitly given one.
+   */
+  applyInvoiceUpdateWithOutbox(
+    invoiceId: string,
+    updates: Partial<Pick<Invoice, "status" | "amountReceived" | "completedAt">>,
+    buildEvent: (invoice: Invoice) => OutboxEvent | null
+  ): { invoice: Invoice } {
+    const tx = this.db.transaction(() => {
+      const sets: string[] = [];
+      const params: Record<string, unknown> = { id: invoiceId };
+      if (updates.status !== undefined) {
+        sets.push("status = @status");
+        params.status = updates.status;
+      }
+      if (updates.amountReceived !== undefined) {
+        sets.push("amount_received = @amount_received");
+        params.amount_received = updates.amountReceived.toString();
+      }
+      if (updates.completedAt !== undefined) {
+        sets.push("completed_at = @completed_at");
+        params.completed_at = updates.completedAt;
+      }
+      if (sets.length > 0) {
+        this.db
+          .prepare(`UPDATE invoices SET ${sets.join(", ")} WHERE id = @id`)
+          .run(params);
+      }
+
+      const invoice = this.getInvoiceSync(invoiceId);
+      if (!invoice) {
+        throw new Error(
+          `applyInvoiceUpdateWithOutbox: invoice ${invoiceId} not found`
+        );
+      }
+
+      const event = buildEvent(invoice);
+      if (event) this.upsertOutboxSync(event);
+
+      return { invoice };
+    });
+
+    return tx();
+  }
+
+  /**
+   * Status-aware UPSERT (invariant 5). The deterministic id is the PK so a
+   * replayed logical event collapses; but the disposition depends on the
+   * EXISTING row's status:
+   *   - {pending,delivering,delivered}: DO NOTHING (preserve live dedupe).
+   *   - 'dead': REVIVE — reset attempts/next_attempt_at/lease, clear error, and
+   *     REFRESH the frozen payload (re-signed under the current secret on the
+   *     next delivery), so a post-secret-rotation 401-cascade self-heals.
+   *   - absent: INSERT pending.
+   * Must run inside an open transaction (called by the apply* methods).
+   */
+  private upsertOutboxSync(event: OutboxEvent): void {
+    const existing = this.db
+      .prepare(`SELECT status FROM webhook_outbox WHERE id = ?`)
+      .get(event.id) as { status: OutboxStatus } | undefined;
+
+    const now = Date.now();
+    if (!existing) {
+      this.db
+        .prepare(
+          `INSERT INTO webhook_outbox
+             (id, event_type, invoice_id, payload, status, attempts,
+              next_attempt_at, lease_until, last_error, created_at, delivered_at)
+           VALUES (@id, @event_type, @invoice_id, @payload, 'pending', 0,
+                   @now, 0, NULL, @now, NULL)`
+        )
+        .run({
+          id: event.id,
+          event_type: event.eventType,
+          invoice_id: event.invoiceId,
+          payload: event.payload,
+          now,
+        });
+      return;
+    }
+
+    if (existing.status === "dead") {
+      this.db
+        .prepare(
+          `UPDATE webhook_outbox
+             SET status='pending', attempts=0, next_attempt_at=@now,
+                 lease_until=0, last_error=NULL, payload=@payload,
+                 delivered_at=NULL
+           WHERE id=@id`
+        )
+        .run({ id: event.id, payload: event.payload, now });
+    }
+    // pending/delivering/delivered: DO NOTHING.
+  }
+
+  /** Synchronous invoice read for use inside a transaction (no await). */
+  private getInvoiceSync(id: string): Invoice | null {
+    const row = this.db
+      .prepare("SELECT * FROM invoices WHERE id = ?")
+      .get(id) as InvoiceRow | undefined;
+    if (!row) return null;
+    const payments = this.db
+      .prepare("SELECT * FROM payments WHERE invoice_id = ? ORDER BY detected_at")
+      .all(id) as PaymentRow[];
+    return this.rowToInvoice(row, payments);
+  }
+
+  async claimDueOutbox(
+    now: number,
+    leaseMs: number,
+    limit: number
+  ): Promise<OutboxRecord[]> {
+    const tx = this.db.transaction(() => {
+      const due = this.db
+        .prepare(
+          `SELECT * FROM webhook_outbox
+             WHERE next_attempt_at <= @now
+               AND (status='pending' OR (status='delivering' AND lease_until < @now))
+             ORDER BY next_attempt_at ASC
+             LIMIT @limit`
+        )
+        .all({ now, limit }) as OutboxRow[];
+
+      const claim = this.db.prepare(
+        `UPDATE webhook_outbox SET status='delivering', lease_until=@lease
+           WHERE id=@id`
+      );
+      for (const row of due) {
+        claim.run({ id: row.id, lease: now + leaseMs });
+      }
+      return due;
+    });
+    const claimed = tx() as OutboxRow[];
+    return claimed.map((r) => ({
+      ...rowToOutbox(r),
+      status: "delivering" as const,
+      leaseUntil: now + leaseMs,
+    }));
+  }
+
+  async markOutboxDelivered(id: string, deliveredAt: number): Promise<void> {
+    this.db
+      .prepare(
+        `UPDATE webhook_outbox SET status='delivered', delivered_at=@deliveredAt,
+           lease_until=0, last_error=NULL WHERE id=@id`
+      )
+      .run({ id, deliveredAt });
+  }
+
+  async rescheduleOutbox(
+    id: string,
+    nextAttemptAt: number,
+    lastError: string
+  ): Promise<void> {
+    this.db
+      .prepare(
+        `UPDATE webhook_outbox
+           SET status='pending', attempts=attempts+1, next_attempt_at=@next,
+               lease_until=0, last_error=@err WHERE id=@id`
+      )
+      .run({ id, next: nextAttemptAt, err: lastError });
+  }
+
+  async markOutboxDead(id: string, lastError: string): Promise<void> {
+    this.db
+      .prepare(
+        `UPDATE webhook_outbox SET status='dead', attempts=attempts+1,
+           lease_until=0, last_error=@err WHERE id=@id`
+      )
+      .run({ id, err: lastError });
+  }
+
+  async pruneDeliveredOutbox(olderThan: number): Promise<number> {
+    const res = this.db
+      .prepare(
+        `DELETE FROM webhook_outbox WHERE status='delivered' AND delivered_at < @olderThan`
+      )
+      .run({ olderThan });
+    return res.changes as number;
+  }
+
+  async countOutboxByStatus(): Promise<Record<OutboxStatus, number>> {
+    const rows = this.db
+      .prepare(`SELECT status, COUNT(*) as count FROM webhook_outbox GROUP BY status`)
+      .all() as { status: OutboxStatus; count: number }[];
+    const counts: Record<OutboxStatus, number> = {
+      pending: 0,
+      delivering: 0,
+      delivered: 0,
+      dead: 0,
+    };
+    for (const r of rows) counts[r.status] = r.count;
+    return counts;
+  }
+
+  async getOutboxRecord(id: string): Promise<OutboxRecord | null> {
+    const row = this.db
+      .prepare(`SELECT * FROM webhook_outbox WHERE id = ?`)
+      .get(id) as OutboxRow | undefined;
+    return row ? rowToOutbox(row) : null;
   }
 
   async close(): Promise<void> {

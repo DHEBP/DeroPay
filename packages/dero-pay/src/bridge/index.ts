@@ -10,6 +10,7 @@ export { PayoutBridge } from "./payout-bridge.js";
 export {
   loadConfig,
   isLoopbackUrl,
+  isAcceptableWebhookUrl,
   type BridgeConfig,
   type LoadConfigResult,
 } from "./config.js";

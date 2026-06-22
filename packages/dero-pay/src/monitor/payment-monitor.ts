@@ -117,19 +117,29 @@ export class PaymentMonitor {
   async track(invoice: Invoice): Promise<void> {
     const REORG_BUFFER = 5;
 
+    // Anchor candidates, each in BLOCK-height units, lowest-wins so the floor
+    // can never sit above where a payment could already have landed:
+    //   (a) earliest known payment height — covers a re-tracked partially/fully
+    //       paid invoice.
+    //   (b) the invoice's persisted creation block height — covers the CRITICAL
+    //       restart case of a not-yet-paid invoice whose FIRST payment landed
+    //       during downtime: on restart the in-memory cursor is gone, so without
+    //       this anchor the floor would jump to the live current height and skip
+    //       that payment (the O35/O32 lost-payment class). No payment can predate
+    //       creation, so this is a safe lower bound.
+    // Only if NEITHER exists (legacy invoice created before createdBlockHeight,
+    // with no payments) do we fall back to the wallet's current sync height —
+    // which merely re-introduces the original window, never worse.
+    const candidates: number[] = [];
+    for (const p of invoice.payments) candidates.push(p.height);
+    if (typeof invoice.createdBlockHeight === "number") {
+      candidates.push(invoice.createdBlockHeight);
+    }
+
     let floor: number;
-    if (invoice.payments.length > 0) {
-      // Re-track (e.g. restart re-hydration): anchor at/below the earliest known
-      // payment so a downtime payment is always re-scanned. Block-height units.
-      const minPaymentHeight = invoice.payments.reduce(
-        (min, p) => Math.min(min, p.height),
-        Number.POSITIVE_INFINITY
-      );
-      floor = minPaymentHeight - REORG_BUFFER;
+    if (candidates.length > 0) {
+      floor = Math.min(...candidates) - REORG_BUFFER;
     } else {
-      // Fresh invoice with no payments yet: anchor at the wallet's current sync
-      // BLOCK height (GetHeight returns block height), minus the reorg buffer.
-      // No payment can predate this, so the floor can never skip a future tx.
       let current = 0;
       try {
         current = await this.walletRpc.getHeight();

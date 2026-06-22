@@ -113,6 +113,16 @@ export type Invoice = {
   requiredConfirmations: number;
   /** When the invoice was created (ISO 8601) */
   createdAt: string;
+  /**
+   * The daemon BLOCK height at creation time. Used as the wallet-scan floor
+   * (GetTransfers min_height, which filters block height) so a restart can
+   * re-anchor a not-yet-paid invoice at/below where it was created instead of
+   * the live current height — no payment can predate creation, and on restart
+   * the in-memory scan cursor is gone, so this persisted anchor is the only way
+   * to avoid skipping a payment that landed during downtime. Optional: absent on
+   * pre-migration rows and on invoices created off the bridge path.
+   */
+  createdBlockHeight?: number;
   /** When the invoice expires (ISO 8601) */
   expiresAt: string;
   /** When the invoice was paid/completed (ISO 8601, null if not yet) */

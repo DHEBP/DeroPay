@@ -44,6 +44,7 @@ type InvoiceRow = {
   ttl_seconds: number;
   required_confirmations: number;
   created_at: string;
+  created_block_height: number | null;
   expires_at: string;
   completed_at: string | null;
   amount_received: string; // BigInt stored as string
@@ -184,6 +185,7 @@ export class SqliteInvoiceStore implements InvoiceStore {
         ttl_seconds INTEGER NOT NULL,
         required_confirmations INTEGER NOT NULL DEFAULT 3,
         created_at TEXT NOT NULL,
+        created_block_height INTEGER,
         expires_at TEXT NOT NULL,
         completed_at TEXT,
         amount_received TEXT NOT NULL DEFAULT '0',
@@ -275,6 +277,24 @@ export class SqliteInvoiceStore implements InvoiceStore {
 
     this.migratePaymentLinks();
     this.migrateWebhookOutbox();
+    this.migrateInvoices();
+  }
+
+  private migrateInvoices(): void {
+    const cols = this.db
+      .prepare("PRAGMA table_info(invoices)")
+      .all() as Array<{ name: string }>;
+    if (cols.length === 0) return;
+    if (!cols.some((c) => c.name === "created_block_height")) {
+      try {
+        this.db.exec(
+          "ALTER TABLE invoices ADD COLUMN created_block_height INTEGER"
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/duplicate column/i.test(msg)) throw err;
+      }
+    }
   }
 
   private migrateWebhookOutbox(): void {
@@ -330,12 +350,12 @@ export class SqliteInvoiceStore implements InvoiceStore {
       INSERT INTO invoices (
         id, name, description, amount, status, payment_id,
         integrated_address, base_address, ttl_seconds,
-        required_confirmations, created_at, expires_at,
+        required_confirmations, created_at, created_block_height, expires_at,
         completed_at, amount_received, metadata, escrow
       ) VALUES (
         @id, @name, @description, @amount, @status, @payment_id,
         @integrated_address, @base_address, @ttl_seconds,
-        @required_confirmations, @created_at, @expires_at,
+        @required_confirmations, @created_at, @created_block_height, @expires_at,
         @completed_at, @amount_received, @metadata, @escrow
       )
     `);
@@ -352,6 +372,7 @@ export class SqliteInvoiceStore implements InvoiceStore {
       ttl_seconds: invoice.ttlSeconds,
       required_confirmations: invoice.requiredConfirmations,
       created_at: invoice.createdAt,
+      created_block_height: invoice.createdBlockHeight ?? null,
       expires_at: invoice.expiresAt,
       completed_at: invoice.completedAt,
       amount_received: invoice.amountReceived.toString(),
@@ -1291,6 +1312,7 @@ export class SqliteInvoiceStore implements InvoiceStore {
       ttlSeconds: row.ttl_seconds,
       requiredConfirmations: row.required_confirmations,
       createdAt: row.created_at,
+      createdBlockHeight: row.created_block_height ?? undefined,
       expiresAt: row.expires_at,
       completedAt: row.completed_at,
       amountReceived: BigInt(row.amount_received),

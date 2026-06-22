@@ -53,7 +53,15 @@ function readJsonFile(path: string | undefined): RawConfig {
 function envOverrides(env: NodeJS.ProcessEnv): RawConfig {
   const out: RawConfig = {};
   const s = (k: string) => env[k];
-  const n = (k: string) => (env[k] !== undefined ? Number(env[k]) : undefined);
+  // Reject a malformed numeric env value (NaN) instead of letting it through:
+  // `NaN !== undefined` is true and `?? DEFAULT` does NOT catch NaN, so an
+  // unguarded NaN would silently propagate (e.g. maxAttempts=NaN disables
+  // dead-lettering, since `>= NaN` is always false). Treat non-finite as "unset".
+  const n = (k: string) => {
+    if (env[k] === undefined) return undefined;
+    const parsed = Number(env[k]);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
 
   if (s("DEROPAY_BRIDGE_WALLET_RPC_URL")) out.walletRpcUrl = s("DEROPAY_BRIDGE_WALLET_RPC_URL");
   if (s("DEROPAY_BRIDGE_DAEMON_RPC_URL")) out.daemonRpcUrl = s("DEROPAY_BRIDGE_DAEMON_RPC_URL");
@@ -77,6 +85,22 @@ export function isLoopbackUrl(url: string): boolean {
   try {
     const host = new URL(url).hostname;
     return host === "127.0.0.1" || host === "localhost" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The webhook leg leaves the host carrying the full payment payload + the HMAC
+ * signature. HMAC gives integrity but NOT confidentiality, so cleartext http://
+ * over a real network would expose all payment data to an on-path observer. We
+ * therefore REQUIRE https:// — UNLESS the target is loopback (a local test
+ * receiver / same-host sidecar, where the bytes never hit the wire).
+ */
+export function isAcceptableWebhookUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || isLoopbackUrl(url);
   } catch {
     return false;
   }
@@ -114,6 +138,12 @@ export function loadConfig(
   const webhookSecret = merged.webhookSecret as string | undefined;
   if (!webhookUrl) fail("webhookUrl is required");
   if (!webhookSecret) fail("webhookSecret is required");
+  if (!isAcceptableWebhookUrl(webhookUrl!)) {
+    fail(
+      `webhookUrl ${webhookUrl} must use https:// (cleartext http exposes the ` +
+        `payment payload + HMAC on the wire); only a loopback http URL is allowed`
+    );
+  }
 
   const walletRpcUrl = merged.walletRpcUrl as string;
   const daemonRpcUrl = merged.daemonRpcUrl as string;

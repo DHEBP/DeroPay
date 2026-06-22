@@ -56,17 +56,41 @@ describe("PaymentMonitor scan floor never re-anchors above a known payment", () 
     monitor.stop();
   });
 
-  it("anchors a fresh (no-payment) invoice at current block height minus buffer", async () => {
+  it("anchors a no-payment invoice at its CREATION block height, not the live current height (restart-during-downtime case)", async () => {
+    // The defining O35/O32 case: a still-unpaid invoice created at block 100,
+    // re-hydrated on restart after the chain advanced to 5000. The floor MUST
+    // anchor at creation (100 - 5), not the current height, or a first payment
+    // that landed during downtime below the floor is never re-scanned.
     const { monitor, walletRpc } = setup({
-      getHeight: vi.fn().mockResolvedValue(1000),
+      getHeight: vi.fn().mockResolvedValue(5000),
     });
 
-    await monitor.track(makeInvoice({ id: "inv-2", payments: [] }));
+    await monitor.track(
+      makeInvoice({ id: "inv-2", payments: [], createdBlockHeight: 100 })
+    );
     monitor.start();
     await vi.advanceTimersByTimeAsync(150);
 
     const minHeight = walletRpc.getIncomingByPaymentId.mock.calls[0][1] as number;
-    expect(minHeight).toBe(995); // 1000 - 5
+    expect(minHeight).toBe(95); // 100 - 5, NOT 4995
+    expect(minHeight).toBeLessThan(5000);
+    monitor.stop();
+  });
+
+  it("falls back to current height only for a legacy invoice with neither payments nor createdBlockHeight", async () => {
+    const { monitor, walletRpc } = setup({
+      getHeight: vi.fn().mockResolvedValue(1000),
+    });
+
+    // createdBlockHeight omitted (legacy / off-bridge invoice).
+    const inv = makeInvoice({ id: "inv-legacy", payments: [] });
+    delete (inv as { createdBlockHeight?: number }).createdBlockHeight;
+    await monitor.track(inv);
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(150);
+
+    const minHeight = walletRpc.getIncomingByPaymentId.mock.calls[0][1] as number;
+    expect(minHeight).toBe(995); // 1000 - 5 (only when no better anchor exists)
     monitor.stop();
   });
 
@@ -74,10 +98,12 @@ describe("PaymentMonitor scan floor never re-anchors above a known payment", () 
     const { monitor, walletRpc } = setup({
       getHeight: vi.fn().mockResolvedValue(3),
     });
-    await monitor.track(makeInvoice({ id: "inv-3", payments: [] }));
+    await monitor.track(
+      makeInvoice({ id: "inv-3", payments: [], createdBlockHeight: 3 })
+    );
     monitor.start();
     await vi.advanceTimersByTimeAsync(150);
-    expect(walletRpc.getIncomingByPaymentId.mock.calls[0][1]).toBe(0);
+    expect(walletRpc.getIncomingByPaymentId.mock.calls[0][1]).toBe(0); // 3 - 5 clamped to 0
     monitor.stop();
   });
 });

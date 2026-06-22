@@ -100,19 +100,50 @@ export class PaymentMonitor {
 
   /**
    * Start tracking payments for an invoice.
+   *
+   * The scan floor (`startHeight`, passed as `min_height` to GetTransfers) must
+   * NEVER be re-anchored to the live current height for an invoice that already
+   * has payments — that is the O35/O32 lost-payment bug: on restart after
+   * downtime, a floor of `currentHeight - buffer` can sit ABOVE a payment that
+   * landed during downtime, so it is never re-scanned and no event is ever
+   * produced (the outbox cannot save an event that was never generated).
+   *
+   * UNIT CORRECTNESS: `min_height` filters `TransferEntry.height` — the BLOCK
+   * height. `payment.height` is the persisted block height, so anchoring to it
+   * is unit-correct. We deliberately do NOT derive the floor from a topoheight
+   * source (daemonRpc.getHeight() returns topoheight, which runs ahead across
+   * side-blocks and would set the floor too high).
    */
   async track(invoice: Invoice): Promise<void> {
-    let startHeight = 0;
-    try {
-      startHeight = await this.walletRpc.getHeight();
-    } catch {
-      // If we can't get height, start from 0 (will search all history)
+    const REORG_BUFFER = 5;
+
+    let floor: number;
+    if (invoice.payments.length > 0) {
+      // Re-track (e.g. restart re-hydration): anchor at/below the earliest known
+      // payment so a downtime payment is always re-scanned. Block-height units.
+      const minPaymentHeight = invoice.payments.reduce(
+        (min, p) => Math.min(min, p.height),
+        Number.POSITIVE_INFINITY
+      );
+      floor = minPaymentHeight - REORG_BUFFER;
+    } else {
+      // Fresh invoice with no payments yet: anchor at the wallet's current sync
+      // BLOCK height (GetHeight returns block height), minus the reorg buffer.
+      // No payment can predate this, so the floor can never skip a future tx.
+      let current = 0;
+      try {
+        current = await this.walletRpc.getHeight();
+      } catch {
+        // If we can't get height, start from 0 (search all history) — safe,
+        // just slower.
+      }
+      floor = current - REORG_BUFFER;
     }
 
     this.trackedInvoices.set(invoice.id, {
       invoice,
       seenTxids: new Set(invoice.payments.map((p) => p.txid)),
-      startHeight: Math.max(0, startHeight - 5), // Small buffer for reorgs
+      startHeight: Math.max(0, floor),
     });
   }
 

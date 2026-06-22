@@ -48,6 +48,47 @@ export type WalletRpcConfig = {
 };
 
 /**
+ * Wrapper marking a value that MUST be emitted as a JSON integer literal,
+ * not a JavaScript number.
+ *
+ * DERO's `dstport` and the "D" (RPC_DESTINATION_PORT) payload are uint64.
+ * Routing them through `Number()` silently truncates any value >= 2^53 to the
+ * nearest double BEFORE it ever reaches the wallet, so the integrated address
+ * the payer pays to and the dstport the poller queries diverge — a real
+ * on-chain payment is then never matched. Go's encoding/json decodes a JSON
+ * integer literal straight into uint64 with no loss, so we serialize the full
+ * bigint as a raw token instead of a JS number.
+ */
+class RawUint64 {
+  constructor(readonly value: bigint) {}
+}
+
+const RAW_U64_PREFIX = "__DERO_RAW_U64__";
+
+/**
+ * JSON.stringify a request body, emitting any RawUint64 as a bare integer
+ * literal (e.g. 18446744073709551615) rather than a precision-losing number.
+ */
+function serializeRpcBody(request: unknown): string {
+  const json = JSON.stringify(request, (_key, value) => {
+    if (value instanceof RawUint64) {
+      // Emit a unique placeholder string; swapped for the raw digits below.
+      return `${RAW_U64_PREFIX}${value.value.toString()}`;
+    }
+    if (typeof value === "bigint") {
+      // Any stray bigint is also preserved losslessly as an integer literal.
+      return `${RAW_U64_PREFIX}${value.toString()}`;
+    }
+    return value;
+  });
+  // Replace "PREFIX<digits>" (a quoted JSON string) with the bare digits.
+  return json.replace(
+    new RegExp(`"${RAW_U64_PREFIX}(\\d+)"`, "g"),
+    "$1"
+  );
+}
+
+/**
  * DERO Wallet RPC client for server-side payment operations.
  */
 export class WalletRpcClient {
@@ -89,7 +130,7 @@ export class WalletRpcClient {
       const response = await fetch(this.url, {
         method: "POST",
         headers: this.headers,
-        body: JSON.stringify(request),
+        body: serializeRpcBody(request),
         signal: controller.signal,
       });
 
@@ -165,7 +206,10 @@ export class WalletRpcClient {
   ): Promise<TransferEntry[]> {
     const params: GetTransfersParams = {
       in: true,
-      dstport: Number(destinationPort),
+      // uint64 — emitted as a raw JSON integer literal, NOT Number() (which
+      // would truncate the high bits of a >= 2^53 payment id before the wallet
+      // ever sees it, breaking the match against the integrated address).
+      dstport: new RawUint64(destinationPort) as unknown as number,
     };
     if (minHeight !== undefined) {
       params.min_height = minHeight;
@@ -202,7 +246,10 @@ export class WalletRpcClient {
         {
           name: "D",
           datatype: "U",
-          value: Number(paymentId),
+          // uint64 — emitted as a raw JSON integer literal, NOT Number(), so the
+          // full payment id is encoded into the integrated address the payer
+          // pays to and matches the dstport the poller later queries.
+          value: new RawUint64(paymentId),
         },
       ],
     };

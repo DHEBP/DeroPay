@@ -18,6 +18,10 @@
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js"
     },
+    "./bridge": {
+      "types": "./dist/bridge/index.d.ts",
+      "import": "./dist/bridge/index.js"
+    },
     "./escrow": {
       "types": "./dist/escrow/index.d.ts",
       "import": "./dist/escrow/index.js"
@@ -42,6 +46,9 @@
       "types": "./dist/next/index.d.ts",
       "import": "./dist/next/index.js"
     }
+  },
+  "bin": {
+    "deropay-bridge": "./dist/bridge/cli.js"
   },
   "sideEffects": false,
   "engines": {

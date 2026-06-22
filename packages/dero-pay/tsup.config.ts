@@ -5,6 +5,8 @@ export default defineConfig({
     "core/index": "src/core/index.ts",
     "rpc/index": "src/rpc/index.ts",
     "server/index": "src/server/index.ts",
+    "bridge/index": "src/bridge/index.ts",
+    "bridge/cli": "src/bridge/cli.ts",
     "escrow/index": "src/escrow/index.ts",
     "router/index": "src/router/index.ts",
     "client/index": "src/client/index.ts",

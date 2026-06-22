@@ -75,6 +75,57 @@ function timingSafeEqual(a: Buffer, b: Buffer): boolean {
 }
 
 /**
+ * The single HTTP attempt of a webhook delivery, with NO retry/backoff/logging
+ * state of its own. It works purely from strings — the already-serialized
+ * payload and the already-computed signature — so the durable delivery worker
+ * can replay a stored frozen payload and re-send byte-identical bytes (same
+ * signature) across restarts. The `WebhookDispatcher` retry loop and the
+ * outbox worker both compose this one function (invariant: HMAC/timeout logic
+ * is defined once, not reinvented).
+ */
+export async function deliverOnce(args: {
+  url: string;
+  payload: string;
+  signature: string;
+  eventType: string;
+  deliveryId: string;
+  timeoutMs?: number;
+}): Promise<{ statusCode: number; success: boolean; error?: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), args.timeoutMs ?? 10_000);
+
+  try {
+    const response = await fetch(args.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-DeroPay-Signature": args.signature,
+        "X-DeroPay-Event": args.eventType,
+        "X-DeroPay-Delivery": args.deliveryId,
+        "User-Agent": "DeroPay-Webhook/1.0",
+      },
+      body: args.payload,
+      signal: controller.signal,
+    });
+
+    const success = response.status >= 200 && response.status < 300;
+    return {
+      statusCode: response.status,
+      success,
+      error: success ? undefined : `HTTP ${response.status}`,
+    };
+  } catch (err) {
+    return {
+      statusCode: 0,
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Webhook dispatcher that delivers events to merchant endpoints.
  *
  * Usage:
@@ -167,49 +218,23 @@ export class WebhookDispatcher {
     signature: string,
     attempt: number
   ): Promise<WebhookDelivery> {
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.config.timeoutMs
-    );
+    const result = await deliverOnce({
+      url: this.config.url,
+      payload,
+      signature,
+      eventType: event.type,
+      deliveryId: event.id,
+      timeoutMs: this.config.timeoutMs,
+    });
 
-    try {
-      const response = await fetch(this.config.url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-DeroPay-Signature": signature,
-          "X-DeroPay-Event": event.type,
-          "X-DeroPay-Delivery": event.id,
-          "User-Agent": "DeroPay-Webhook/1.0",
-        },
-        body: payload,
-        signal: controller.signal,
-      });
-
-      const success = response.status >= 200 && response.status < 300;
-
-      return {
-        eventId: event.id,
-        url: this.config.url,
-        statusCode: response.status,
-        attempt,
-        success,
-        error: success ? undefined : `HTTP ${response.status}`,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (err) {
-      return {
-        eventId: event.id,
-        url: this.config.url,
-        statusCode: 0,
-        attempt,
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-        timestamp: new Date().toISOString(),
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
+    return {
+      eventId: event.id,
+      url: this.config.url,
+      statusCode: result.statusCode,
+      attempt,
+      success: result.success,
+      error: result.error,
+      timestamp: new Date().toISOString(),
+    };
   }
 }

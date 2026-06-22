@@ -55,6 +55,21 @@ export type {
   WebhookDelivery,
 } from "../webhook/types.js";
 
+// Durable webhook outbox primitives (the DeroPay Bridge spine). The full
+// daemon lives at the "dero-pay/bridge" subpath; these are re-exported for
+// consumers embedding the durability layer in a custom host.
+export { deliverOnce } from "../webhook/dispatcher.js";
+export { WebhookOutbox, storeSupportsOutbox } from "../webhook/outbox.js";
+export { WebhookDeliveryWorker } from "../webhook/delivery-worker.js";
+export { OutboxWebhookSink } from "../webhook/outbox-sink.js";
+export { deriveDeliveryId, deriveDiscriminator } from "../webhook/delivery-id.js";
+export type {
+  OutboxRecord,
+  OutboxStatus,
+  OutboxEvent,
+  WebhookSink,
+} from "../webhook/outbox-types.js";
+
 // Payment receipts
 export {
   createPaymentReceipt,

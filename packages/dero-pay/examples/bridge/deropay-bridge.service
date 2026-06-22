@@ -1,0 +1,39 @@
+# systemd unit for the DeroPay Bridge (outbound-only payment webhook daemon).
+#
+#   sudo cp deropay-bridge.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now deropay-bridge
+#
+# Restart=always keeps the daemon up; the heartbeat file is the liveness
+# signal an external check (or the `status` subcommand) reads. The bridge binds
+# no inbound port, so there is nothing to expose or firewall.
+#
+# NOTE: this uses Type=simple. sd_notify (Type=notify + WatchdogSec) is a
+# planned enhancement — it needs the daemon to write $NOTIFY_SOCKET, which is
+# not yet implemented, so we do not claim it here.
+
+[Unit]
+Description=DeroPay Bridge (outbound-only payment webhook daemon)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/deropay-bridge run --config /etc/deropay/deropay-bridge.json
+Restart=always
+RestartSec=5
+
+# Run unprivileged with a private writable state dir for the SQLite file +
+# heartbeat. StateDirectory creates /var/lib/deropay owned by this service.
+DynamicUser=yes
+StateDirectory=deropay
+# Lock down: no new privileges, read-only system, no inbound capability needed.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# The process never listens; deny it the ability to even try.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

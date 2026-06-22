@@ -100,19 +100,60 @@ export class PaymentMonitor {
 
   /**
    * Start tracking payments for an invoice.
+   *
+   * The scan floor (`startHeight`, passed as `min_height` to GetTransfers) must
+   * NEVER be re-anchored to the live current height for an invoice that already
+   * has payments — that is the O35/O32 lost-payment bug: on restart after
+   * downtime, a floor of `currentHeight - buffer` can sit ABOVE a payment that
+   * landed during downtime, so it is never re-scanned and no event is ever
+   * produced (the outbox cannot save an event that was never generated).
+   *
+   * UNIT CORRECTNESS: `min_height` filters `TransferEntry.height` — the BLOCK
+   * height. `payment.height` is the persisted block height, so anchoring to it
+   * is unit-correct. We deliberately do NOT derive the floor from a topoheight
+   * source (daemonRpc.getHeight() returns topoheight, which runs ahead across
+   * side-blocks and would set the floor too high).
    */
   async track(invoice: Invoice): Promise<void> {
-    let startHeight = 0;
-    try {
-      startHeight = await this.walletRpc.getHeight();
-    } catch {
-      // If we can't get height, start from 0 (will search all history)
+    const REORG_BUFFER = 5;
+
+    // Anchor candidates, each in BLOCK-height units, lowest-wins so the floor
+    // can never sit above where a payment could already have landed:
+    //   (a) earliest known payment height — covers a re-tracked partially/fully
+    //       paid invoice.
+    //   (b) the invoice's persisted creation block height — covers the CRITICAL
+    //       restart case of a not-yet-paid invoice whose FIRST payment landed
+    //       during downtime: on restart the in-memory cursor is gone, so without
+    //       this anchor the floor would jump to the live current height and skip
+    //       that payment (the O35/O32 lost-payment class). No payment can predate
+    //       creation, so this is a safe lower bound.
+    // Only if NEITHER exists (legacy invoice created before createdBlockHeight,
+    // with no payments) do we fall back to the wallet's current sync height —
+    // which merely re-introduces the original window, never worse.
+    const candidates: number[] = [];
+    for (const p of invoice.payments) candidates.push(p.height);
+    if (typeof invoice.createdBlockHeight === "number") {
+      candidates.push(invoice.createdBlockHeight);
+    }
+
+    let floor: number;
+    if (candidates.length > 0) {
+      floor = Math.min(...candidates) - REORG_BUFFER;
+    } else {
+      let current = 0;
+      try {
+        current = await this.walletRpc.getHeight();
+      } catch {
+        // If we can't get height, start from 0 (search all history) — safe,
+        // just slower.
+      }
+      floor = current - REORG_BUFFER;
     }
 
     this.trackedInvoices.set(invoice.id, {
       invoice,
       seenTxids: new Set(invoice.payments.map((p) => p.txid)),
-      startHeight: Math.max(0, startHeight - 5), // Small buffer for reorgs
+      startHeight: Math.max(0, floor),
     });
   }
 

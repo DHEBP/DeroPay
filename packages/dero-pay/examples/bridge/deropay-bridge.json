@@ -1,0 +1,13 @@
+{
+  "walletRpcUrl": "http://127.0.0.1:10103/json_rpc",
+  "daemonRpcUrl": "http://127.0.0.1:10102/json_rpc",
+  "storePath": "/var/lib/deropay/bridge.db",
+  "webhookUrl": "https://yourstore.example/webhooks/dero",
+  "webhookSecret": "replace-with-a-long-random-secret",
+  "heartbeatPath": "/var/lib/deropay/bridge.heartbeat",
+  "pollIntervalMs": 5000,
+  "defaultRequiredConfirmations": 3,
+  "deliveryIntervalMs": 5000,
+  "maxAttempts": 50,
+  "heartbeatIntervalMs": 10000
+}

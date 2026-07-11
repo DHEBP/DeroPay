@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { buildVerifyRoute } from "../src/routes/verify";
 import { DeroClient } from "../src/dero/client";
 import { mockDaemon } from "./fixtures/mock-daemon";
+import { paidKey, amtKey, hKey } from "../src/dero/keys";
 
 const SCID = "1".repeat(64);
 const AGENT = "deto1qyagent" + "0".repeat(56);
@@ -45,8 +46,11 @@ beforeEach(() => {
   daemon = mockDaemon({
     contracts: {
       [SCID]: {
-        stringkeys: { "paid_shop-1_ord-42": AGENT },
-        uint64keys: { "amt_shop-1_ord-42": "1500", "h_shop-1_ord-42": "1000000" },
+        stringkeys: { [paidKey("shop-1", "ord-42")]: AGENT },
+        uint64keys: {
+          [amtKey("shop-1", "ord-42")]: "1500",
+          [hKey("shop-1", "ord-42")]: "1000000",
+        },
       },
     },
     topoHeight: 1_000_005,

@@ -28,16 +28,74 @@ layer itself. What stays public is exactly — and only — the payment
 evidence a merchant needs: a per-order set of contract state keys.
 
 The DERO rail therefore verifies a payment by reading **public contract
-state**, never a balance:
+state**, never a balance. Each key is built with a length-prefixed
+`mkey = strlen(merchant_id) + "_" + merchant_id + "_" + order_id`, so no
+two distinct `(merchant, order)` pairs can ever collide onto one key:
 
 | Contract key (per order) | Meaning | Facilitator check |
 | --- | --- | --- |
-| `paid_<merchant>_<order>` | payer address string | must equal the claimed payer (HRP-agnostic) |
-| `amt_<merchant>_<order>` | atomic DERO deposited | `>= maxAmountRequired` |
-| `h_<merchant>_<order>` | block height at payment | `tip - h >= confirmations` |
+| `paid_<mkey>` | payer address string | must equal the claimed payer (HRP-agnostic) |
+| `amt_<mkey>` | atomic DERO deposited | `>= maxAmountRequired` |
+| `h_<mkey>` | block height at payment | `tip - h >= confirmations` |
 
 Contract: `contracts/x402-pay.bas (in this package)`
-(`Pay(merchant_id, order_id)`; `EXISTS`-reverts a double-pay).
+(`Pay(merchant_id, order_id)`). A duplicate or zero-value `Pay` calls the
+DVM `PANIC()`, which reverts the whole transaction and **refunds the
+payer's deposit** (for a ring-size-2, identifiable signer) — so a second
+deposit to an already-paid order bounces back rather than being absorbed.
+The facilitator (and its key derivation) lives in `apps/facilitator`;
+`src/dero/keys.ts` mirrors the contract's `mkey` format exactly.
+
+---
+
+## 1a. Contract threat model (`x402-pay.bas`)
+
+Reviewed per entrypoint; every property below was exercised on a live
+DERO simulator (see `apps/x402-example/DEMO_EVIDENCE.md`).
+
+**Initialize** — stores `owner = SIGNER()`. Install with ring size 2 (the
+SDK's `installSc` default) so `owner` is a real, identifiable address.
+(An earlier version rejected an anonymous install via a `PANIC()` guard,
+but a `PANIC()` on any Initialize path aborts the install itself, so the
+guard was dropped in favor of the deploy-time ring-2 requirement.)
+
+**Pay(merchant_id, order_id)** — the money-safety spine:
+- *Single-writer record integrity.* The three keys are written once; a
+  duplicate `Pay` hits `EXISTS` and never overwrites. **Verified.**
+- *Refund on reject.* A duplicate or zero-value `Pay` calls `PANIC()`,
+  reverting the tx and refunding the ring-2 payer's deposit — a second
+  deposit to a paid order bounces rather than being absorbed. **Verified:
+  paying the same order twice left the contract balance unchanged.**
+- *Collision-free keys.* Length-prefixed `mkey` makes `(merchant, order)`
+  unambiguous. **Verified** (`paid_8_hardtest_order-…`).
+- *Anonymous payers* (ring > 2) produce a zero-address record that fails
+  facilitator verification — harmless, and it only burns the anon payer's
+  own funds.
+
+**Withdraw(amount)** — owner-only merchant sweep:
+- *Access control.* Only `owner == SIGNER()` may withdraw. **Verified: a
+  non-owner wallet drained nothing.**
+- *Bounded.* The DVM's external-transfer sanity check reverts any send
+  exceeding the contract balance. **Verified: an over-balance withdraw
+  left the balance unchanged.**
+- *Storage gas.* A withdrawal performs an external `SEND`, which needs
+  storage gas the wallet's bare `scinvoke` RPC does not provision — it
+  reverts with "Insufficient Storage Gas". The merchant sweep MUST call
+  `DERO.GetGasEstimate` and submit via the `transfer` RPC with
+  `fees = gascompute + gasstorage` (correct since DERO PR #18 feeds real
+  chain context to the estimator — required because `Pay` stores
+  `BLOCK_HEIGHT()`). **Verified: an estimate-funded owner withdraw
+  drained the contract; a bare `scinvoke` reverts.** The SDK's `invokeSc`
+  should adopt this estimate-then-transfer path for any SEND-bearing call
+  (tracked follow-up).
+
+**No theft path**: access requires a real on-chain `paid_<mkey>` matching
+the claimed payer; it cannot be forged, and the facilitator reads live
+chain state. **Reentrancy** is not applicable — the DVM queues external
+transfers and has no mid-execution callbacks. The contract cannot see the
+off-chain price, so an underpayment is recorded and rejected by the
+facilitator at verify time; compliant clients deposit the exact challenge
+amount.
 
 ---
 

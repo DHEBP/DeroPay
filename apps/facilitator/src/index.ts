@@ -8,6 +8,14 @@ import { ReceiptStore } from "./receipts/store";
 import { loadConfig } from "./config";
 
 const config = loadConfig();
+
+// Announce which chain we verify against. A payment facilitator that
+// silently trusts a stray DERO_DAEMON_URL (bun does not let .env override
+// an existing process env var) could verify against the wrong chain — so
+// make the resolved endpoint impossible to miss at boot.
+console.log(`[facilitator] verifying payments against daemon: ${config.deroDaemonUrl}`);
+console.log(`[facilitator] receipt SCID: ${config.receiptScid}  confirmations: ${config.confirmations}`);
+
 const client = new DeroClient(config.deroDaemonUrl);
 const store = new ReceiptStore(config.dbPath);
 const app = new Hono();

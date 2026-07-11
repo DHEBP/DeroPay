@@ -2,6 +2,24 @@
 
 Captured 2026-07-11 on a real DERO simulator chain (not mocks).
 
+> **Scope of what was run live.** The end-to-end run below was executed on
+> the Phase 1b commit (`174fa6b`). The Phase 3 changes that followed —
+> resource+merchant+order bound into the signed receipt, and the spending
+> credentials — are covered by unit tests (`sign.test.ts`,
+> `x402-credentials.test.ts`, credential drop-in tests in
+> `x402-paying-fetch.test.ts`) and typecheck, but the live simulator flow
+> was **not** re-run against them. The receipt payload shape changed; the
+> happy-path wire behavior did not. Re-run `agent-pay.ts` against the final
+> commit to refresh this evidence end-to-end.
+>
+> **Known limitation (not a chain bug).** The `withX402` gate authorizes on
+> `(scid, merchant, order, amount)` and does not check the resource, so a
+> payment settled for one resource can unlock another resource under the
+> same merchant + SCID priced ≤ the amount paid. See
+> `packages/dero-pay/X402-RECEIPTS-SPEC.md` §2.6 for the proposed
+> resource-bound-order fix. The signed receipt names the true resource, so
+> a relying party that verifies it catches the mismatch.
+
 ## Stack
 - **Chain**: derohe simulator (built from `Desktop\derohe-main\cmd\simulator`), daemon RPC `127.0.0.1:20000`, pre-funded wallet0 RPC `127.0.0.1:30000`, auto-mining.
 - **Contract**: `packages/dero-pay/contracts/x402-pay.bas` deployed at SCID `ef914fec632b90a982d04df95fd089f6a6f3d660153e9d2c51ee2b7bcbf257ad`.

@@ -3,6 +3,7 @@ export * from "./server";
 export * from "./client";
 export * from "./next";
 export * from "./policy";
+export * from "./credentials";
 export * from "./paying-fetch";
 export * from "./mcp";
 export * from "./payers/wallet-rpc";

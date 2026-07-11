@@ -17,7 +17,7 @@ import {
   type VerifySettleClient,
 } from "./server";
 import { paymentRequirementsSchema, type PaymentRequirements } from "./types";
-import { SpendPolicy } from "./policy";
+import type { SpendGuard } from "./policy";
 import { decodePayerFromHeader, type PaymentEvidence } from "./paying-fetch";
 
 /** Name of the reserved tool argument that carries the payment payload. */
@@ -200,7 +200,7 @@ export type CallTool = (
 export type PayingToolCallerConfig = {
   callTool: CallTool;
   walletInvoke: WalletInvoke;
-  policy: SpendPolicy;
+  policy: SpendGuard;
   /**
    * Policy origin under which MCP payments are accounted, e.g. the MCP
    * server's URL. Required because tool calls have no natural web origin.
@@ -248,7 +248,9 @@ export function createPayingToolCaller(config: PayingToolCallerConfig): CallTool
     if (!accepts) return first;
 
     const amountAtomic = BigInt(accepts.maxAmountRequired);
-    const reservation = config.policy.reserve(config.serverOrigin, amountAtomic);
+    const reservation = config.policy.reserve(config.serverOrigin, amountAtomic, {
+      resource: accepts.resource,
+    });
 
     let paid: { paymentHeader: string; txid: string };
     try {

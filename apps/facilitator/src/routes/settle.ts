@@ -74,6 +74,10 @@ export function buildSettleRoute(deps: SettleDeps): Hono {
         payer: req.paymentPayload.payload.payer,
         amount: result.amount.toString(),
         paidAtHeight: Number(result.height),
+        // Bind the receipt to exactly what was purchased (arXiv:2605.11781).
+        resource: req.paymentRequirements.resource,
+        merchantId: req.paymentRequirements.extra.merchantId,
+        orderId: req.paymentRequirements.extra.orderId,
       },
       deps.signingKey,
     );

@@ -6,6 +6,16 @@ export interface ReceiptPayload {
   payer: string;
   amount: string;
   paidAtHeight: number;
+  /**
+   * The purchased resource, bound INTO the signature. Without this a
+   * receipt signed for resource A verifies for B/C/D on the same server
+   * — the resource-binding hole formalized in arXiv:2605.11781 ("no
+   * audited SDK binds a payment to the intended resource"). Present on
+   * all receipts this facilitator issues.
+   */
+  resource: string;
+  merchantId: string;
+  orderId: string;
 }
 
 export interface SignedReceipt {
@@ -15,12 +25,16 @@ export interface SignedReceipt {
 }
 
 function canonicalize(p: ReceiptPayload): string {
+  // Fixed key order; every field is covered by the signature.
   return JSON.stringify({
     transaction: p.transaction,
     network: p.network,
     payer: p.payer,
     amount: p.amount,
     paidAtHeight: p.paidAtHeight,
+    resource: p.resource,
+    merchantId: p.merchantId,
+    orderId: p.orderId,
   });
 }
 

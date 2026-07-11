@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { DeroClient } from "../dero/client";
+import { sameDeroAddress } from "../dero/address";
 import { verifyRequestSchema } from "../schemas/x402";
 
 export interface VerifyDeps {
@@ -39,7 +40,7 @@ export function buildVerifyRoute(deps: VerifyDeps): Hono {
     if (!onChainPayer) {
       return c.json({ isValid: false, invalidReason: "not_paid" });
     }
-    if (onChainPayer !== pp.payload.payer) {
+    if (!sameDeroAddress(onChainPayer, pp.payload.payer)) {
       return c.json({ isValid: false, invalidReason: "payer_mismatch" });
     }
 

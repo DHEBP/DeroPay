@@ -5,6 +5,12 @@ import type { PaymentRequirements } from "../src/x402/types";
 import type { WalletInvoke } from "../src/x402/client";
 import { SpendPolicy, SpendPolicyError } from "../src/x402/policy";
 import {
+  mintSpendCredential,
+  attenuate,
+  CredentialPolicy,
+  CredentialError,
+} from "../src/x402/credentials";
+import {
   createPayingFetch,
   X402PaymentRejectedError,
   X402UnpayableError,
@@ -297,4 +303,83 @@ test("replays a POST body on the paid retry", async () => {
   );
   expect(res.status).toBe(200);
   expect(received).toEqual([JSON.stringify({ q: "hello" })]);
+});
+
+// --- CredentialPolicy drops into createPayingFetch unchanged (SpendGuard) ---
+
+const CRED_ROOT = "c".repeat(64);
+
+test("createPayingFetch pays through a verified CredentialPolicy", async () => {
+  const guarded = withX402(
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred")], resource: RESOURCE },
+    async () => Response.json({ ok: 1 })
+  );
+  const { invoke, calls } = makeWalletInvoke();
+  const cred = mintSpendCredential({
+    rootKeyHex: CRED_ROOT,
+    id: "worker-1",
+    caveats: [
+      { type: "origin", value: ORIGIN },
+      { type: "max-spend-atomic", value: "10000" },
+      { type: "resource-prefix", value: `${ORIGIN}/api/` },
+    ],
+  });
+  const payingFetch = createPayingFetch({
+    walletInvoke: invoke,
+    policy: new CredentialPolicy(cred, CRED_ROOT),
+    fetch: fetchInto(guarded),
+  });
+
+  const res = await payingFetch(RESOURCE);
+  expect(res.status).toBe(200);
+  expect(calls.length).toBe(1);
+});
+
+test("an attenuated credential's tighter cap blocks the wallet call through createPayingFetch", async () => {
+  const guarded = withX402(
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred2")], resource: RESOURCE },
+    async () => Response.json({ ok: 1 })
+  );
+  const { invoke, calls } = makeWalletInvoke();
+  // Parent allows 10000; worker attenuates to 100 — below the 500 price.
+  const parent = mintSpendCredential({
+    rootKeyHex: CRED_ROOT,
+    id: "worker-2",
+    caveats: [{ type: "origin", value: ORIGIN }, { type: "max-spend-atomic", value: "10000" }],
+  });
+  const worker = attenuate(parent, { type: "max-spend-atomic", value: "100" });
+  const payingFetch = createPayingFetch({
+    walletInvoke: invoke,
+    policy: new CredentialPolicy(worker, CRED_ROOT),
+    fetch: fetchInto(guarded),
+  });
+
+  await expect(payingFetch(RESOURCE)).rejects.toThrowError(CredentialError);
+  expect(calls.length).toBe(0);
+});
+
+test("a resource-prefix caveat blocks payment for an out-of-scope resource", async () => {
+  const guarded = withX402(
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred3")], resource: RESOURCE },
+    async () => Response.json({ ok: 1 })
+  );
+  const { invoke, calls } = makeWalletInvoke();
+  // Credential only permits /billing/* but the resource is /api/data.
+  const cred = mintSpendCredential({
+    rootKeyHex: CRED_ROOT,
+    id: "worker-3",
+    caveats: [
+      { type: "origin", value: ORIGIN },
+      { type: "max-spend-atomic", value: "10000" },
+      { type: "resource-prefix", value: `${ORIGIN}/billing/` },
+    ],
+  });
+  const payingFetch = createPayingFetch({
+    walletInvoke: invoke,
+    policy: new CredentialPolicy(cred, CRED_ROOT),
+    fetch: fetchInto(guarded),
+  });
+
+  await expect(payingFetch(RESOURCE)).rejects.toThrowError(CredentialError);
+  expect(calls.length).toBe(0);
 });

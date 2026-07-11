@@ -43,7 +43,7 @@ Contract: `contracts/x402-pay.bas (in this package)`
 
 ## 2. Resource-bound signed receipts
 
-### 2.1 The hole this closes
+### 2.1 The hole, and what this actually closes
 
 "Five Attacks on x402" (arXiv:2605.11781) and "Free-Riding the Agentic
 Web" (arXiv:2605.30998) show that **no audited x402 SDK binds a payment
@@ -52,6 +52,24 @@ authorization to the resource purchased**: the EIP-3009 signature covers
 for resource A can be replayed for B, C, D on the same server (resource
 leakage measured up to 100% against official SDKs). No v2 remediation
 existed as of July 2026.
+
+**Precise scope of the fix below.** DeroPay binds the resource at the
+**receipt layer**: a relying party that receives a signed receipt and
+verifies `payload.resource == the resource it is serving` cannot be fooled
+by a receipt minted for a cheaper/other resource. That is the guarantee
+§2.2–2.3 provide, and it is real and verifiable offline.
+
+It is **not**, on its own, a fix for the `withX402` *gate*. In the
+challenge→settle flow, `verify.ts` / `settle.ts` authorize on
+`(scid, merchant, order, amount)` and read the contract's
+`paid_/amt_/h_<merchant>_<order>` keys — **resource is not a gate input**,
+and `orderIdFor` trusts the `orderId` the client echoes back in
+`X-PAYMENT`. So a payment settled for resource A can still unlock resource
+B when B shares the merchant + SCID and is priced ≤ the amount paid. The
+receipt for that access correctly names resource A — a relying party that
+checks it would catch the mismatch — but the gate itself grants access
+before anyone inspects the receipt. Closing the gate is tracked in §2.6
+(Known open item) and is a contract/`verify` change, not a receipt change.
 
 ### 2.2 The receipt
 
@@ -115,6 +133,30 @@ Open item: the signed receipt does not yet carry its own `jti` + expiry
 for a stateless relying party to dedupe without calling back to the
 facilitator. Planned for v0.2 (aligns with the AP2 Mandate model of a
 signed, expiring, non-repudiable instruction).
+
+### 2.6 Known open item — gate-level resource binding
+
+As stated in §2.1, the `withX402` gate does not yet enforce resource, so
+**cross-resource reuse under one merchant + SCID within the paid amount is
+possible**. The receipt records the true resource, but access is granted
+by `verify`/`settle` before the receipt is inspected.
+
+Proposed fix (stateless, preserves per-request payment semantics): make
+`orderId` a resource-bound, server-authenticated token instead of a bare
+random UUID —
+`orderId = <nonce>.<HMAC(serverSecret, resource + "|" + nonce)>`.
+The server issues it in the 402 challenge; on the paid retry it recomputes
+the HMAC over **this** route's resource and rejects any order whose MAC was
+minted for a different resource. A payment for A then cannot satisfy B,
+because B recomputes with its own resource and the MAC will not match. This
+is a change to `withX402` + `orderIdFor` (and the contract key is unchanged
+because the resource is already inside the order). Deferred as an explicit,
+owner-gated decision because it also settles per-request vs per-resource
+payment semantics.
+
+Until that lands, treat the receipt's resource field — checked by the
+relying party — as the enforcement point, and do not rely on the gate
+alone to separate resources that share a merchant and SCID.
 
 ### 2.5 Relationship to AP2 Mandates
 

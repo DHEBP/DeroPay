@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createHash } from "crypto";
 import { DeroClient } from "../dero/client";
+import { sameDeroAddress } from "../dero/address";
 import { ReceiptStore } from "../receipts/store";
 import { signReceipt } from "../receipts/sign";
 import { verifyRequestSchema, type PaymentPayload, type PaymentRequirements } from "../schemas/x402";
@@ -30,7 +31,7 @@ async function verifyOnChain(
 
   const signer = sc.stringkeys[paidKey];
   if (!signer) return { ok: false, reason: "not_paid" };
-  if (signer !== pp.payload.payer) return { ok: false, reason: "payer_mismatch" };
+  if (!sameDeroAddress(signer, pp.payload.payer)) return { ok: false, reason: "payer_mismatch" };
   const amt = sc.uint64keys[amtKey] ?? 0n;
   if (amt < BigInt(pr.maxAmountRequired)) return { ok: false, reason: "on_chain_underpayment" };
   const h = sc.uint64keys[hKey] ?? 0n;

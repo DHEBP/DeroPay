@@ -1,4 +1,4 @@
-import { test, expect, vi } from "vitest";
+import { test, expect } from "vitest";
 import { withX402 } from "../src/x402/next";
 import type { VerifySettleClient } from "../src/x402/server";
 import type { PaymentRequirements } from "../src/x402/types";
@@ -208,10 +208,42 @@ test("402 after payment throws X402PaymentRejectedError instead of paying again"
     walletInvoke: invoke,
     policy: makePolicy(),
     fetch: fetchInto(guarded),
+    settleTimeoutMs: 0,
   });
 
   await expect(payingFetch(RESOURCE)).rejects.toThrowError(X402PaymentRejectedError);
   expect(calls.length).toBe(1);
+});
+
+test("settlement lag: keeps replaying the SAME payment until confirmations land, then 200", async () => {
+  // Facilitator refuses until the 3rd verify — models tx mined + depth reached.
+  let verifies = 0;
+  const lagging: VerifySettleClient = {
+    verify: async () => {
+      verifies++;
+      return verifies < 3
+        ? { isValid: false, invalidReason: "not_finalized" }
+        : { isValid: true, payer: PAYER };
+    },
+    settle: async () => ({ success: true, transaction: TXID, network: "dero-mainnet" }),
+  };
+  const guarded = withX402(
+    { facilitator: lagging, accepts: [makeAccepts("order-lag")], resource: RESOURCE },
+    async () => Response.json({ ok: 1 })
+  );
+  const { invoke, calls } = makeWalletInvoke();
+  const payingFetch = createPayingFetch({
+    walletInvoke: invoke,
+    policy: makePolicy(),
+    fetch: fetchInto(guarded),
+    settleTimeoutMs: 5_000,
+    settlePollIntervalMs: 1,
+  });
+
+  const res = await payingFetch(RESOURCE);
+  expect(res.status).toBe(200);
+  expect(calls.length).toBe(1); // exactly one payment despite three attempts
+  expect(verifies).toBe(3);
 });
 
 test("402 with no matching rail throws X402UnpayableError by default, passes through when configured", async () => {

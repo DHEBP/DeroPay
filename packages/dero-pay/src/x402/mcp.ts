@@ -208,6 +208,14 @@ export type PayingToolCallerConfig = {
   serverOrigin: string;
   match?: { scheme: string; network: string };
   onPayment?: (evidence: PaymentEvidence) => void;
+  /**
+   * How long to keep retrying the paid tool call while the chain settles.
+   * The SAME payment payload is replayed — never a second payment.
+   * Default 90s.
+   */
+  settleTimeoutMs?: number;
+  /** Delay between settlement retries. Default 2s. */
+  settlePollIntervalMs?: number;
 };
 
 export class X402ToolPaymentRejectedError extends Error {
@@ -228,6 +236,8 @@ export class X402ToolPaymentRejectedError extends Error {
  */
 export function createPayingToolCaller(config: PayingToolCallerConfig): CallTool {
   const match = config.match ?? { scheme: "dero-exact", network: "dero-mainnet" };
+  const settleTimeoutMs = config.settleTimeoutMs ?? 90_000;
+  const settlePollIntervalMs = config.settlePollIntervalMs ?? 2_000;
 
   return async (toolName, args) => {
     const first = await config.callTool(toolName, args);
@@ -263,13 +273,18 @@ export function createPayingToolCaller(config: PayingToolCallerConfig): CallTool
       payer: decodePayerFromHeader(paid.paymentHeader),
     });
 
-    const second = await config.callTool(toolName, {
-      ...args,
-      [X402_PAYMENT_ARG]: paid.paymentHeader,
-    });
+    // On-chain settlement takes blocks; replay the SAME payment until the
+    // server's confirmation depth is reached or the deadline passes.
+    const paidArgs = { ...args, [X402_PAYMENT_ARG]: paid.paymentHeader };
+    const deadline = Date.now() + settleTimeoutMs;
+    let second = await config.callTool(toolName, paidArgs);
+    while (parsePaidToolChallenge(second) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, settlePollIntervalMs));
+      second = await config.callTool(toolName, paidArgs);
+    }
     if (parsePaidToolChallenge(second)) {
       throw new X402ToolPaymentRejectedError(
-        `Tool ${toolName} still demands payment after settling txid ${paid.txid} — refusing to pay again`,
+        `Tool ${toolName} still demands payment after settling txid ${paid.txid} and ${settleTimeoutMs}ms of retries — refusing to pay again`,
         second,
         paid.txid
       );

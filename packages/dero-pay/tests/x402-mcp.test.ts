@@ -155,10 +155,41 @@ test("invalid payment yields a challenge with invalidReason; caller refuses to d
     walletInvoke: invoke,
     policy: policyAllowing(),
     serverOrigin: SERVER_ORIGIN,
+    settleTimeoutMs: 0,
   });
 
   await expect(caller("echo", {})).rejects.toThrowError(X402ToolPaymentRejectedError);
   expect(calls.length).toBe(1); // paid once, refused the second demand
+});
+
+test("settlement lag: replays the same tool payment until verify passes", async () => {
+  let verifies = 0;
+  const lagging: VerifySettleClient = {
+    verify: async () => {
+      verifies++;
+      return verifies < 3
+        ? { isValid: false, invalidReason: "not_finalized" }
+        : { isValid: true, payer: PAYER };
+    },
+    settle: async () => ({ success: true, transaction: TXID, network: "dero-mainnet" }),
+  };
+  const { guard } = createPaidToolGuard({ facilitator: lagging, accepts: [ACCEPTS_ENTRY] });
+  const paidEcho = guard("echo", echoTool);
+  const { invoke, calls } = makeWalletInvoke();
+
+  const caller = createPayingToolCaller({
+    callTool: async (_name, args) => paidEcho(args as never),
+    walletInvoke: invoke,
+    policy: policyAllowing(),
+    serverOrigin: SERVER_ORIGIN,
+    settleTimeoutMs: 5_000,
+    settlePollIntervalMs: 1,
+  });
+
+  const result = await caller("echo", { q: "lag" });
+  expect(result.isError).toBeUndefined();
+  expect(calls.length).toBe(1);
+  expect(verifies).toBe(3);
 });
 
 test("free tools and non-challenge errors pass through the paying caller untouched", async () => {

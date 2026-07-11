@@ -67,6 +67,14 @@ export type PayingFetchConfig = {
    * so agent code cannot mistake an unpaid body for a paid one.
    */
   unpayable?: "throw" | "passthrough";
+  /**
+   * How long to keep retrying the paid request while the chain settles
+   * (tx mined + server's confirmation depth). Default 90s. The SAME
+   * payment header is replayed — a second payment is never made.
+   */
+  settleTimeoutMs?: number;
+  /** Delay between settlement retries. Default 2s. */
+  settlePollIntervalMs?: number;
 };
 
 function requestUrlOf(input: RequestInfo | URL): string {
@@ -93,6 +101,8 @@ export function createPayingFetch(config: PayingFetchConfig) {
   const baseFetch: FetchLike = config.fetch ?? ((input, init) => fetch(input, init));
   const match = config.match ?? { scheme: "dero-exact", network: "dero-mainnet" };
   const unpayable = config.unpayable ?? "throw";
+  const settleTimeoutMs = config.settleTimeoutMs ?? 90_000;
+  const settlePollIntervalMs = config.settlePollIntervalMs ?? 2_000;
   const inFlight = new Map<string, Promise<{ paymentHeader: string; txid: string }>>();
 
   async function payOnce(
@@ -141,11 +151,20 @@ export function createPayingFetch(config: PayingFetchConfig) {
     input: RequestInfo | URL,
     init?: RequestInit
   ): Promise<Response> {
-    // A Request body is consumed by the first send; clone up front so a
-    // 402 → pay → retry can replay it.
-    let retrySource: Request | null = null;
-    if (typeof Request !== "undefined" && input instanceof Request && input.body !== null) {
-      retrySource = input.clone();
+    // A Request body is consumed by the first send; buffer a clone up
+    // front so the paid retries (plural — settlement takes blocks, not
+    // milliseconds) can replay it as many times as needed.
+    let template: { url: string; method: string; headers: Headers } | null = null;
+    let bodyBuffer: ArrayBuffer | null = null;
+    if (typeof Request !== "undefined" && input instanceof Request) {
+      template = {
+        url: input.url,
+        method: input.method,
+        headers: new Headers(input.headers),
+      };
+      if (input.body !== null) {
+        bodyBuffer = await input.clone().arrayBuffer();
+      }
     }
 
     const response = await baseFetch(input, init);
@@ -179,29 +198,36 @@ export function createPayingFetch(config: PayingFetchConfig) {
     const origin = new URL(requestUrlOf(input)).origin;
     const { paymentHeader, txid } = await payOnce(origin, accepts);
 
-    let retryInput: RequestInfo | URL;
-    let retryInit: RequestInit | undefined;
-    if (retrySource) {
-      const headers = new Headers(retrySource.headers);
+    // On-chain settlement is not instant: the payment tx must be mined
+    // and reach the server's confirmation depth. Retry the SAME payment
+    // header with backoff until the deadline — never pay a second time.
+    function buildRetry(): [RequestInfo | URL, RequestInit | undefined] {
+      if (template) {
+        const headers = new Headers(template.headers);
+        headers.set("X-PAYMENT", paymentHeader);
+        return [
+          template.url,
+          {
+            method: template.method,
+            headers,
+            ...(bodyBuffer !== null ? { body: bodyBuffer } : {}),
+          },
+        ];
+      }
+      const headers = new Headers(init?.headers);
       headers.set("X-PAYMENT", paymentHeader);
-      retryInput = new Request(retrySource, { headers });
-      retryInit = undefined;
-    } else {
-      const headers = new Headers(
-        init?.headers ??
-          (typeof Request !== "undefined" && input instanceof Request
-            ? input.headers
-            : undefined)
-      );
-      headers.set("X-PAYMENT", paymentHeader);
-      retryInput = input;
-      retryInit = { ...init, headers };
+      return [input, { ...init, headers }];
     }
 
-    const paidResponse = await baseFetch(retryInput, retryInit);
+    const deadline = Date.now() + settleTimeoutMs;
+    let paidResponse = await baseFetch(...buildRetry());
+    while (paidResponse.status === 402 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, settlePollIntervalMs));
+      paidResponse = await baseFetch(...buildRetry());
+    }
     if (paidResponse.status === 402) {
       throw new X402PaymentRejectedError(
-        `Server still returned 402 after payment (txid ${txid}) — refusing to pay again`,
+        `Server still returned 402 after payment (txid ${txid}) and ${settleTimeoutMs}ms of settlement retries — refusing to pay again`,
         paidResponse,
         txid
       );

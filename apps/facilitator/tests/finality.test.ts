@@ -4,6 +4,7 @@ import { buildSettleRoute } from "../src/routes/settle";
 import { DeroClient } from "../src/dero/client";
 import { ReceiptStore } from "../src/receipts/store";
 import { mockDaemon } from "./fixtures/mock-daemon";
+import { paidKey, amtKey, hKey } from "../src/dero/keys";
 import * as ed from "@noble/ed25519";
 
 const SCID = "1".repeat(64);
@@ -15,8 +16,11 @@ beforeEach(() => {
   daemon = mockDaemon({
     contracts: {
       [SCID]: {
-        stringkeys: { "paid_shop-1_ord-42": AGENT },
-        uint64keys: { "amt_shop-1_ord-42": "1500", "h_shop-1_ord-42": "1000000" },
+        stringkeys: { [paidKey("shop-1", "ord-42")]: AGENT },
+        uint64keys: {
+          [amtKey("shop-1", "ord-42")]: "1500",
+          [hKey("shop-1", "ord-42")]: "1000000",
+        },
       },
     },
     topoHeight: 1_000_003, // only 3 blocks past payment

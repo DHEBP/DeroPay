@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { createHash } from "crypto";
 import { DeroClient } from "../dero/client";
 import { sameDeroAddress } from "../dero/address";
+import { paidKey, amtKey, hKey } from "../dero/keys";
 import { ReceiptStore } from "../receipts/store";
 import { signReceipt } from "../receipts/sign";
 import { verifyRequestSchema, type PaymentPayload, type PaymentRequirements } from "../schemas/x402";
@@ -25,16 +26,12 @@ async function verifyOnChain(
 ): Promise<{ ok: true; height: bigint; amount: bigint } | { ok: false; reason: string }> {
   if (pp.payload.scid !== pr.payTo) return { ok: false, reason: "scid_mismatch" };
   const sc = await client.getSC(pp.payload.scid);
-  const paidKey = `paid_${pp.payload.merchantId}_${pp.payload.orderId}`;
-  const amtKey = `amt_${pp.payload.merchantId}_${pp.payload.orderId}`;
-  const hKey = `h_${pp.payload.merchantId}_${pp.payload.orderId}`;
-
-  const signer = sc.stringkeys[paidKey];
+  const signer = sc.stringkeys[paidKey(pp.payload.merchantId, pp.payload.orderId)];
   if (!signer) return { ok: false, reason: "not_paid" };
   if (!sameDeroAddress(signer, pp.payload.payer)) return { ok: false, reason: "payer_mismatch" };
-  const amt = sc.uint64keys[amtKey] ?? 0n;
+  const amt = sc.uint64keys[amtKey(pp.payload.merchantId, pp.payload.orderId)] ?? 0n;
   if (amt < BigInt(pr.maxAmountRequired)) return { ok: false, reason: "on_chain_underpayment" };
-  const h = sc.uint64keys[hKey] ?? 0n;
+  const h = sc.uint64keys[hKey(pp.payload.merchantId, pp.payload.orderId)] ?? 0n;
   const tip = BigInt(await client.getTopoHeight());
   if (tip - h < BigInt(confirmations)) return { ok: false, reason: "not_finalized" };
   return { ok: true, height: h, amount: amt };

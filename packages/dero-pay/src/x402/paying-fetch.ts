@@ -75,7 +75,7 @@ function requestUrlOf(input: RequestInfo | URL): string {
   return input.url;
 }
 
-function decodePayerFromHeader(paymentHeader: string): string {
+export function decodePayerFromHeader(paymentHeader: string): string {
   try {
     const json = JSON.parse(Buffer.from(paymentHeader, "base64").toString("utf8"));
     return typeof json?.payload?.payer === "string" ? json.payload.payer : "";

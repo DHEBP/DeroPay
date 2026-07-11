@@ -51,6 +51,18 @@ export type SpendReservation = {
   release(): void;
 };
 
+/** Optional context a guard may use to make a decision (e.g. resource-scoping). */
+export type SpendContext = { resource?: string };
+
+/**
+ * The contract the paying agents depend on. Both SpendPolicy (origin +
+ * amount caps) and CredentialPolicy (attenuable capabilities) implement
+ * it, so either can be handed to createPayingFetch / createPayingToolCaller.
+ */
+export interface SpendGuard {
+  reserve(origin: string, amountAtomic: bigint, context?: SpendContext): SpendReservation;
+}
+
 type LedgerEntry = {
   at: number;
   amountAtomic: bigint;

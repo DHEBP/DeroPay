@@ -11,7 +11,7 @@
 
 import { payDeroRail, selectAcceptsEntry, type WalletInvoke } from "./client";
 import { paymentRequirementsSchema, type PaymentRequirements } from "./types";
-import { SpendPolicy } from "./policy";
+import type { SpendGuard } from "./policy";
 
 export type PaymentEvidence = {
   at: string;
@@ -54,7 +54,7 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 
 export type PayingFetchConfig = {
   walletInvoke: WalletInvoke;
-  policy: SpendPolicy;
+  policy: SpendGuard;
   /** Underlying fetch (tests / custom transport). Default: globalThis.fetch */
   fetch?: FetchLike;
   /** Which rail to pay. Default: dero-exact on dero-mainnet. */
@@ -115,7 +115,9 @@ export function createPayingFetch(config: PayingFetchConfig) {
 
     const attempt = (async () => {
       const amountAtomic = BigInt(accepts.maxAmountRequired);
-      const reservation = config.policy.reserve(origin, amountAtomic);
+      const reservation = config.policy.reserve(origin, amountAtomic, {
+        resource: accepts.resource,
+      });
       try {
         const paid = await payDeroRail(accepts, config.walletInvoke);
         reservation.commit();

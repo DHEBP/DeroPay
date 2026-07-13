@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { DeroIcon } from "@/components/icons/dero-icon";
 import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
+import { DeroIcon } from "@/components/icons/dero-icon";
+import { DOCS_URL } from "@/lib/site";
 
 type NavLink = {
   href: string;
@@ -20,9 +21,7 @@ const links: NavLink[] = [
   { href: "/escrow", label: "Escrow" },
   { href: "/templates", label: "Templates" },
   { href: "/playground", label: "Try It" },
-  { href: "https://demo.deropay.com", label: "Demo", external: true },
-  { href: "https://deropay.derod.org", label: "Docs", external: true },
-  { href: "https://github.com/DHEBP", label: "GitHub", external: true },
+  { href: DOCS_URL, label: "Docs", external: true },
 ];
 
 export const Navbar = () => {
@@ -37,67 +36,53 @@ export const Navbar = () => {
   }, []);
 
   return (
-    <header
-      className={`fixed top-0 z-50 w-full transition-all duration-200 ${
-        scrolled
-          ? "border-b border-[var(--color-border-soft)] bg-[rgba(6,8,6,0.78)] backdrop-blur-xl"
-          : "border-b border-transparent bg-[var(--color-background)]"
-      }`}
-    >
-      <nav className="mx-auto flex h-20 max-w-[1280px] items-center justify-between gap-4 px-6 lg:px-8">
-        <Link
-          href="/"
-          className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-85"
-        >
+    <header className={`nav${scrolled ? " nav-scrolled" : ""}`}>
+      <div className="nav-in">
+        <Link href="/" className="brand">
           <DeroIcon size={26} className="text-[var(--color-accent-strong)]" />
-          <span className="font-display text-xl font-bold tracking-tight text-[var(--color-text-primary)]">
-            DeroPay
-          </span>
+          <span style={{ transform: "translateY(1.5px)" }}>DeroPay</span>
         </Link>
 
-        <div
-          className="flex-1 justify-center"
-          style={{ display: "var(--nav-display, none)" }}
-        >
-          <div className="flex items-center gap-1 rounded-full border border-[var(--color-border-soft)] bg-white/[0.04] p-1 backdrop-blur-sm">
-            {links.map((link) => {
-              const isActive =
-                pathname === link.href ||
-                pathname.startsWith(link.href + "/");
-              const extra = link.external
-                ? { target: "_blank", rel: "noopener noreferrer" }
-                : {};
+        <nav className="nav-links">
+          {links.map((link) => {
+            const isActive =
+              !link.external &&
+              (pathname === link.href || pathname.startsWith(link.href + "/"));
+
+            if (link.external) {
               return (
-                <Link
+                <a
                   key={link.href}
                   href={link.href}
-                  {...extra}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                    isActive
-                      ? "bg-white text-[#071008] shadow-[0_8px_24px_-12px_rgba(255,255,255,0.18)]"
-                      : "text-[var(--color-text-secondary)] hover:bg-white/[0.04] hover:text-[var(--color-text-primary)]"
-                  }`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
                   {link.label}
-                </Link>
+                </a>
               );
-            })}
-          </div>
-        </div>
+            }
 
-        <div
-          className="shrink-0 items-center"
-          style={{ display: "var(--nav-display, none)" }}
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={isActive ? "page" : undefined}
+                className={isActive ? "on" : undefined}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <a
+          href={DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-accent btn-sm nav-cta"
         >
-          <Link
-            href="https://deropay.derod.org"
-            className="btn-accent whitespace-nowrap"
-            style={{ padding: "10px 20px", fontSize: "0.85rem" }}
-          >
-            Get started
-          </Link>
-        </div>
+          Get started
+        </a>
 
         <button
           type="button"
@@ -105,23 +90,54 @@ export const Navbar = () => {
           aria-expanded={mobileOpen}
           aria-controls="mobile-menu"
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="ml-auto text-[var(--color-text-primary)]"
-          style={{ display: "var(--burger-display, block)" }}
+          className="nav-burger"
         >
           {mobileOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
-      </nav>
+      </div>
 
       <style>{`
-        :root {
-          --nav-display: none;
-          --burger-display: block;
+        .nav-scrolled {
+          background: rgba(6, 8, 6, 0.85);
         }
-        @media (min-width: 1024px) {
-          :root {
-            --nav-display: flex;
-            --burger-display: none;
+        .nav-cta,
+        .nav-links {
+          display: flex;
+        }
+        .nav-burger {
+          display: none;
+          margin-left: auto;
+          color: var(--tp, var(--color-text-primary));
+        }
+        @media (max-width: 900px) {
+          .nav-cta {
+            display: none;
           }
+          .nav-burger {
+            display: block;
+          }
+        }
+        .nav-mobile {
+          border-bottom: 1px solid var(--border-soft, var(--color-border-soft));
+          background: var(--bg, var(--color-background));
+          overflow: hidden;
+        }
+        .nav-mobile-inner {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding: 24px;
+        }
+        .nav-mobile-inner a {
+          font-family: var(--display, var(--font-display));
+          font-size: 18px;
+          font-weight: 600;
+          color: var(--tp, var(--color-text-primary));
+        }
+        .nav-mobile-divider {
+          height: 1px;
+          margin: 8px 0;
+          background: var(--border-soft, var(--color-border-soft));
         }
       `}</style>
 
@@ -129,30 +145,44 @@ export const Navbar = () => {
         {mobileOpen && (
           <motion.div
             id="mobile-menu"
+            className="nav-mobile"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="border-b border-[var(--color-border-soft)] bg-[var(--color-background)]"
           >
-            <div className="flex flex-col space-y-4 p-6">
-              {links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileOpen(false)}
-                  className="text-lg font-semibold text-[var(--color-text-primary)]"
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <div className="my-4 h-px bg-[var(--color-border-soft)]" />
-              <Link
-                href="https://deropay.derod.org"
-                className="btn-accent w-full text-center"
+            <div className="nav-mobile-inner">
+              {links.map((link) =>
+                link.external ? (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ),
+              )}
+              <div className="nav-mobile-divider" />
+              <a
+                href={DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-accent"
+                style={{ width: "100%", justifyContent: "center" }}
                 onClick={() => setMobileOpen(false)}
               >
                 Get started
-              </Link>
+              </a>
             </div>
           </motion.div>
         )}

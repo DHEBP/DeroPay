@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { DOCS_URL } from "@/lib/site";
 
 export const CTASection = () => (
   <section className="relative overflow-hidden border-t border-[var(--color-border-soft)] bg-[var(--color-background)]">
@@ -52,19 +52,19 @@ export const CTASection = () => (
 
         <div className="mt-10 flex flex-wrap justify-center gap-4">
           <a
-            href="https://deropay.derod.org"
-            className="btn-accent"
+            href={DOCS_URL}
+            className="btn btn-accent"
             style={{ padding: "14px 28px" }}
           >
             Get started now <ArrowRight size={18} />
           </a>
-          <Link
-            href="/pay"
-            className="btn-secondary"
+          <a
+            href={DOCS_URL}
+            className="btn btn-ghost"
             style={{ padding: "14px 28px" }}
           >
-            View documentation
-          </Link>
+            Read the docs
+          </a>
         </div>
       </motion.div>
     </div>

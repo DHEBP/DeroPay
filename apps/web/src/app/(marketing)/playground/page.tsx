@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { PlaygroundClient } from "./client";
 
 export const metadata: Metadata = {
-  title: "Try DeroPay — Interactive Widget Playground",
+  title: "Playground — Try the DeroPay Widget Live",
   description:
-    "Click the button, see the payment modal, watch the full lifecycle. No wallet, no backend, no setup required.",
+    "Click the button and watch the real DeroPay widget run in simulation mode. No wallet, no backend, no setup — plus the one-tag embed code and links to the demo store, hosted checkout, and dashboard.",
 };
 
 export default function PlaygroundPage() {

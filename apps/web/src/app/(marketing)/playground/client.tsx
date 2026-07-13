@@ -1,9 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Copy, Check, Store, BookOpen } from "lucide-react";
+import { ArrowRight, Copy, Check, Store, LayoutDashboard } from "lucide-react";
 import Script from "next/script";
+import { DEMO_URL, CHECKOUT_URL, DASHBOARD_URL } from "@/lib/site";
 
 const EMBED_CODE = `<script src="https://deropay.com/widget.js"><\/script>
 
@@ -42,7 +42,7 @@ export const PlaygroundClient = () => {
       newEl.dataset.name = name;
       el.parentNode?.replaceChild(newEl, el);
       widgetRef.current = newEl as HTMLDivElement;
-      (window as any).DeroPay?.init?.();
+      (window as unknown as { DeroPay?: { init?: () => void } }).DeroPay?.init?.();
     }
   }, [amount, name]);
 
@@ -51,42 +51,38 @@ export const PlaygroundClient = () => {
       <Script src="/widget.js" strategy="lazyOnload" />
 
       {/* Hero */}
-      <section style={{ borderBottom: "1px solid #1e2a24", background: "#000", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-          <div style={{ position: "absolute", top: "-30%", right: "20%", width: "700px", height: "700px", borderRadius: "50%", background: "radial-gradient(circle, rgba(49,223,144,0.15) 0%, transparent 65%)", filter: "blur(100px)" }} />
-          <div style={{ position: "absolute", top: "-10%", left: "10%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(147,51,234,0.18) 0%, transparent 60%)", filter: "blur(100px)" }} />
-        </div>
-        <div className="bg-grid-pattern" style={{ position: "absolute", inset: 0, opacity: 0.1 }} />
-        <div style={{ position: "relative", maxWidth: "1200px", margin: "0 auto", padding: "48px 24px 56px", zIndex: 1 }}>
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}
-          >
-            <p style={{ marginBottom: "16px", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#31df90" }}>Interactive Demo</p>
-            <h1 style={{ fontSize: "clamp(2.2rem, 5vw, 3.5rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#f0fdf4" }}>
-              Try DeroPay <span style={{ color: "#31df90" }}>right now</span>
+      <section className="pad">
+        <div className="grid-bg" />
+        <div
+          className="orb"
+          style={{ width: "700px", height: "700px", top: "-30%", right: "16%", background: "rgba(49,223,144,.14)" }}
+        />
+        <div className="wrap">
+          <div className="hero-c">
+            <span className="eyebrow dot">Interactive demo</span>
+            <h1 style={{ marginTop: "16px" }}>
+              Try DeroPay <span className="g">right now</span>.
             </h1>
-            <p style={{ marginTop: "20px", fontSize: "18px", fontWeight: 500, lineHeight: 1.6, color: "#6b7f75", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
-              Click the button below. No wallet, no backend, no setup. This is the real widget running in simulation mode.
+            <p className="lead">
+              Click the button. No wallet, no backend, no setup. This is the real widget running in
+              simulation mode.
             </p>
-          </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* Live Widget */}
-      <section style={{ background: "#000", padding: "80px 24px", borderBottom: "1px solid #1e2a24" }}>
-        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-          <div style={{ display: "grid", gap: "48px", gridTemplateColumns: "1fr 1fr", alignItems: "start" }} className="playground-grid">
+      {/* Live widget + embed code */}
+      <section className="pad-sm" style={{ borderTop: "1px solid var(--border-soft)" }}>
+        <div className="wrap">
+          <div className="pg">
             {/* Widget side */}
             <div>
-              <h2 style={{ fontSize: "24px", fontWeight: 900, color: "#f0fdf4", marginBottom: "8px" }}>Embeddable Widget</h2>
-              <p style={{ fontSize: "14px", color: "#6b7f75", marginBottom: "32px", lineHeight: 1.6 }}>
-                A 13KB script that renders a payment button and full checkout modal. Drop it on any website.
+              <h2>Embeddable widget</h2>
+              <p className="sub">
+                A 14 KB script that renders a payment button and full checkout modal. Drop it on any
+                website.
               </p>
-
-              <div style={{ background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "16px", padding: "48px 32px", textAlign: "center" }}>
+              <div className="glass widget-stage">
                 <div
                   ref={widgetRef}
                   data-deropay=""
@@ -94,33 +90,19 @@ export const PlaygroundClient = () => {
                   data-amount={amount}
                   data-name={name}
                 />
-                <p style={{ marginTop: "20px", fontSize: "12px", color: "#4a6356" }}>
-                  Simulation mode — no real DERO is transferred
-                </p>
+                <div className="note">Simulation mode — no real DERO is transferred</div>
               </div>
-
-              {/* Configurator */}
-              <div style={{ marginTop: "24px", display: "grid", gap: "12px", gridTemplateColumns: "1fr 1fr" }}>
+              <div className="cfg">
                 <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#6b7f75", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "6px" }}>
-                    Amount (atomic)
-                  </label>
-                  <input
-                    type="text"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    style={{ width: "100%", padding: "10px 12px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "8px", color: "#f0fdf4", fontFamily: "monospace", fontSize: "13px" }}
-                  />
+                  <label>Amount (atomic)</label>
+                  <input value={amount} onChange={(e) => setAmount(e.target.value)} />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#6b7f75", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "6px" }}>
-                    Invoice Name
-                  </label>
+                  <label>Invoice name</label>
                   <input
-                    type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    style={{ width: "100%", padding: "10px 12px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "8px", color: "#f0fdf4", fontSize: "13px" }}
+                    style={{ fontFamily: "var(--body)" }}
                   />
                 </div>
               </div>
@@ -128,104 +110,139 @@ export const PlaygroundClient = () => {
 
             {/* Code side */}
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-                <h2 style={{ fontSize: "24px", fontWeight: 900, color: "#f0fdf4" }}>Embed Code</h2>
-                <button
-                  onClick={handleCopy}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "transparent", border: "1px solid #1e2a24", borderRadius: "8px", color: copied ? "#31df90" : "#6b7f75", cursor: "pointer", fontSize: "12px", fontWeight: 600, transition: "all 0.15s" }}
-                >
-                  {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+              <div className="copybar">
+                <h2 style={{ margin: 0 }}>Embed code</h2>
+                <button className="copybtn" onClick={handleCopy} style={copied ? { color: "var(--accent)" } : undefined}>
+                  {copied ? <Check width={14} height={14} /> : <Copy width={14} height={14} />}
+                  {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-
-              <div style={{ overflow: "hidden", borderRadius: "16px", border: "1px solid #1e2a24", background: "#000" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: "1px solid #1e2a24", background: "#0a0f0d", padding: "10px 16px" }}>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#ff5f57" }} />
-                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#febc2e" }} />
-                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#28c840" }} />
-                  </div>
-                  <span style={{ marginLeft: "8px", fontFamily: "monospace", fontSize: "12px", color: "#4a6356" }}>index.html</span>
+              <div className="code">
+                <div className="bar">
+                  <i style={{ background: "#ff5f57" }} />
+                  <i style={{ background: "#febc2e" }} />
+                  <i style={{ background: "#28c840" }} />
+                  <span className="fname">index.html</span>
                 </div>
-                <pre style={{ overflow: "auto", padding: "20px", fontFamily: "monospace", fontSize: "13px", lineHeight: 1.7, color: "#6b7f75" }}>
-                  <code>{EMBED_CODE}</code>
+                <pre>
+                  {"<"}
+                  <span className="k">script</span> <span className="f">src</span>=
+                  <span className="s">&quot;https://deropay.com/widget.js&quot;</span>
+                  {"></"}
+                  <span className="k">script</span>
+                  {">"}
+                  {"\n\n"}
+                  {"<"}
+                  <span className="k">div</span> <span className="f">data-deropay</span>
+                  {"\n  "}
+                  <span className="f">data-gateway</span>=
+                  <span className="s">&quot;https://your-gateway.com&quot;</span>
+                  {"\n  "}
+                  <span className="f">data-api-key</span>=
+                  <span className="s">&quot;your-api-key&quot;</span>
+                  {"\n  "}
+                  <span className="f">data-amount</span>=
+                  <span className="s">&quot;2500000&quot;</span>
+                  {"\n  "}
+                  <span className="f">data-name</span>=
+                  <span className="s">&quot;Premium Plan&quot;</span>
+                  {">"}
+                  {"\n"}
+                  {"</"}
+                  <span className="k">div</span>
+                  {">"}
                 </pre>
               </div>
-
-              <p style={{ marginTop: "16px", fontSize: "13px", color: "#6b7f75", lineHeight: 1.6 }}>
-                That&apos;s it. One script tag, one div. The widget handles invoice creation, QR codes, address display, status polling, and confirmation — all inside a Shadow DOM with zero style conflicts.
+              <p className="sub" style={{ marginTop: "16px", marginBottom: 0 }}>
+                One script tag, one div. The widget handles invoice creation, QR codes, address
+                display, status polling, and confirmation — all inside a Shadow DOM with zero style
+                conflicts.
               </p>
-
-              <div style={{ marginTop: "24px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                <a href="https://deropay.derod.org/guides/embeddable-widget" target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "10px 18px", fontSize: "13px" }}>
-                  <BookOpen size={14} /> Widget Docs
-                </a>
-                <a href="https://demo.deropay.com" target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "10px 18px", fontSize: "13px" }}>
-                  <Store size={14} /> Full Demo Store
-                </a>
-              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* More demos CTA */}
-      <section style={{ background: "#000", padding: "80px 24px" }}>
-        <div style={{ maxWidth: "720px", margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{ fontSize: "32px", fontWeight: 900, color: "#f0fdf4", marginBottom: "12px" }}>See the full picture</h2>
-          <p style={{ fontSize: "16px", color: "#6b7f75", marginBottom: "32px", lineHeight: 1.6 }}>
-            The widget is one of four distribution channels. Explore the complete demo store, hosted checkout page, and merchant dashboard.
-          </p>
-          <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(3, 1fr)", maxWidth: "600px", margin: "0 auto" }} className="demos-grid">
+      {/* See the full picture */}
+      <section className="pad" style={{ borderTop: "1px solid var(--border-soft)" }}>
+        <div
+          className="orb"
+          style={{ width: "540px", height: "540px", bottom: "-10%", left: "-12%", background: "rgba(49,223,144,.09)" }}
+        />
+        <div className="wrap">
+          <div className="head">
+            <span className="eyebrow">More to explore</span>
+            <h2>See the full picture</h2>
+            <p>
+              The widget is one of four distribution channels. Explore the demo store, hosted
+              checkout, and merchant dashboard.
+            </p>
+          </div>
+          <div className="demos">
             <a
-              href="https://demo.deropay.com"
+              className="glass dcard"
+              href={DEMO_URL}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
-              className="demo-card"
             >
-              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#31df90" }}>
-                <Store size={22} />
-              </div>
-              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Demo Store</h3>
-              <p style={{ fontSize: "12px", color: "#6b7f75" }}>Browse, cart, checkout</p>
+              <span className="ic">
+                <Store width={22} height={22} />
+              </span>
+              <h3>Demo Store</h3>
+              <p>Browse, cart, checkout</p>
             </a>
             <a
-              href="https://checkout.deropay.com?demo=true"
+              className="glass dcard"
+              href={CHECKOUT_URL}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
-              className="demo-card"
             >
-              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#31df90" }}>
-                <ArrowRight size={22} />
-              </div>
-              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Checkout Page</h3>
-              <p style={{ fontSize: "12px", color: "#6b7f75" }}>Hosted payment link</p>
+              <span className="ic">
+                <ArrowRight width={22} height={22} />
+              </span>
+              <h3>Checkout Page</h3>
+              <p>Hosted payment link</p>
             </a>
             <a
-              href="https://dashboard.deropay.com"
+              className="glass dcard"
+              href={DASHBOARD_URL}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ display: "block", padding: "20px 16px", background: "#0a0f0d", border: "1px solid #1e2a24", borderRadius: "12px", textDecoration: "none", transition: "border-color 0.2s" }}
-              className="demo-card"
             >
-              <div style={{ display: "inline-flex", padding: "10px", borderRadius: "50%", background: "#0a1f17", marginBottom: "12px", color: "#31df90" }}>
-                <BookOpen size={22} />
-              </div>
-              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#f0fdf4", marginBottom: "4px" }}>Dashboard</h3>
-              <p style={{ fontSize: "12px", color: "#6b7f75" }}>Merchant admin panel</p>
+              <span className="ic">
+                <LayoutDashboard width={22} height={22} />
+              </span>
+              <h3>Dashboard</h3>
+              <p>Merchant admin panel</p>
             </a>
           </div>
         </div>
       </section>
 
       <style>{`
-        @media (max-width: 767px) {
-          .playground-grid { grid-template-columns: 1fr !important; }
-          .demos-grid { grid-template-columns: 1fr !important; }
-        }
-        .demo-card:hover { border-color: #4a6356 !important; }
+        .hero-c{max-width:720px;margin:0 auto;text-align:center;position:relative;z-index:1}
+        .hero-c h1{font-family:var(--display);font-weight:800;font-size:clamp(2.4rem,5.2vw,3.8rem);line-height:1.05;letter-spacing:-.04em}
+        .hero-c h1 .g{color:var(--accent)}
+        .hero-c .lead{margin:22px auto 0;font-size:18px;line-height:1.65;color:var(--ts);max-width:52ch}
+        .pg{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start}
+        @media(max-width:860px){.pg{grid-template-columns:1fr}}
+        .pg h2{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:-.02em;margin-bottom:8px}
+        .pg .sub{font-size:14px;color:var(--ts);margin-bottom:24px;line-height:1.6}
+        .widget-stage{border-radius:16px;padding:44px 32px;text-align:center}
+        .paybtn{display:inline-flex;align-items:center;gap:10px;background:var(--accent);color:#051008;font-family:var(--body);font-weight:700;font-size:16px;border-radius:12px;padding:15px 28px;cursor:pointer;box-shadow:0 12px 32px -12px var(--accent-glow)}
+        .widget-stage .note{margin-top:18px;font-size:12px;color:var(--tt)}
+        .cfg{margin-top:22px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        .cfg label{display:block;font-size:11px;font-weight:600;color:var(--ts);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+        .cfg input{width:100%;padding:10px 12px;background:rgba(9,11,10,.6);border:1px solid var(--border-soft);border-radius:9px;color:var(--tp);font-family:var(--mono);font-size:13px}
+        .copybar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+        .copybtn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:transparent;border:1px solid var(--border-soft);border-radius:8px;color:var(--ts);font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
+        .demos{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:640px;margin:0 auto}
+        @media(max-width:640px){.demos{grid-template-columns:1fr}}
+        .dcard{padding:22px 18px;text-align:center;display:block;transition:.25s}
+        .dcard:hover{border-color:var(--border-strong);transform:translateY(-3px)}
+        .dcard .ic{display:inline-flex;padding:11px;border-radius:50%;background:var(--accent-dim);color:var(--accent);margin-bottom:12px}
+        .dcard h3{font-family:var(--display);font-weight:600;font-size:15px;margin-bottom:4px}
+        .dcard p{font-size:12.5px;color:var(--ts)}
       `}</style>
     </>
   );

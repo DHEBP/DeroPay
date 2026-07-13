@@ -1,19 +1,14 @@
-import { Hero } from "@/components/landing/hero";
-import { ProductsGrid } from "@/components/landing/products-grid";
-import { CodeShowcase } from "@/components/landing/code-showcase";
-import { HowItWorks } from "@/components/landing/how-it-works";
-import { FeaturesGrid } from "@/components/landing/features-grid";
-import { CTASection } from "@/components/landing/cta-section";
+import type { Metadata } from "next";
+import { HomePageClient } from "./client";
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "DeroPay — The fastest way to accept DERO",
+  },
+  description:
+    "Free, open-source, self-hosted payment infrastructure for DERO. Accept payments, manage invoices, build on-chain escrow, and get real-time insights — with zero platform fees, MIT-licensed, and private by default.",
+};
 
 export default function Home() {
-  return (
-    <>
-      <Hero />
-      <ProductsGrid />
-      <CodeShowcase />
-      <HowItWorks />
-      <FeaturesGrid />
-      <CTASection />
-    </>
-  );
+  return <HomePageClient />;
 }

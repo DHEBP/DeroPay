@@ -95,14 +95,14 @@ export const Hero = () => {
           >
             <Link
               href="/playground"
-              className="btn-accent text-base"
+              className="btn btn-accent"
               style={{ padding: "14px 28px" }}
             >
               Try it now <ArrowRight size={18} />
             </Link>
             <a
               href="https://deropay.derod.org"
-              className="btn-secondary text-base"
+              className="btn btn-ghost"
               style={{ padding: "14px 28px" }}
             >
               Documentation
@@ -117,7 +117,7 @@ export const Hero = () => {
           >
             <div className="flex items-center gap-2">
               <Check className="text-[var(--color-accent)]" size={16} />
-              <span>Zero Fees</span>
+              <span>Zero platform fees</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="text-[var(--color-accent)]" size={16} />

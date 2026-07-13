@@ -11,6 +11,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/escrow",
     "/dashboard",
     "/playground",
+    "/about",
+    "/templates",
+    "/privacy",
+    "/terms",
   ];
 
   return routes.map((route) => ({

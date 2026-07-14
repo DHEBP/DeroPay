@@ -118,7 +118,7 @@
     },
     "packages/dero-pay": {
       "name": "dero-pay",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "devDependencies": {
         "@types/better-sqlite3": "^7.6.0",
         "@types/node": "^22.0.0",
@@ -2670,6 +2670,8 @@
     "knex/pg-connection-string": ["pg-connection-string@2.6.2", "", {}, "sha512-ch6OwaeaPYcova4kKZ15sbJ2hKb/VP48ZD2gE7i1J+L4MspCtBMAx8nMgz7bksc7IojCIIWuEhHibSMFH8m8oA=="],
 
     "loose-envify/js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
+
+    "medusa-payment-deropay/dero-pay": ["dero-pay@0.3.0", "", { "peerDependencies": { "better-sqlite3": ">=9.0.0", "next": ">=14.0.0", "react": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["better-sqlite3", "next", "react"] }, "sha512-0QFyK3hAi3NIJwg4hXlwEYplG3CECcjUXXY7VOoZm39CMAzEe7c0uLTphGPzNltnMev+IvWi1q2Amj6IcdRVpQ=="],
 
     "micromatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
 

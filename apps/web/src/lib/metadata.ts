@@ -7,7 +7,7 @@ export const siteConfig = {
   url: "https://deropay.com",
   ogImage: "https://deropay.com/og-image.png",
   links: {
-    github: "https://github.com/DHEBP",
+    github: "https://github.com/DHEBP/DeroPay",
     docs: "https://deropay.derod.org",
   },
 };

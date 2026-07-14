@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { REPO_URL, DOCS_URL } from "@/lib/site";
+import { AUTH_REPO_URL, DOCS_URL } from "@/lib/site";
 
 const features = [
   {
@@ -114,7 +114,7 @@ export const AuthPageClient = () => (
                 Get started
                 <ArrowIcon />
               </Link>
-              <a className="btn btn-ghost" href={REPO_URL} target="_blank" rel="noopener noreferrer">
+              <a className="btn btn-ghost" href={AUTH_REPO_URL} target="_blank" rel="noopener noreferrer">
                 View source
               </a>
             </div>

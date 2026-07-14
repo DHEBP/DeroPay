@@ -56,8 +56,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/DHEBP/dero-pay"
+    "url": "git+https://github.com/DHEBP/DeroPay.git",
+    "directory": "packages/dero-pay"
   },
+  "homepage": "https://github.com/DHEBP/DeroPay/tree/main/packages/dero-pay#readme",
   "files": [
     "dist",
     "README.md",

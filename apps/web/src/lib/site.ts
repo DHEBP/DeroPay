@@ -6,11 +6,17 @@
  * here, not a codebase-wide find-and-replace.
  */
 
-/** GitHub repo — every View Source / Clone / View Contracts link. */
-export const REPO_URL = "https://github.com/DHEBP/dero-pay";
+/** GitHub monorepo — View Source / Clone / View Contracts for DeroPay. */
+export const REPO_URL = "https://github.com/DHEBP/DeroPay";
+
+/** GitHub repo for DeroAuth (separate package). */
+export const AUTH_REPO_URL = "https://github.com/DHEBP/DeroAuth";
 
 /** npm package page. */
 export const NPM_URL = "https://www.npmjs.com/package/dero-pay";
+
+/** npm page for dero-auth. */
+export const AUTH_NPM_URL = "https://www.npmjs.com/package/dero-auth";
 
 /** Hosted documentation. */
 export const DOCS_URL = "https://deropay.derod.org";

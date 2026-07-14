@@ -12,54 +12,48 @@ type Product = {
   description: string;
   href: string;
   image: string;
-  purpleGlow?: string;
 };
 
 const products: Product[] = [
   {
     title: "DeroAuth",
-    tagline: "WALLET-BASED AUTHENTICATION",
+    tagline: "Wallet-Based Authentication",
     description:
       "Sign in with your DERO wallet. Schnorr signature verification, JWT sessions, React components, and Next.js middleware.",
     href: "/auth",
     image: "/images/auth.png",
-    purpleGlow: "bottom left",
   },
   {
     title: "DeroPay",
-    tagline: "PAYMENT PROCESSING SDK",
+    tagline: "Payment Processing SDK",
     description:
       "Create invoices, generate integrated addresses, monitor payments in real time. Webhooks, pluggable storage, and a merchant dashboard.",
     href: "/pay",
     image: "/images/invoice.png",
-    purpleGlow: "bottom right",
   },
   {
     title: "x402",
-    tagline: "AGENTIC COMMERCE RAIL",
+    tagline: "Agentic Commerce Rail",
     description:
-      "Internet-native payment negotiation for APIs and agents. Request -> 402 challenge -> pay -> retry with proof -> response.",
+      "Internet-native payment negotiation for APIs and agents. Request → 402 challenge → pay → retry with proof → response.",
     href: "/x402",
     image: "/images/402.png",
-    purpleGlow: "top right",
   },
   {
     title: "Payment Router",
-    tagline: "INSTANT ON-CHAIN SETTLEMENT",
+    tagline: "Instant On-Chain Settlement",
     description:
       "Deploy once, accept unlimited payments. A single smart contract splits funds instantly between merchant and fee recipient in one transaction.",
     href: "https://deropay.derod.org/payment-router/overview",
     image: "/images/router.png",
-    purpleGlow: "top right",
   },
   {
     title: "Escrow",
-    tagline: "SMART CONTRACT PROTECTION",
+    tagline: "Smart Contract Protection",
     description:
       "One contract per transaction with arbitration, platform fees, and dispute resolution. Buyer protection backed by DERO\u2019s blockchain.",
     href: "/escrow",
     image: "/images/escrow.png",
-    purpleGlow: "top left",
   },
 ];
 
@@ -70,7 +64,7 @@ const container = {
 
 const item = {
   hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
 };
 
 export const ProductsGrid = () => (
@@ -86,59 +80,42 @@ export const ProductsGrid = () => (
       initial="hidden"
       whileInView="show"
       viewport={{ once: true, margin: "-100px" }}
-      style={{ display: "grid", gap: "24px", gridTemplateColumns: "repeat(2, 1fr)" }}
-      className="products-outer-grid"
+      className="grid grid-cols-1 gap-6 md:grid-cols-2"
     >
       {products.map((product) => (
         <motion.div key={product.title} variants={item}>
           <Link
             href={product.href}
-            className="group flex flex-col h-full overflow-hidden rounded-2xl border border-[#1e2a24] bg-black transition-all hover:border-[#4a6356]"
+            className="glass-panel soft-outline group flex h-full flex-col overflow-hidden rounded-[1.7rem] transition-colors hover:border-[var(--color-border-strong)]"
           >
-            <div className="relative overflow-hidden bg-[#0a0f0d] aspect-[16/10]">
+            <div className="relative aspect-[16/10] overflow-hidden bg-[var(--color-background)]">
               <Image
                 src={product.image}
                 alt={product.title}
                 fill
-                className="object-cover"
+                className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
               />
-              {product.purpleGlow && (
-                <div
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    background: `radial-gradient(circle at ${product.purpleGlow}, rgba(147,51,234,0.07) 0%, transparent 60%)`,
-                  }}
-                />
-              )}
             </div>
 
-            {/* Content */}
             <div className="flex flex-1 flex-col p-6">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#10b981]">
-                {product.tagline}
-              </p>
-              <h3 className="mt-2 text-xl font-bold text-[#f0fdf4]">
+              <p className="section-kicker">{product.tagline}</p>
+              <h3 className="mt-2 font-display text-2xl font-semibold tracking-[-0.03em] text-[var(--color-text-primary)]">
                 {product.title}
               </h3>
-              <p className="mt-3 flex-1 text-sm font-medium leading-relaxed text-[#6b7f75]">
+              <p className="mt-3 flex-1 text-pretty text-sm leading-6 text-[var(--color-text-secondary)]">
                 {product.description}
               </p>
-              <div className="mt-4 flex items-center gap-2 text-sm font-bold text-[#f0fdf4] group-hover:underline">
+              <div className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text-primary)] transition-colors group-hover:text-[var(--color-accent-strong)]">
                 Learn more
-                <ArrowRight size={14} />
+                <ArrowRight
+                  size={14}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
               </div>
             </div>
           </Link>
         </motion.div>
       ))}
     </motion.div>
-
-    <style>{`
-      @media (max-width: 767px) {
-        .products-outer-grid {
-          grid-template-columns: 1fr !important;
-        }
-      }
-    `}</style>
   </Section>
 );

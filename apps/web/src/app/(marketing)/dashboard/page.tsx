@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { DashboardPageClient } from "./client";
 
 export const metadata: Metadata = {
-  title: "Dashboard — Self-Hosted Merchant Admin",
+  title: "Merchant Dashboard — Self-Hosted Admin UI",
   description:
-    "Self-hosted admin dashboard for managing invoices, payments, escrow, and wallet status.",
+    "A self-hosted admin UI for managing invoices, payments, escrow operations, and wallet status. Runs on your own infrastructure and ships in the dero-pay package.",
 };
 
 export default function DashboardPage() {

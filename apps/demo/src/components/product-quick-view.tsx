@@ -60,7 +60,7 @@ export function ProductQuickView({
     <AnimatePresence>
       {product ? (
         <motion.div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-8 backdrop-blur-md md:px-6"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-black/70 px-4 py-8 backdrop-blur-md md:px-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -77,7 +77,8 @@ export function ProductQuickView({
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-5 top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-black/[0.28] text-[var(--text-secondary)] hover:text-white"
+              aria-label="Close quick view"
+              className="absolute right-5 top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-black/[0.28] text-[var(--text-secondary)] transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             >
               <X className="h-5 w-5" />
             </button>

@@ -33,7 +33,7 @@ export const AuthFlowDemo = () => {
     <div style={{ position: "relative", maxWidth: "420px", margin: "0 auto", overflow: "hidden", borderRadius: "16px", border: "1px solid #1e2a24", background: "#0a0f0d" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: "1px solid #1e2a24", padding: "14px 20px" }}>
-        <ShieldCheck size={16} color="#10b981" />
+        <ShieldCheck size={16} color="#31df90" />
         <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7f75" }}>
           DeroAuth — Wallet Authentication
         </span>
@@ -50,7 +50,7 @@ export const AuthFlowDemo = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}
             >
-              <button style={{ display: "flex", alignItems: "center", gap: "10px", borderRadius: "12px", background: "#10b981", padding: "14px 24px", fontSize: "15px", fontWeight: 700, color: "#000", border: "none", cursor: "pointer" }}>
+              <button style={{ display: "flex", alignItems: "center", gap: "10px", borderRadius: "12px", background: "#31df90", padding: "14px 24px", fontSize: "15px", fontWeight: 700, color: "#000", border: "none", cursor: "pointer" }}>
                 <DeroIcon size={20} className="text-black" />
                 Sign in with DERO
               </button>
@@ -68,8 +68,8 @@ export const AuthFlowDemo = () => {
               exit={{ opacity: 0, y: -12 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}
             >
-              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Loader2 size={24} color="#10b981" className="animate-spin" />
+              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(49,223,144,0.25)", background: "rgba(49,223,144,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Loader2 size={24} color="#31df90" className="animate-spin" />
               </div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>
@@ -95,18 +95,18 @@ export const AuthFlowDemo = () => {
                   Sign this message in your wallet:
                 </p>
                 <pre style={{ overflow: "hidden", fontFamily: "monospace", fontSize: "12px", lineHeight: 1.7, color: "#6b7f75" }}>
-                  <span style={{ color: "#10b981" }}>deropay.com</span>
+                  <span style={{ color: "#31df90" }}>deropay.com</span>
                   {" wants you to sign in\nwith your DERO wallet:\n"}
                   <span style={{ color: "#f0fdf4", fontWeight: 600 }}>
                     dero1qy...k8f3x9
                   </span>
                   {"\n\nURI: https://deropay.com\nNonce: "}
-                  <span style={{ color: "#10b981" }}>a7k2m4n6</span>
+                  <span style={{ color: "#31df90" }}>a7k2m4n6</span>
                   {"\nIssued At: 2026-02-14T12:00:00Z"}
                 </pre>
               </div>
               <div style={{ marginTop: "12px", display: "flex", justifyContent: "flex-end" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "#10b981" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "#31df90" }}>
                   <Fingerprint size={14} />
                   Awaiting signature...
                 </div>
@@ -122,8 +122,8 @@ export const AuthFlowDemo = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}
             >
-              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Loader2 size={24} color="#10b981" className="animate-spin" />
+              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(49,223,144,0.25)", background: "rgba(49,223,144,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Loader2 size={24} color="#31df90" className="animate-spin" />
               </div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>
@@ -148,9 +148,9 @@ export const AuthFlowDemo = () => {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", bounce: 0.5 }}
-                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(16,185,129,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(49,223,144,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                <CheckCircle2 size={28} color="#10b981" />
+                <CheckCircle2 size={28} color="#31df90" />
               </motion.div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4" }}>
@@ -180,7 +180,7 @@ export const AuthFlowDemo = () => {
               flex: 1,
               borderRadius: "2px",
               transition: "background-color 0.3s",
-              background: i <= stepIndex ? "#10b981" : "#1e2a24",
+              background: i <= stepIndex ? "#31df90" : "#1e2a24",
             }}
           />
         ))}

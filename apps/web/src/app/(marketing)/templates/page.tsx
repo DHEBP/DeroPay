@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { TemplatesPageClient } from "./client";
 
 export const metadata: Metadata = {
-  title: "Templates — DeroPay",
+  title: "Starter Templates — DeroPay",
   description:
-    "Production-ready starter templates for building DERO commerce applications. Clone a template, configure your gateway, and start accepting payments.",
+    "Clone a production-ready DeroPay starter template — a Medusa v2 storefront or a Next.js multi-vendor marketplace — configure your gateway, and start accepting DERO in minutes.",
 };
 
 export default function TemplatesPage() {

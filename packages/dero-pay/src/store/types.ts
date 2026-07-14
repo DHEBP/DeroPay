@@ -6,6 +6,11 @@
  */
 
 import type { Invoice, InvoiceStatus, Payment } from "../core/types.js";
+import type {
+  OutboxEvent,
+  OutboxRecord,
+  OutboxStatus,
+} from "../webhook/outbox-types.js";
 
 /** Filter options for querying invoices */
 export type InvoiceFilter = {
@@ -210,6 +215,28 @@ export type InvoiceStore = {
   incrementPaymentLinkUses?(id: string): PaymentLink;
   recordPaymentLinkView?(idOrSlug: string): PaymentLinkStats | null;
   getPaymentLinkStats?(id: string): PaymentLinkStats;
+
+  // --- Webhook outbox (durable at-least-once delivery; optional capability) ---
+  // A store that implements these supports the DeroPay Bridge. The combined
+  // apply*WithOutbox methods are the SOLE writer of amount_received on the
+  // bridge path and commit the invoice mutation + outbox row in one tx.
+  applyPaymentWithOutbox?(
+    invoiceId: string,
+    payment: Payment,
+    buildEvent: (committedTotal: bigint, invoice: Invoice) => OutboxEvent | null
+  ): { invoice: Invoice; total: bigint };
+  applyInvoiceUpdateWithOutbox?(
+    invoiceId: string,
+    updates: Partial<Pick<Invoice, "status" | "amountReceived" | "completedAt">>,
+    buildEvent: (invoice: Invoice) => OutboxEvent | null
+  ): { invoice: Invoice };
+  claimDueOutbox?(now: number, leaseMs: number, limit: number): Promise<OutboxRecord[]>;
+  markOutboxDelivered?(id: string, deliveredAt: number): Promise<void>;
+  rescheduleOutbox?(id: string, nextAttemptAt: number, lastError: string): Promise<void>;
+  markOutboxDead?(id: string, lastError: string): Promise<void>;
+  pruneDeliveredOutbox?(olderThan: number): Promise<number>;
+  countOutboxByStatus?(): Promise<Record<OutboxStatus, number>>;
+  getOutboxRecord?(id: string): Promise<OutboxRecord | null>;
 
   /**
    * Close the store and release any resources.

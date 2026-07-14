@@ -13,7 +13,7 @@
   "author": "DHEBP",
   "license": "MIT",
   "dependencies": {
-    "dero-pay": "^0.3.0"
+    "dero-pay": "workspace:*"
   },
   "peerDependencies": {
     "@medusajs/framework": "^2.0.0"

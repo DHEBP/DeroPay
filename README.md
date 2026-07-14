@@ -1,6 +1,6 @@
 # DeroPay
 
-Private cryptocurrency payment infrastructure built on DERO.
+Open-source, self-hosted payment infrastructure for DERO — invoices, escrow, x402-style gates, and a merchant stack. MIT licensed.
 
 ## Structure
 
@@ -8,8 +8,13 @@ Private cryptocurrency payment infrastructure built on DERO.
 apps/
   web/          — deropay.com marketing site (Next.js 15)
   dashboard/    — merchant dashboard (Next.js 15)
+  checkout/     — hosted checkout
+  demo/         — live demo storefront
+  gateway/      — self-hosted payment gateway
 packages/
-  dero-pay/     — payment SDK (TypeScript)
+  dero-pay/     — payment SDK (TypeScript, published as dero-pay on npm)
+templates/      — starter storefronts (hologram-store, marketplace)
+plugins/        — Medusa + WooCommerce integrations
 ```
 
 ## Quick Start

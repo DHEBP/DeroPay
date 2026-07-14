@@ -56,9 +56,67 @@ export default function CheckoutPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [useEscrow, setUseEscrow] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const router = useRouter();
-  const { currentInvoice } = useDeroPayContext();
+  const {
+    currentInvoice,
+    walletConnectorType,
+    walletCapabilities,
+    walletStatus,
+    error: walletError,
+  } = useDeroPayContext();
   const { success, error, info } = useToast();
+  const experimentalWasmEnabled =
+    process.env.NEXT_PUBLIC_DEROPAY_EXPERIMENTAL_WASM === "true";
+  const requestedWasm =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("wallet") === "wasm";
+  const usingExperimentalWasm = walletConnectorType === "wasm-webwallet";
+  const canWalletTransfer = walletCapabilities.includes("transfer");
+  const wasmDiagnostics = useMemo(() => {
+    if (!experimentalWasmEnabled) {
+      return {
+        mode: "disabled" as const,
+        message: "WASM connector is disabled by environment policy.",
+      };
+    }
+
+    if (!requestedWasm) {
+      return {
+        mode: "idle" as const,
+        message: "WASM mode is available. Add ?wallet=wasm to test it.",
+      };
+    }
+
+    try {
+      const probe = probeDemoWasmBridge();
+      if (!probe) {
+        return {
+          mode: "missing" as const,
+          message: "No WASM bridge symbols were found in this browser context.",
+        };
+      }
+      return {
+        mode: "ok" as const,
+        source: probe.source,
+        methods: probe.availableMethods,
+        message: "WASM bridge detected and ABI probe passed.",
+      };
+    } catch (probeError) {
+      const walletConnectorError = probeError as { code?: string; message?: string };
+      return {
+        mode: "error" as const,
+        code: walletConnectorError.code ?? "TRANSPORT_FAILURE",
+        message: walletConnectorError.message ?? "WASM probe failed.",
+      };
+    }
+  }, [experimentalWasmEnabled, requestedWasm]);
+
+  useEffect(() => {
+    if (requestedWasm || wasmDiagnostics.mode === "error") {
+      setShowDiagnostics(true);
+    }
+  }, [requestedWasm, wasmDiagnostics.mode]);
 
   const cartDraft = useMemo(
     () => (items.length > 0 ? createCartCheckoutDraft(items) : null),
@@ -133,7 +191,7 @@ export default function CheckoutPage() {
             </p>
             <button
               onClick={() => router.push("/")}
-              className="mt-8 inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)]"
+              className="mt-8 inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] transition-colors hover:bg-[var(--accent-strong)]"
             >
               Go back to store
             </button>
@@ -239,11 +297,11 @@ export default function CheckoutPage() {
 
   return (
     <StoreShell>
-      <section className="px-6 pb-18 pt-10 md:px-10 md:pb-24 md:pt-14">
+      <section className="px-6 pb-20 pt-12 md:px-10 md:pb-28 md:pt-16">
         <div className="mx-auto w-full max-w-7xl">
           <div className="mb-8 max-w-3xl space-y-3">
             <p className="section-kicker">Checkout</p>
-            <h1 className="font-display text-4xl font-semibold tracking-[-0.05em] text-white md:text-6xl">
+            <h1 className="font-display text-4xl font-semibold tracking-[-0.05em] text-white md:text-6xl text-balance">
               Generate the invoice and close the loop.
             </h1>
             <p className="text-sm leading-7 text-[var(--text-secondary)] md:text-base">
@@ -324,7 +382,7 @@ export default function CheckoutPage() {
                     <span className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">
                       Total due
                     </span>
-                    <span className="font-display text-3xl font-semibold text-white">
+                    <span className="font-display text-3xl font-semibold tabular-nums text-white">
                       {formatDero(stagedTotal)}
                     </span>
                   </div>
@@ -354,6 +412,18 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
+                  {experimentalWasmEnabled ? (
+                    <div className="mt-5 rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
+                      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                        Advanced connector mode
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                        Add <code className="font-mono">?wallet=wasm</code> to this URL to
+                        force the experimental WASM connector path. XSWD remains the default.
+                      </p>
+                    </div>
+                  ) : null}
+
                   <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-[1.3rem] border border-white/[0.08] bg-white/[0.04] p-4">
                     <input
                       type="checkbox"
@@ -374,12 +444,12 @@ export default function CheckoutPage() {
                   <button
                     onClick={handleCreateInvoice}
                     disabled={isCreating}
-                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#071008] transition-colors hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isCreating ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Generating invoice...
+                        Generating invoice…
                       </>
                     ) : (
                       "Generate invoice"
@@ -415,7 +485,10 @@ export default function CheckoutPage() {
                     </h2>
                   </div>
                   {activeInvoice ? (
-                    <span className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    <span
+                      aria-live="polite"
+                      className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]"
+                    >
                       {activeInvoice.status}
                     </span>
                   ) : null}
@@ -441,7 +514,7 @@ export default function CheckoutPage() {
                       {isSimulating ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Sending...
+                          Sending…
                         </>
                       ) : (
                         "Simulate payment"
@@ -469,6 +542,93 @@ export default function CheckoutPage() {
                     <p className="mt-2 text-white">
                       {useEscrow ? "Escrow demo" : "Standard invoice"}
                     </p>
+                  </div>
+                  <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      Wallet connector
+                    </p>
+                    <p className="mt-2 text-white">
+                      {walletConnectorType ?? "Not connected"}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {walletStatus === "connected"
+                        ? canWalletTransfer
+                          ? "Connector can submit invoice transfers."
+                          : "Read/sign connector only. Invoice transfer is disabled."
+                        : "Connect wallet to inspect runtime capabilities."}
+                    </p>
+                  </div>
+                  {usingExperimentalWasm ? (
+                    <div className="rounded-[1.3rem] border border-[var(--border-strong)] bg-[var(--accent-dim)] p-4">
+                      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                        Experimental warning
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                        WASM webwallet is an advanced connector path in DeroPay and not the
+                        default production recommendation.
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                        WASM diagnostics
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowDiagnostics((current) => !current)}
+                        className="rounded-full border border-white/[0.08] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white hover:border-[var(--border-strong)] hover:bg-[var(--accent-dim)]"
+                      >
+                        {showDiagnostics ? "Hide" : "Show"}
+                      </button>
+                    </div>
+                    {showDiagnostics ? (
+                      <div className="mt-2 space-y-2 text-xs text-[var(--text-secondary)]">
+                        <p>
+                          Env enabled:{" "}
+                          <span className="text-white">
+                            {experimentalWasmEnabled ? "yes" : "no"}
+                          </span>
+                        </p>
+                        <p>
+                          URL requests WASM:{" "}
+                          <span className="text-white">{requestedWasm ? "yes" : "no"}</span>
+                        </p>
+                        <p>
+                          Probe status:{" "}
+                          <span className="text-white">{wasmDiagnostics.mode}</span>
+                        </p>
+                        {"source" in wasmDiagnostics && wasmDiagnostics.source ? (
+                          <p>
+                            Bridge source:{" "}
+                            <span className="text-white">{wasmDiagnostics.source}</span>
+                          </p>
+                        ) : null}
+                        {"methods" in wasmDiagnostics && wasmDiagnostics.methods ? (
+                          <p>
+                            Methods:{" "}
+                            <span className="text-white">
+                              {wasmDiagnostics.methods.join(", ")}
+                            </span>
+                          </p>
+                        ) : null}
+                        {"code" in wasmDiagnostics && wasmDiagnostics.code ? (
+                          <p>
+                            Error code: <span className="text-white">{wasmDiagnostics.code}</span>
+                          </p>
+                        ) : null}
+                        <p>{wasmDiagnostics.message}</p>
+                        {walletError ? (
+                          <p>
+                            Last wallet error: <span className="text-white">{walletError}</span>
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                        Hidden by default. Expand when testing WASM connector wiring.
+                      </p>
+                    )}
                   </div>
                   <div className="rounded-[1.3rem] border border-white/[0.08] bg-black/[0.22] p-4">
                     <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
@@ -506,4 +666,87 @@ export default function CheckoutPage() {
       </section>
     </StoreShell>
   );
+}
+
+type DemoWasmProbe = {
+  source: "DERO_JS_WEBWALLET" | "DERO_JS_WALLET" | "DERO_JS" | "DERO_JS_GLOBALS";
+  availableMethods: string[];
+};
+
+function probeDemoWasmBridge(): DemoWasmProbe | null {
+  const maybeWindow = window as typeof window & Record<string, unknown>;
+
+  const objectCandidates: Array<{
+    source: DemoWasmProbe["source"];
+    value: unknown;
+  }> = [
+    { source: "DERO_JS_WEBWALLET", value: maybeWindow.DERO_JS_WEBWALLET },
+    { source: "DERO_JS_WALLET", value: maybeWindow.DERO_JS_WALLET },
+    { source: "DERO_JS", value: maybeWindow.DERO_JS },
+  ];
+
+  for (const candidate of objectCandidates) {
+    if (candidate.value === undefined) continue;
+    if (!candidate.value || typeof candidate.value !== "object") {
+      throw {
+        code: "TRANSPORT_FAILURE",
+        message: `${candidate.source} exists but is not an object bridge`,
+      };
+    }
+
+    const obj = candidate.value as Record<string, unknown>;
+    const getAddress = obj.getAddress ?? obj.GetAddress;
+    if (getAddress === undefined) {
+      throw {
+        code: "TRANSPORT_FAILURE",
+        message: `${candidate.source} is missing getAddress/GetAddress`,
+      };
+    }
+    if (typeof getAddress !== "function") {
+      throw {
+        code: "TRANSPORT_FAILURE",
+        message: `${candidate.source}.getAddress exists but is not callable`,
+      };
+    }
+
+    const methods = ["getAddress", "getBalance", "makeIntegratedAddress", "splitIntegratedAddress"]
+      .filter((method) => typeof obj[method] === "function" || typeof obj[toPascal(method)] === "function");
+
+    return {
+      source: candidate.source,
+      availableMethods: methods,
+    };
+  }
+
+  const globalAddress = maybeWindow.DERO_JS_GetAddress;
+  if (globalAddress !== undefined) {
+    if (typeof globalAddress !== "function") {
+      throw {
+        code: "TRANSPORT_FAILURE",
+        message: "DERO_JS_GetAddress exists but is not callable",
+      };
+    }
+
+    const methodSymbols = [
+      "DERO_JS_GetAddress",
+      "DERO_JS_GetBalance",
+      "DERO_JS_MakeIntegratedAddress",
+      "DERO_JS_SplitIntegratedAddress",
+      "DERO_JS_SignData",
+      "DERO_JS_CheckSignature",
+    ];
+
+    return {
+      source: "DERO_JS_GLOBALS",
+      availableMethods: methodSymbols.filter(
+        (symbol) => typeof maybeWindow[symbol] === "function"
+      ),
+    };
+  }
+
+  return null;
+}
+
+function toPascal(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

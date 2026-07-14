@@ -32,7 +32,7 @@ export const X402FlowDemo = () => {
     <div style={{ position: "relative", maxWidth: "420px", margin: "0 auto", overflow: "hidden", borderRadius: "16px", border: "1px solid #1e2a24", background: "#0a0f0d" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: "1px solid #1e2a24", padding: "14px 20px" }}>
-        <Bot size={16} color="#10b981" />
+        <Bot size={16} color="#31df90" />
         <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7f75" }}>
           DeroPay — x402 Request Loop
         </span>
@@ -54,7 +54,7 @@ export const X402FlowDemo = () => {
                   Agent request
                 </p>
                 <pre style={{ margin: 0, overflow: "hidden", fontFamily: "monospace", fontSize: "12px", lineHeight: 1.7, color: "#6b7f75" }}>
-                  <span style={{ color: "#10b981", fontWeight: 700 }}>GET</span>
+                  <span style={{ color: "#31df90", fontWeight: 700 }}>GET</span>
                   {" /api/protected/inference\n"}
                   {"Host: "}
                   <span style={{ color: "#f0fdf4" }}>api.example.com</span>
@@ -86,7 +86,7 @@ export const X402FlowDemo = () => {
                 <pre style={{ margin: 0, overflow: "hidden", fontFamily: "monospace", fontSize: "11px", lineHeight: 1.7, color: "#6b7f75" }}>
                   {"WWW-Authenticate: X402\n"}
                   {"{\n  \"asset\": "}
-                  <span style={{ color: "#10b981" }}>&quot;DERO&quot;</span>
+                  <span style={{ color: "#31df90" }}>&quot;DERO&quot;</span>
                   {",\n  \"amountAtomic\": "}
                   <span style={{ color: "#f0fdf4" }}>&quot;10000&quot;</span>
                   {",\n  \"invoiceId\": "}
@@ -110,8 +110,8 @@ export const X402FlowDemo = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}
             >
-              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Loader2 size={24} color="#10b981" className="animate-spin" />
+              <div style={{ width: "56px", height: "56px", borderRadius: "50%", border: "1px solid rgba(49,223,144,0.25)", background: "rgba(49,223,144,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Loader2 size={24} color="#31df90" className="animate-spin" />
               </div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "15px", fontWeight: 600, color: "#f0fdf4" }}>Paying invoice on DERO</p>
@@ -132,13 +132,13 @@ export const X402FlowDemo = () => {
             >
               <div style={{ borderRadius: "10px", border: "1px solid #1e2a24", background: "#000", padding: "16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
-                  <FileCheck2 size={14} color="#10b981" />
-                  <p style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "#10b981" }}>
+                  <FileCheck2 size={14} color="#31df90" />
+                  <p style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "#31df90" }}>
                     Retry with signed receipt
                   </p>
                 </div>
                 <pre style={{ margin: 0, overflow: "hidden", fontFamily: "monospace", fontSize: "11px", lineHeight: 1.7, color: "#6b7f75" }}>
-                  <span style={{ color: "#10b981", fontWeight: 700 }}>GET</span>
+                  <span style={{ color: "#31df90", fontWeight: 700 }}>GET</span>
                   {" /api/protected/inference\n"}
                   <span style={{ color: "#a855f7" }}>Authorization:</span>
                   {" X402 proof=\n  "}
@@ -163,9 +163,9 @@ export const X402FlowDemo = () => {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", bounce: 0.5 }}
-                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(16,185,129,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(49,223,144,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                <CheckCircle2 size={28} color="#10b981" />
+                <CheckCircle2 size={28} color="#31df90" />
               </motion.div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: "16px", fontWeight: 700, color: "#f0fdf4" }}>200 OK &middot; resource served</p>
@@ -193,7 +193,7 @@ export const X402FlowDemo = () => {
               flex: 1,
               borderRadius: "2px",
               transition: "background-color 0.3s",
-              background: i <= stepIndex ? "#10b981" : "#1e2a24",
+              background: i <= stepIndex ? "#31df90" : "#1e2a24",
             }}
           />
         ))}

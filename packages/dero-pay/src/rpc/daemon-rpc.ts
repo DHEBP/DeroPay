@@ -107,10 +107,24 @@ export class DaemonRpcClient {
 
   /**
    * Get the current blockchain height.
+   *
+   * NOTE: this returns TOPOHEIGHT (the topological order index), which runs
+   * ahead of block height across side-blocks. For anything compared against
+   * GetTransfers.min_height or TransferEntry.height (BLOCK height), use
+   * {@link getBlockHeight} instead.
    */
   async getHeight(): Promise<number> {
     const info = await this.getInfo();
     return info.topoheight;
+  }
+
+  /**
+   * Get the current BLOCK height (info.height), the unit GetTransfers.min_height
+   * filters on. Used to anchor an invoice's wallet-scan floor at creation time.
+   */
+  async getBlockHeight(): Promise<number> {
+    const info = await this.getInfo();
+    return info.height;
   }
 
   /**

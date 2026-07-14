@@ -29,6 +29,8 @@ export type PayWithDeroProps = {
     isLoading: boolean;
     isPaid: boolean;
     walletConnected: boolean;
+    walletConnectorType: string | null;
+    canTransfer: boolean;
     error: string | null;
   }) => React.ReactNode;
 };
@@ -63,6 +65,8 @@ export function PayWithDero({
 }: PayWithDeroProps) {
   const {
     walletStatus,
+    walletConnectorType,
+    walletCapabilities,
     invoiceStatus,
     isLoading: ctxLoading,
     error,
@@ -75,6 +79,7 @@ export function PayWithDero({
   const isLoading = ctxLoading || isProcessing;
   const isPaid = invoiceStatus === "completed";
   const walletConnected = walletStatus === "connected";
+  const canTransfer = !walletConnected || walletCapabilities.includes("transfer");
 
   const handlePay = async () => {
     setIsProcessing(true);
@@ -87,7 +92,7 @@ export function PayWithDero({
       // Step 2: Start payment session (fetches invoice, starts polling)
       await startPayment(invoiceId);
 
-      // Step 3: Send the payment via XSWD
+      // Step 3: Send the payment via the selected wallet connector
       const txid = await payWithWallet();
       onPaymentSubmitted?.(txid);
     } catch {
@@ -106,6 +111,8 @@ export function PayWithDero({
           isLoading,
           isPaid,
           walletConnected,
+          walletConnectorType,
+          canTransfer,
           error,
         })}
       </>
@@ -116,6 +123,7 @@ export function PayWithDero({
   const getButtonText = () => {
     if (isPaid) return "Paid";
     if (isLoading) return loadingLabel;
+    if (!canTransfer) return "Wallet Cannot Pay";
     if (invoiceStatus === "confirming") return "Confirming...";
     if (invoiceStatus === "partial") return "Partial — Pay Remaining";
     return label;
@@ -124,7 +132,7 @@ export function PayWithDero({
   return (
     <button
       onClick={handlePay}
-      disabled={isLoading || isPaid}
+      disabled={isLoading || isPaid || !canTransfer}
       className={className}
       style={{
         padding: "12px 24px",
@@ -132,7 +140,7 @@ export function PayWithDero({
         fontWeight: 600,
         border: "none",
         borderRadius: "8px",
-        cursor: isLoading || isPaid ? "default" : "pointer",
+        cursor: isLoading || isPaid || !canTransfer ? "default" : "pointer",
         backgroundColor: isPaid
           ? "#10b981"
           : invoiceStatus === "confirming"

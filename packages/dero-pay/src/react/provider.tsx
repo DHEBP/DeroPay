@@ -10,12 +10,22 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type ReactNode,
 } from "react";
 import type { Invoice, InvoiceStatus, WalletStatus } from "../core/types.js";
-import { XSWDPayClient } from "../client/xswd-pay.js";
 import { PaymentSession } from "../client/payment-session.js";
+import {
+  createWalletConnector,
+  defaultWalletConnectorPolicy,
+  WalletConnectorError,
+  type WalletCapability,
+  type WalletConnector,
+  type WalletConnectorPolicy,
+  type WalletConnectorType,
+  type SpendConfirmationRequest,
+} from "../client/connectors/index.js";
 
 /** Context value for DeroPay */
 export type DeroPayContextValue = {
@@ -23,6 +33,10 @@ export type DeroPayContextValue = {
   walletStatus: WalletStatus;
   /** Connected wallet address */
   walletAddress: string | null;
+  /** Active wallet connector type */
+  walletConnectorType: WalletConnectorType | null;
+  /** Capabilities advertised by the active connector */
+  walletCapabilities: WalletCapability[];
   /** Current invoice being paid */
   currentInvoice: Invoice | null;
   /** Current invoice status */
@@ -37,7 +51,7 @@ export type DeroPayContextValue = {
   disconnectWallet: () => void;
   /** Start paying an invoice (fetches invoice and begins monitoring) */
   startPayment: (invoiceId: string) => Promise<void>;
-  /** Pay an invoice directly from the connected wallet via XSWD */
+  /** Pay an invoice directly from the connected wallet connector */
   payWithWallet: () => Promise<string>;
   /** Stop the current payment session */
   stopPayment: () => void;
@@ -50,6 +64,16 @@ export type DeroPayProviderProps = {
   children: ReactNode;
   /** XSWD WebSocket URL (default: ws://localhost:44326/xswd) */
   xswdUrl?: string;
+  /** Override connector selection. Defaults to XSWD only. */
+  preferredWalletConnectors?: WalletConnectorType[];
+  /** Supply a fully custom connector implementation. */
+  walletConnector?: WalletConnector;
+  /** Wallet connector policy gates. WASM remains disabled unless explicitly allowed. */
+  walletPolicy?: Partial<WalletConnectorPolicy>;
+  /** Optional confirmation hook for non-native wallet spend confirmations. */
+  confirmSpendOperation?: (
+    request: SpendConfirmationRequest
+  ) => boolean | Promise<boolean>;
   /** Application name shown in wallet connection dialog */
   appName?: string;
   /** Application description */
@@ -78,6 +102,10 @@ export type DeroPayProviderProps = {
 export function DeroPayProvider({
   children,
   xswdUrl,
+  preferredWalletConnectors,
+  walletConnector,
+  walletPolicy,
+  confirmSpendOperation,
   appName,
   appDescription,
   statusEndpoint,
@@ -88,31 +116,54 @@ export function DeroPayProvider({
 }: DeroPayProviderProps) {
   const [walletStatus, setWalletStatus] = useState<WalletStatus>("disconnected");
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletConnectorType, setWalletConnectorType] =
+    useState<WalletConnectorType | null>(null);
+  const [walletCapabilities, setWalletCapabilities] = useState<WalletCapability[]>([]);
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null);
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const clientRef = useRef<XSWDPayClient | null>(null);
+  const connectorRef = useRef<WalletConnector | null>(null);
   const sessionRef = useRef<PaymentSession | null>(null);
 
-  // Lazily create the XSWD client
-  const getClient = useCallback(() => {
-    if (!clientRef.current) {
-      clientRef.current = new XSWDPayClient({
-        url: xswdUrl,
-        appName,
-        appDescription,
+  const policy = useMemo(() => ({
+    ...defaultWalletConnectorPolicy,
+    ...walletPolicy,
+  }), [walletPolicy]);
+
+  // Lazily create the selected wallet connector. XSWD is the default path.
+  const getConnector = useCallback(async () => {
+    if (!connectorRef.current) {
+      connectorRef.current = await createWalletConnector({
+        preferred: preferredWalletConnectors ?? (walletConnector ? ["custom"] : undefined),
+        policy,
+        custom: walletConnector,
+        xswd: {
+          url: xswdUrl,
+          appName,
+          appDescription,
+        },
       });
-      clientRef.current.on("statusChange", setWalletStatus);
+      attachStatusListener(connectorRef.current, setWalletStatus);
+      const state = connectorRef.current.getState();
+      setWalletConnectorType(state.connectorType);
+      setWalletCapabilities(state.capabilities);
     }
-    return clientRef.current;
-  }, [xswdUrl, appName, appDescription]);
+    return connectorRef.current;
+  }, [
+    preferredWalletConnectors,
+    policy,
+    walletConnector,
+    xswdUrl,
+    appName,
+    appDescription,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clientRef.current?.disconnect();
+      void connectorRef.current?.disconnect();
       sessionRef.current?.stop();
     };
   }, []);
@@ -121,9 +172,18 @@ export function DeroPayProvider({
     setError(null);
     setIsLoading(true);
     try {
-      const client = getClient();
-      const address = await client.connect();
+      const connector = await getConnector();
+      const state = await connector.connect({
+        appName: appName ?? "DeroPay",
+        policy,
+        nativeWalletConfirmation: connector.type === "xswd",
+        confirmSpendOperation,
+      });
+      const address = state.address ?? (await connector.getAddress());
       setWalletAddress(address);
+      setWalletStatus(state.connected ? "connected" : "disconnected");
+      setWalletConnectorType(state.connectorType);
+      setWalletCapabilities(state.capabilities);
       return address;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to connect wallet";
@@ -133,11 +193,13 @@ export function DeroPayProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [getClient, onError]);
+  }, [appName, confirmSpendOperation, getConnector, onError, policy]);
 
   const disconnectWallet = useCallback(() => {
-    clientRef.current?.disconnect();
+    void connectorRef.current?.disconnect();
     setWalletAddress(null);
+    setWalletConnectorType(null);
+    setWalletCapabilities([]);
     setWalletStatus("disconnected");
   }, []);
 
@@ -213,20 +275,32 @@ export function DeroPayProvider({
       throw new Error("No active invoice. Call startPayment first.");
     }
 
-    const client = getClient();
-    if (client.getStatus() !== "connected") {
+    const connector = await getConnector();
+    const state = connector.getState();
+    if (!state.connected) {
       throw new Error("Wallet not connected. Call connectWallet first.");
+    }
+    if (!connector.supports("transfer") || !connector.transfer) {
+      throw new WalletConnectorError(
+        "METHOD_NOT_SUPPORTED",
+        "Connected wallet cannot submit invoice transfers",
+        { connectorType: connector.type }
+      );
     }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const txid = await client.transfer(
-        currentInvoice.integratedAddress,
-        currentInvoice.amount - currentInvoice.amountReceived
-      );
-      return txid;
+      const result = await connector.transfer({
+        transfers: [
+          {
+            destination: currentInvoice.integratedAddress,
+            amountAtomic: currentInvoice.amount - currentInvoice.amountReceived,
+          },
+        ],
+      });
+      return result.txid;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Transfer failed";
       setError(msg);
@@ -235,7 +309,7 @@ export function DeroPayProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [currentInvoice, getClient, onError]);
+  }, [currentInvoice, getConnector, onError]);
 
   const stopPayment = useCallback(() => {
     sessionRef.current?.stop();
@@ -247,6 +321,8 @@ export function DeroPayProvider({
   const value: DeroPayContextValue = {
     walletStatus,
     walletAddress,
+    walletConnectorType,
+    walletCapabilities,
     currentInvoice,
     invoiceStatus,
     isLoading,
@@ -275,4 +351,17 @@ export function useDeroPayContext(): DeroPayContextValue {
     );
   }
   return ctx;
+}
+
+function attachStatusListener(
+  connector: WalletConnector,
+  setWalletStatus: (status: WalletStatus) => void
+): void {
+  const maybeEmitter = connector as WalletConnector & {
+    on?: (
+      event: "statusChange",
+      callback: (status: WalletStatus) => void
+    ) => () => void;
+  };
+  maybeEmitter.on?.("statusChange", setWalletStatus);
 }

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { PayPageClient } from "./client";
 
 export const metadata: Metadata = {
-  title: "DeroPay — Payment Processing SDK",
+  title: "DeroPay — Accept DERO Payments in Minutes",
   description:
-    "Accept DERO payments with invoices, real-time monitoring, webhooks, and a self-hosted merchant dashboard.",
+    "Self-hosted DERO payment gateway: invoices with QR codes, real-time confirmation monitoring, HMAC-signed webhooks, and a merchant dashboard. Zero platform fees, MIT licensed.",
 };
 
 export default function PayPage() {

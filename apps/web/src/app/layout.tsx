@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { fontSans, fontMono } from "@/lib/fonts";
+import { fontSans, fontDisplay, fontMono } from "@/lib/fonts";
 import { sharedMetadata } from "@/lib/metadata";
 import "./globals.css";
 
@@ -13,7 +13,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${fontSans.variable} ${fontMono.variable} font-sans antialiased`}
+        className={`${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable} font-sans antialiased`}
       >
         {children}
       </body>

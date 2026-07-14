@@ -42,6 +42,7 @@ import type {
   InvoiceStatus,
 } from "../core/types.js";
 import type { InvoiceStore, InvoiceFilter, InvoiceStats } from "../store/types.js";
+import type { WebhookSink } from "../webhook/outbox-types.js";
 
 export type X402AuditEventType =
   | "x402.challenge_issued"
@@ -89,6 +90,7 @@ export class InvoiceEngine {
   private monitor: PaymentMonitor;
   private store: InvoiceStore;
   private webhook: WebhookDispatcher | null;
+  private webhookSink: WebhookSink | null = null;
   private escrowManager: EscrowManager | null = null;
   private config: Required<
     Pick<
@@ -119,6 +121,14 @@ export class InvoiceEngine {
       /** Inject RPC clients (for testing); when set, walletRpcUrl/daemonRpcUrl are ignored */
       walletRpc?: WalletRpcClient;
       daemonRpc?: DaemonRpcClient;
+      /**
+       * Opt-in durable webhook sink (the DeroPay Bridge). When provided, every
+       * state-changing payment/invoice transition is routed through the sink's
+       * transactional, deterministic-id, durable-outbox path instead of the
+       * in-memory WebhookDispatcher. When omitted, the engine behaves exactly as
+       * before (the default no-sink path is byte-identical — the regression gate).
+       */
+      webhookSink?: WebhookSink;
     }
   ) {
     this.walletRpc =
@@ -161,6 +171,8 @@ export class InvoiceEngine {
     } else {
       this.webhook = null;
     }
+
+    this.webhookSink = options.webhookSink ?? null;
 
     // Set up escrow manager (opt-in: must be explicitly enabled)
     if (options.enableEscrow === true) {
@@ -303,6 +315,19 @@ export class InvoiceEngine {
     const ttlSeconds = params.ttlSeconds ?? this.config.defaultTtlSeconds;
     const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
 
+    // Capture the daemon BLOCK height at creation so a restart can re-anchor
+    // the wallet-scan floor for a not-yet-paid invoice (the scan floor filters
+    // block height; no payment can predate creation). Best-effort: if the
+    // daemon is briefly unreachable we leave it undefined and fall back to the
+    // current-height anchor — the failure that only re-introduces the original
+    // window, never worse.
+    let createdBlockHeight: number | undefined;
+    try {
+      createdBlockHeight = await this.daemonRpc.getBlockHeight();
+    } catch {
+      createdBlockHeight = undefined;
+    }
+
     // Build escrow data if requested
     let escrowData: InvoiceEscrow | null = null;
 
@@ -356,6 +381,7 @@ export class InvoiceEngine {
       requiredConfirmations:
         params.requiredConfirmations ?? this.config.defaultRequiredConfirmations,
       createdAt: now.toISOString(),
+      createdBlockHeight,
       expiresAt: expiresAt.toISOString(),
       completedAt: null,
       amountReceived: 0n,
@@ -452,6 +478,20 @@ export class InvoiceEngine {
   private setupMonitorEvents(): void {
     this.monitor.on("paymentDetected", async (invoiceId, payment) => {
       try {
+        if (this.webhookSink) {
+          // Bridge path: the sink OWNS the write — single in-tx bigint re-sum
+          // (sole writer of amount_received), status decision on the committed
+          // total, and durable outbox enqueue, all atomic. No legacy
+          // store.addPayment / store.updateInvoice / webhook.send here.
+          await this.webhookSink.onPaymentDetected(invoiceId, payment);
+          const invoice = await this.store.getInvoice(invoiceId);
+          if (invoice) {
+            this.monitor.updateInvoice(invoice);
+            this.emit("paymentDetected", invoice, payment);
+          }
+          return;
+        }
+
         // Save payment to store
         await this.store.addPayment(invoiceId, payment);
 
@@ -482,7 +522,8 @@ export class InvoiceEngine {
 
     this.monitor.on("paymentConfirmed", async (invoiceId, payment) => {
       try {
-        // Update payment in store
+        // Update payment in store (both paths need the confirmed status so the
+        // completion decision can observe it).
         await this.store.updatePayment(invoiceId, payment.txid, {
           confirmations: payment.confirmations,
           status: "confirmed",
@@ -492,6 +533,15 @@ export class InvoiceEngine {
         if (!invoice) return;
 
         this.emit("paymentConfirmed", invoice, payment);
+
+        if (this.webhookSink) {
+          // Bridge path: decide completion on BOTH edges (invariant 3). The
+          // sink re-reads store-authoritative totals and enqueues the
+          // confirmation-edge status event durably.
+          await this.webhookSink.onPaymentConfirmed(invoiceId, payment.txid);
+          return;
+        }
+
         await this.webhook?.send("payment.confirmed", invoice, payment);
       } catch (err) {
         this.emit("error", new Error(`Error handling confirmation: ${err}`));
@@ -500,6 +550,18 @@ export class InvoiceEngine {
 
     this.monitor.on("invoiceCompleted", async (invoiceId) => {
       try {
+        // Bridge path: the monitor's completion signal is ADVISORY only. The
+        // store-authoritative completion was already decided + enqueued on the
+        // detection/confirmation edge by the sink (invariants 2/3). We only need
+        // to stop tracking; we must NOT write status from monitor memory.
+        if (this.webhookSink) {
+          const invoice = await this.store.getInvoice(invoiceId);
+          if (invoice && invoice.status === "completed") {
+            this.monitor.untrack(invoiceId);
+          }
+          return;
+        }
+
         const completedAt = new Date().toISOString();
         await this.store.updateInvoice(invoiceId, {
           status: "completed",
@@ -519,6 +581,29 @@ export class InvoiceEngine {
 
     this.monitor.on("invoiceExpired", async (invoiceId) => {
       try {
+        // Payment-aware expiry (invariant 6), enforced on STORE-authoritative
+        // state — the monitor's in-memory amount can be stale (the sink writes
+        // amount_received to the store, not to monitor memory). Never expire a
+        // funded invoice out from under an in-flight settlement; keep tracking
+        // it so confirmations keep accruing.
+        const current = await this.store.getInvoice(invoiceId);
+        if (!current) return;
+        if (current.amountReceived > 0n || current.payments.length > 0) {
+          this.monitor.updateInvoice(current); // refresh monitor's stale copy
+          return;
+        }
+
+        if (this.webhookSink) {
+          // Bridge path: enqueue a durable terminal invoice.expired whose frozen
+          // payload carries any partial amount.
+          const previousStatus = current.status;
+          await this.webhookSink.onInvoiceExpired(invoiceId);
+          this.monitor.untrack(invoiceId);
+          const invoice = await this.store.getInvoice(invoiceId);
+          if (invoice) this.emit("invoiceStatusChanged", invoice, previousStatus);
+          return;
+        }
+
         await this.store.updateInvoice(invoiceId, { status: "expired" });
 
         const invoice = await this.store.getInvoice(invoiceId);
@@ -536,6 +621,13 @@ export class InvoiceEngine {
 
     this.monitor.on("invoicePartial", async (invoiceId, amountReceived) => {
       try {
+        // Bridge path (O34): the monitor's in-memory `amountReceived` is a
+        // SECOND, stale, non-bigint writer of amount_received and must NEVER be
+        // written. In sink mode the partial status+amount were already decided
+        // and enqueued by the sink on the detection edge from the committed
+        // in-tx bigint total. This handler is advisory-only here.
+        if (this.webhookSink) return;
+
         await this.store.updateInvoice(invoiceId, {
           status: "partial",
           amountReceived,
@@ -698,17 +790,38 @@ export class InvoiceEngine {
 
       for (const invoice of activeInvoices) {
         if (
-          invoice.status !== "completed" &&
-          invoice.status !== "expired" &&
-          new Date(invoice.expiresAt) < now
+          invoice.status === "completed" ||
+          invoice.status === "expired" ||
+          new Date(invoice.expiresAt) >= now
         ) {
-          const previousStatus = invoice.status;
-          await this.store.updateInvoice(invoice.id, { status: "expired" });
-          this.monitor.untrack(invoice.id);
-          invoice.status = "expired";
-          this.emit("invoiceStatusChanged", invoice, previousStatus);
-          await this.webhook?.send("invoice.expired", invoice);
+          continue;
         }
+
+        // Payment-aware expiry (invariant 6): never expire a funded invoice out
+        // from under an in-flight settlement. A funded-but-unconfirmed invoice
+        // keeps being tracked; only a zero-payment invoice expires here.
+        if (invoice.amountReceived > 0n || invoice.payments.length > 0) {
+          continue;
+        }
+
+        const previousStatus = invoice.status;
+
+        if (this.webhookSink) {
+          // Bridge path: route the terminal expiry through the durable outbox
+          // (one tx: status + outbox row), exactly like the monitor's expiry
+          // handler — NOT the bare updateInvoice, which would drop the webhook.
+          await this.webhookSink.onInvoiceExpired(invoice.id);
+          this.monitor.untrack(invoice.id);
+          const updated = await this.store.getInvoice(invoice.id);
+          if (updated) this.emit("invoiceStatusChanged", updated, previousStatus);
+          continue;
+        }
+
+        await this.store.updateInvoice(invoice.id, { status: "expired" });
+        this.monitor.untrack(invoice.id);
+        invoice.status = "expired";
+        this.emit("invoiceStatusChanged", invoice, previousStatus);
+        await this.webhook?.send("invoice.expired", invoice);
       }
     } catch (err) {
       this.emit("error", new Error(`Error checking expired invoices: ${err}`));

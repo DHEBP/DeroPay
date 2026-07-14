@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDown,
@@ -15,6 +16,7 @@ import {
   Lock,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Users,
 } from "lucide-react";
 import { DeroIcon } from "@/components/dero-icon";
@@ -22,6 +24,16 @@ import type { DemoKey } from "@/lib/store-catalog";
 
 const MANUAL_RESUME_DELAY_MS = 7000;
 const CONFIRMATION_TARGET = 8;
+
+/**
+ * A real DERO integrated address (`deri…`) used as the value for the demo's
+ * payment-step QR. Real data here keeps the QR visually identical to the
+ * QRs the dashboard renders via `qrcode.react`, so the demo's payment
+ * theatre matches the production language. The address itself is mock —
+ * no wallet is observing it.
+ */
+const DEMO_QR_ADDRESS =
+  "deri1qy0ehnqcg0rr4qlsgkfgpv3cx6fmk9pq0a95rfhssmacxvhfvz2yqg2wpnee0gf5qmet0e8w4gp3sxm6t7ycx5qd6w5kfzlsq9ycx0z3qsadmn5k";
 
 type DemoStep = {
   id: string;
@@ -43,50 +55,6 @@ type DemoDefinition = {
   ctaHref: string;
   ctaLabel: string;
 };
-
-const QR_FINDER = [
-  "1111111",
-  "1000001",
-  "1011101",
-  "1011101",
-  "1011101",
-  "1000001",
-  "1111111",
-] as const;
-
-function qrModule(row: number, col: number): boolean {
-  function finderAt(fr: number, fc: number): boolean | null {
-    if (row < fr || row >= fr + 7 || col < fc || col >= fc + 7) return null;
-    return QR_FINDER[row - fr]!.charAt(col - fc) === "1";
-  }
-
-  let bit = finderAt(0, 0);
-  if (bit !== null) return bit;
-  bit = finderAt(0, 14);
-  if (bit !== null) return bit;
-  bit = finderAt(14, 0);
-  if (bit !== null) return bit;
-
-  if (col === 7 && row <= 6) return false;
-  if (row === 7 && col <= 7) return false;
-  if (col === 13 && row <= 6) return false;
-  if (row === 7 && col >= 13 && col <= 20) return false;
-  if (col === 7 && row >= 14) return false;
-  if (row === 13 && col <= 7) return false;
-  if (row === 6 && col >= 8 && col <= 12) return (col - 8) % 2 === 0;
-  if (col === 6 && row >= 8 && row <= 12) return (row - 8) % 2 === 0;
-  return (row * 47 + col * 31 + (row % 5) * (col % 7)) % 113 < 52;
-}
-
-const DEMO_QR_CELLS: boolean[] = (() => {
-  const cells: boolean[] = [];
-  for (let row = 0; row < 21; row++) {
-    for (let col = 0; col < 21; col++) {
-      cells.push(qrModule(row, col));
-    }
-  }
-  return cells;
-})();
 
 const DEMOS: DemoDefinition[] = [
   {
@@ -302,7 +270,7 @@ function StepPills({
             key={step.id}
             type="button"
             onClick={() => onSelect(index)}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
               active
                 ? "border border-[var(--border-strong)] bg-[var(--accent-dim)] text-[var(--accent-strong)]"
                 : "border border-white/[0.08] bg-white/[0.04] text-[var(--text-muted)] hover:text-white"
@@ -357,7 +325,6 @@ function PaymentVisual({ stepId, compact }: { stepId: string; compact: boolean }
     stepId === "confirmed" ? CONFIRMATION_TARGET : 0
   );
   const circumference = 2 * Math.PI * 40;
-  const qrSize = compact ? "h-32 w-32" : "h-40 w-40";
 
   useEffect(() => {
     if (stepId !== "confirming") {
@@ -420,22 +387,37 @@ function PaymentVisual({ stepId, compact }: { stepId: string; compact: boolean }
   }
 
   if (stepId === "scan") {
+    // Pixel sizes tuned to the existing layout footprint (h-32/h-40 from the
+    // original synthesized grid). Animated scan-line travel is sized to
+    // those values so the line never escapes the frame.
+    const qrPixelSize = compact ? 128 : 160;
+    const scanTravel = compact ? 96 : 126;
+
     return (
       <div className="flex flex-col items-center gap-5">
         <div className="relative rounded-[1.4rem] bg-white p-3 shadow-[0_0_40px_-10px_rgba(49,223,144,0.32)]">
-          <div
-            className={`relative grid ${qrSize} grid-cols-[repeat(21,minmax(0,1fr))] grid-rows-[repeat(21,minmax(0,1fr))] overflow-hidden rounded-[0.9rem]`}
-          >
-            {DEMO_QR_CELLS.map((filled, index) => (
-              <div key={index} className={filled ? "bg-black" : "bg-white"} />
-            ))}
+          <div className="relative overflow-hidden rounded-[0.9rem] bg-white">
+            <QRCodeSVG
+              value={DEMO_QR_ADDRESS}
+              size={qrPixelSize}
+              bgColor="#ffffff"
+              fgColor="#0a0c0a"
+              level="M"
+              marginSize={2}
+              role="img"
+              aria-label="Demo DERO payment QR"
+            />
             <motion.div
-              className="absolute inset-x-2 top-2 h-6 rounded-full bg-[linear-gradient(180deg,rgba(49,223,144,0),rgba(49,223,144,0.34),rgba(49,223,144,0))] mix-blend-multiply"
-              animate={{ y: [0, compact ? 96 : 126, 0] }}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-2 top-2 h-6 rounded-full bg-[linear-gradient(180deg,rgba(49,223,144,0),rgba(49,223,144,0.34),rgba(49,223,144,0))] mix-blend-multiply"
+              animate={{ y: [0, scanTravel, 0] }}
               transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
             />
           </div>
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          >
             <motion.div
               animate={{ scale: [1, 1.06, 1] }}
               transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
@@ -447,8 +429,8 @@ function PaymentVisual({ stepId, compact }: { stepId: string; compact: boolean }
         </div>
         <div className="max-w-sm text-center">
           <p className="font-display text-xl font-semibold text-white">Scan or copy to pay</p>
-          <p className="mt-2 font-mono text-xs text-[var(--text-muted)]">
-            dero1qy4wkng7p...integrated...k8f3x9
+          <p className="mt-2 font-mono text-xs tabular-nums text-[var(--text-muted)]">
+            {`${DEMO_QR_ADDRESS.slice(0, 12)}\u2026${DEMO_QR_ADDRESS.slice(-8)}`}
           </p>
         </div>
       </div>
@@ -964,7 +946,7 @@ export function DemoExperience({
   return (
     <div
       className={`glass-panel-strong soft-outline rounded-[2rem] ${
-        compact ? "p-5" : "p-6 md:p-7"
+        compact ? "p-5" : "min-h-[620px] p-6 md:p-7"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1017,8 +999,12 @@ export function DemoExperience({
         />
       </div>
 
-      <div className={`mt-5 grid gap-5 ${compact ? "" : "xl:grid-cols-[1.05fr_0.95fr]"}`}>
-        <div className="rounded-[1.75rem] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5">
+      <div className={`mt-5 grid items-stretch gap-5 ${compact ? "" : "xl:grid-cols-2"}`}>
+        <div
+          className={`flex items-center justify-center rounded-[1.75rem] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5 ${
+            compact ? "" : "min-h-[300px]"
+          }`}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={`${demo.key}-${step.id}`}
@@ -1032,7 +1018,11 @@ export function DemoExperience({
           </AnimatePresence>
         </div>
 
-        <div className="flex flex-col justify-between rounded-[1.75rem] border border-white/[0.08] bg-black/[0.24] p-5">
+        <div
+          className={`flex flex-col justify-between rounded-[1.75rem] border border-white/[0.08] bg-black/[0.24] p-5 ${
+            compact ? "" : "min-h-[300px]"
+          }`}
+        >
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
               Step {stepIndex + 1} of {demo.steps.length}
@@ -1095,7 +1085,7 @@ export function DemoShowcaseRail() {
   const activeDemo = getDemoDefinition(activeKey);
 
   return (
-    <section id="demo-experience" className="px-6 pb-10 md:px-10 md:pb-16">
+    <section id="demo-experience" className="px-6 pb-16 md:px-10 md:pb-20">
       <div className="mx-auto w-full max-w-7xl">
         <div className="mb-8 max-w-2xl space-y-3">
           <p className="section-kicker">How it works</p>
@@ -1108,8 +1098,8 @@ export function DemoShowcaseRail() {
           </p>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[0.38fr_0.62fr]">
-          <div className="space-y-3">
+        <div className="w-full">
+          <div className="mb-5 grid gap-3 md:grid-cols-3">
             {DEMOS.map((demo) => {
               const Icon = demo.icon;
               const active = demo.key === activeKey;
@@ -1118,50 +1108,63 @@ export function DemoShowcaseRail() {
                   key={demo.key}
                   type="button"
                   onClick={() => setActiveKey(demo.key)}
-                  className={`w-full rounded-[1.6rem] border p-5 text-left ${
+                  aria-pressed={active}
+                  className={`group flex items-center gap-4 rounded-[1.35rem] border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--page-bg)] ${
                     active
-                      ? "border-[var(--border-strong)] bg-[var(--accent-dim)] shadow-[0_20px_40px_rgba(0,0,0,0.2)]"
+                      ? "border-[var(--border-strong)] bg-[var(--accent-dim)] shadow-[0_18px_36px_rgba(0,0,0,0.18)]"
                       : "border-white/[0.08] bg-white/[0.04] hover:border-[var(--border-strong)]"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
-                            active
-                              ? "bg-black/[0.18] text-[var(--accent-strong)]"
-                              : "bg-black/[0.22] text-[var(--text-secondary)]"
-                          }`}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="font-display text-xl font-semibold text-white">
-                            {demo.label}
-                          </p>
-                          <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                            {demo.badge}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-sm leading-6 text-[var(--text-secondary)]">
-                        {demo.summary}
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                      active
+                        ? "bg-black/[0.18] text-[var(--accent-strong)]"
+                        : "bg-black/[0.22] text-[var(--text-secondary)] group-hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-[18px] w-[18px]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate font-display text-lg font-semibold text-white">
+                        {demo.label}
                       </p>
+                      <ChevronRight
+                        className={`h-4 w-4 shrink-0 ${
+                          active ? "text-[var(--accent-strong)]" : "text-[var(--text-muted)]"
+                        }`}
+                      />
                     </div>
-                    <ChevronRight
-                      className={`h-5 w-5 shrink-0 ${
-                        active ? "text-[var(--accent-strong)]" : "text-[var(--text-muted)]"
-                      }`}
-                    />
+                    <p className="truncate text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                      {demo.badge}
+                    </p>
                   </div>
                 </button>
               );
             })}
           </div>
 
-          <div>
-            <DemoExperience key={activeDemo.key} demoKey={activeDemo.key} />
+          <DemoExperience key={activeDemo.key} demoKey={activeDemo.key} />
+
+          <div className="mt-4 flex flex-col gap-3 rounded-[1.35rem] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm leading-6 text-[var(--text-secondary)] md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <Sparkles
+                className="mt-1 h-4 w-4 shrink-0 text-[var(--warm)]"
+                aria-hidden="true"
+              />
+              <p>
+                Every flow runs client-side against the production SDK. No real DERO moves.
+              </p>
+            </div>
+            <Link
+              href="https://deropay.derod.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1.5 font-semibold text-[var(--accent-strong)] transition-colors hover:text-white"
+            >
+              View SDK docs
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </div>
       </div>

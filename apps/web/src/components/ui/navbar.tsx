@@ -3,20 +3,25 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { DeroIcon } from "@/components/icons/dero-icon";
 import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
+import { DeroIcon } from "@/components/icons/dero-icon";
+import { DOCS_URL } from "@/lib/site";
 
-const links = [
+type NavLink = {
+  href: string;
+  label: string;
+  external?: true;
+};
+
+const links: NavLink[] = [
   { href: "/auth", label: "Auth" },
   { href: "/pay", label: "Pay" },
   { href: "/x402", label: "x402" },
   { href: "/escrow", label: "Escrow" },
   { href: "/templates", label: "Templates" },
   { href: "/playground", label: "Try It" },
-  { href: "https://demo.deropay.com", label: "Demo", external: true },
-  { href: "https://deropay.derod.org", label: "Docs", external: true },
-  { href: "https://github.com/DHEBP", label: "GitHub", external: true },
+  { href: DOCS_URL, label: "Docs", external: true },
 ];
 
 export const Navbar = () => {
@@ -31,114 +36,153 @@ export const Navbar = () => {
   }, []);
 
   return (
-    <header
-      className={`fixed top-0 z-50 w-full transition-all duration-200 ${
-        scrolled
-          ? "bg-black/90 backdrop-blur-md border-b border-[#1e2a24]"
-          : "bg-black border-b border-transparent"
-      }`}
-    >
-      <nav className="mx-auto flex h-16 max-w-[1200px] items-center px-6 lg:px-8">
-        {/* Logo - always visible */}
-        <Link href="/" className="mr-10 flex items-center gap-2 shrink-0">
-          <DeroIcon size={28} className="text-[#10b981]" />
-          <span className="text-xl font-black tracking-tight text-white">
-            DeroPay
-          </span>
+    <header className={`nav${scrolled ? " nav-scrolled" : ""}`}>
+      <div className="nav-in">
+        <Link href="/" className="brand">
+          <DeroIcon size={26} className="text-[var(--color-accent-strong)]" />
+          <span style={{ transform: "translateY(1.5px)" }}>DeroPay</span>
         </Link>
 
-        {/* Desktop Nav Links - inline, always rendered, hidden on small screens via CSS */}
-        <div className="flex-1 justify-end" style={{ display: "var(--nav-display, none)" }}>
-          <div className="flex items-center gap-7">
-            {links.map((link) => {
-              const isActive =
-                pathname === link.href ||
-                pathname.startsWith(link.href + "/");
-              const El = "external" in link ? "a" : Link;
-              const extra =
-                "external" in link
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {};
+        <nav className="nav-links">
+          {links.map((link) => {
+            const isActive =
+              !link.external &&
+              (pathname === link.href || pathname.startsWith(link.href + "/"));
+
+            if (link.external) {
               return (
-                <Link
+                <a
                   key={link.href}
                   href={link.href}
-                  {...extra}
-                  className={`whitespace-nowrap text-sm font-bold transition-colors ${
-                    isActive
-                      ? "text-white"
-                      : "text-[#6b7f75] hover:text-[#f0fdf4]"
-                  }`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
                   {link.label}
-                </Link>
+                </a>
               );
-            })}
-          </div>
-        </div>
+            }
 
-        {/* Right CTA - hidden on small screens */}
-        <div
-          className="flex items-center shrink-0 ml-8"
-          style={{ display: "var(--nav-display, none)" }}
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={isActive ? "page" : undefined}
+                className={isActive ? "on" : undefined}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <a
+          href={DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-accent btn-sm nav-cta"
         >
-          <Link href="https://deropay.derod.org" className="btn-accent px-5 py-2 text-sm whitespace-nowrap">
-            Get Started
-          </Link>
-        </div>
+          Get started
+        </a>
 
-        {/* Mobile hamburger - shown only on small screens */}
         <button
+          type="button"
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-menu"
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="ml-auto text-white"
-          style={{ display: "var(--burger-display, block)" }}
+          className="nav-burger"
         >
           {mobileOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
-      </nav>
+      </div>
 
-      {/* Responsive CSS using a style tag so we don't rely on Tailwind responsive */}
       <style>{`
-        :root {
-          --nav-display: none;
-          --burger-display: block;
+        .nav-scrolled {
+          background: rgba(6, 8, 6, 0.85);
         }
-        @media (min-width: 768px) {
-          :root {
-            --nav-display: flex;
-            --burger-display: none;
+        .nav-cta,
+        .nav-links {
+          display: flex;
+        }
+        .nav-burger {
+          display: none;
+          margin-left: auto;
+          color: var(--tp, var(--color-text-primary));
+        }
+        @media (max-width: 900px) {
+          .nav-cta {
+            display: none;
           }
+          .nav-burger {
+            display: block;
+          }
+        }
+        .nav-mobile {
+          border-bottom: 1px solid var(--border-soft, var(--color-border-soft));
+          background: var(--bg, var(--color-background));
+          overflow: hidden;
+        }
+        .nav-mobile-inner {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding: 24px;
+        }
+        .nav-mobile-inner a {
+          font-family: var(--display, var(--font-display));
+          font-size: 18px;
+          font-weight: 600;
+          color: var(--tp, var(--color-text-primary));
+        }
+        .nav-mobile-divider {
+          height: 1px;
+          margin: 8px 0;
+          background: var(--border-soft, var(--color-border-soft));
         }
       `}</style>
 
-      {/* Mobile Menu */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
+            id="mobile-menu"
+            className="nav-mobile"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="border-b border-[#1e2a24] bg-black"
           >
-            <div className="flex flex-col p-6 space-y-4">
-              {links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileOpen(false)}
-                  className="text-lg font-bold text-white"
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <div className="h-px bg-[#1e2a24] my-4" />
-              <Link
-                href="https://deropay.derod.org"
-                className="btn-accent w-full text-center"
+            <div className="nav-mobile-inner">
+              {links.map((link) =>
+                link.external ? (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ),
+              )}
+              <div className="nav-mobile-divider" />
+              <a
+                href={DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-accent"
+                style={{ width: "100%", justifyContent: "center" }}
                 onClick={() => setMobileOpen(false)}
               >
-                Get Started
-              </Link>
+                Get started
+              </a>
             </div>
           </motion.div>
         )}

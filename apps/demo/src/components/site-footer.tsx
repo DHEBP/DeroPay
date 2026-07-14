@@ -3,6 +3,10 @@ import Link from "next/link";
 export function SiteFooter() {
   return (
     <footer className="relative border-t border-white/[0.08] bg-black/25">
+      <div
+        aria-hidden="true"
+        className="absolute left-1/2 -top-px h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-[var(--accent)]/20 to-transparent"
+      />
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10 md:flex-row md:items-end md:justify-between md:px-10">
         <div className="max-w-xl space-y-3">
           <p className="section-kicker">DeroPay Demo</p>

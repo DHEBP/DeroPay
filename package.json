@@ -2,7 +2,13 @@
   "name": "deropay",
   "private": true,
   "workspaces": [
-    "apps/*",
+    "apps/checkout",
+    "apps/dashboard",
+    "apps/facilitator",
+    "apps/demo",
+    "apps/gateway",
+    "apps/web",
+    "apps/x402-example",
     "packages/*",
     "plugins/*"
   ],

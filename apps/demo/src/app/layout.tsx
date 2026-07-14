@@ -33,6 +33,12 @@ export default function RootLayout({
       <body
         className={`${spaceGrotesk.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
       >
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#071008]"
+        >
+          Skip to main content
+        </a>
         <Providers>
           <div className="border-b border-white/[0.08] bg-black/40 px-4 py-2 text-center text-xs text-[var(--text-muted)]">
             Simulation mode — no real DERO is transferred.{" "}

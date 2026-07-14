@@ -11,8 +11,11 @@ docs/
 packages/*/docs/
 
 # Test / scratch scripts
-test-escrow.ts
+test-*.ts
 scripts/
+
+# Internal planning notes (not for the public tree)
+.plan*.md
 
 # Database files
 *.db

@@ -20,6 +20,8 @@ import {
   listStockLocations,
 } from "@/lib/commerce-mock-store";
 
+export const dynamic = "force-dynamic";
+
 async function loadOrders(req: Request) {
   try {
     const upstream = await listInvoicesHandler(req);

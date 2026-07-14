@@ -25,7 +25,7 @@ const loopSteps = [
     title: "Server returns a payment challenge",
     body: (
       <>
-        Machine-readable: amount <code>0.10 DERO</code>, resource, receipt nonce
+        Machine-readable: amount <code>0.10 DERO</code>, resource, invoice id
       </>
     ),
   },
@@ -41,7 +41,7 @@ const loopSteps = [
     title: "Client retries with proof",
     body: (
       <>
-        <code>X-Payment: proof…</code> — signed, replay-protected
+        <code>Authorization: X402 proof…</code> — signed, optional single-use
       </>
     ),
   },
@@ -81,7 +81,7 @@ const pillars = [
       </svg>
     ),
     title: "Production Security",
-    body: "Signed receipts, replay protection, key rotation, and auditable events make payment-gated endpoints safe to operate.",
+    body: "Signed receipts, optional single-use replay protection, key rotation, and auditable events make payment-gated endpoints safe to operate.",
   },
   {
     icon: (

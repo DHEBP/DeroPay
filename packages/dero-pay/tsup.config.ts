@@ -13,6 +13,7 @@ export default defineConfig({
     "gateway/index": "src/gateway/index.ts",
     "react/index": "src/react/index.ts",
     "next/index": "src/next/index.ts",
+    "agent/index": "src/agent/index.ts",
   },
   format: ["esm"],
   dts: true,

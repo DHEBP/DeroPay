@@ -233,6 +233,48 @@ export const meteredGuard = createX402RouteGuard({
 });
 ```
 
+### Autonomous Agent Payer (`dero-pay/agent`)
+
+The agent side of the same rail: a fetch wrapper that settles x402
+challenges automatically under a deny-by-default spending policy.
+
+```ts
+import {
+  createPayingFetch,
+  createWalletRpcPayer,
+  SpendPolicy,
+} from "dero-pay/agent";
+
+const payingFetch = createPayingFetch({
+  payer: createWalletRpcPayer(), // loopback wallet RPC only, by default
+  policy: new SpendPolicy({
+    allowOrigins: ["https://api.example.com"],
+    maxAtomicPerRequest: 100_000n, // 1 DERO
+    maxAtomicPerWindow: { amountAtomic: 500_000n, windowSeconds: 3600 },
+  }),
+});
+
+const res = await payingFetch("https://api.example.com/api/protected/report");
+```
+
+On a 402 the wrapper pays the invoice's integrated address, polls
+`/api/pay/status`, redeems the receipt via `/api/pay/receipts/issue`, and
+retries with `X-DeroPay-Receipt`. Receipts are cached and reused until
+they expire; concurrent calls to the same challenge share one payment;
+a paid-but-unsettled invoice is resumed, never re-paid.
+
+Also in `dero-pay/agent`:
+
+- `SpendPolicy` / `CredentialPolicy` — origin + amount caps, or
+  macaroon-style attenuable spending credentials
+  (`mintSpendCredential` / `attenuate`) to hand to sub-agents
+- `createXswdPayer` — human-approved payments through XSWD
+- `createPaidToolGuard` / `createPayingToolCaller` — per-call payment
+  gating for MCP tools on the same invoice/receipt rail
+
+Full flow, safety properties, and wire format:
+[`AGENT-PAYER.md`](./AGENT-PAYER.md).
+
 ### Audit Event Subscription
 
 ```ts

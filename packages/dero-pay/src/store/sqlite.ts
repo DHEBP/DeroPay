@@ -556,7 +556,12 @@ export class SqliteInvoiceStore implements InvoiceStore {
 
   async getActiveInvoices(): Promise<Invoice[]> {
     return this.listInvoices({
-      status: ["created", "pending", "confirming", "partial"],
+      // O15 — include escrow_funded: a funded escrow invoice is non-terminal
+      // (settlement still in flight on the escrow rail) and must be reloaded on
+      // restart so the escrow lifecycle keeps driving it to a terminal state.
+      // O19 — 'disputed' is non-terminal (escrow funded, awaiting arbitration);
+      // include it so a restart reloads it and the escrow rail keeps driving it.
+      status: ["created", "pending", "confirming", "partial", "escrow_funded", "disputed"],
     });
   }
 
@@ -583,6 +588,10 @@ export class SqliteInvoiceStore implements InvoiceStore {
       completed: 0,
       expired: 0,
       partial: 0,
+      misrouted_to_base: 0,
+      escrow_funded: 0,
+      disputed: 0,
+      refunded: 0,
       totalAmountReceived: 0n,
     };
 

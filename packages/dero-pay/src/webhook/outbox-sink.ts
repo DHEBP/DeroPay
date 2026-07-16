@@ -174,6 +174,19 @@ export class OutboxWebhookSink implements WebhookSink {
  * in-memory monitor amount).
  */
 function decideStatus(invoice: Invoice, total: bigint): Invoice["status"] {
+  // O16 — escrow guard, IDENTICAL to the engine's calculateInvoiceStatus. An
+  // escrow invoice is settled EXCLUSIVELY through its SCID (Deposit ->
+  // ConfirmDelivery/ClaimAfterExpiry/Arbitrate), never the integrated-address
+  // rail. A direct integrated-address payment to an escrow invoice is a buyer
+  // routing error: the funds hit the merchant's base wallet with zero escrow
+  // protection and must NEVER drive the invoice to confirming/completed (which
+  // would tell the merchant to ship with nothing in escrow). The sink is the
+  // durable/multi-process production writer, so the guard MUST live here too —
+  // otherwise the recommended production config re-opens the O11 dual-rail
+  // hijack. Flag for reconciliation instead of settling.
+  if (invoice.escrow) {
+    return "misrouted_to_base";
+  }
   if (total >= invoice.amount) {
     const allConfirmed =
       invoice.payments.length > 0 &&

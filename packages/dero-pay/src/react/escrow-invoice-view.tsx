@@ -352,7 +352,7 @@ export function EscrowInvoiceView({
           marginBottom: "1rem",
         }}
       >
-        <DetailRow label="SCID" value={truncateScid(escrow.scid)} mono />
+        <DetailRow label="SCID" value={escrow.scid ? truncateScid(escrow.scid) : "— not yet deployed"} mono />
         <DetailRow label="Seller" value={truncateAddress(escrow.sellerAddress)} mono />
         {escrow.buyerAddress && (
           <DetailRow label="Buyer" value={truncateAddress(escrow.buyerAddress)} mono />

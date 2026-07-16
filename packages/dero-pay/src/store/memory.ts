@@ -138,6 +138,14 @@ export class MemoryInvoiceStore implements InvoiceStore {
       "pending",
       "confirming",
       "partial",
+      // O15 — a funded escrow invoice is NON-terminal: its settlement is still
+      // in flight on the escrow rail (ConfirmDelivery / ClaimAfterExpiry /
+      // Arbitrate). It must stay in the active set so a restart reloads it and
+      // the escrow lifecycle keeps driving it to completed/expired.
+      "escrow_funded",
+      // O19 — a disputed escrow invoice is ALSO non-terminal (settlement blocked
+      // pending Arbitrate()); keep it active so a restart reloads it.
+      "disputed",
     ];
     return this.listInvoices({ status: activeStatuses });
   }
@@ -153,6 +161,10 @@ export class MemoryInvoiceStore implements InvoiceStore {
       completed: 0,
       expired: 0,
       partial: 0,
+      misrouted_to_base: 0,
+      escrow_funded: 0,
+      disputed: 0,
+      refunded: 0,
     };
 
     for (const inv of invoices) {

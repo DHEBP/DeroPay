@@ -24,7 +24,7 @@ const mockContract = {
     buyer: null,
     arbitrator: "dero1qarbitrator...",
     feeBasisPoints: 250,
-    blockExpiration: 60,
+    blockExpiration: 600,
     escrowBalance: 0,
     depositHeight: null,
     scBalance: 0,
@@ -53,7 +53,7 @@ describe("EscrowManager", () => {
       daemonRpc: mockDaemon as unknown as DaemonRpcClient,
       pollIntervalMs: 100,
       defaultFeeBasisPoints: 250,
-      defaultBlockExpiration: 60,
+      defaultBlockExpiration: 600,
     });
   });
 
@@ -98,9 +98,10 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         expectedAmount: 500_000n,
       });
 
@@ -110,7 +111,7 @@ describe("EscrowManager", () => {
       expect(record.sellerAddress).toBe("dero1qseller...");
       expect(record.arbitratorAddress).toBe("dero1qarbitrator...");
       expect(record.feeBasisPoints).toBe(250);
-      expect(record.blockExpiration).toBe(60);
+      expect(record.blockExpiration).toBe(600);
       expect(record.expectedAmount).toBe(500_000n);
       expect(deployed).toHaveBeenCalledOnce();
     });
@@ -118,11 +119,13 @@ describe("EscrowManager", () => {
     it("uses default fee and block expiration", async () => {
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       expect(record.feeBasisPoints).toBe(250);
-      expect(record.blockExpiration).toBe(60);
+      expect(record.blockExpiration).toBe(600);
     });
 
     it("handles deploy failure gracefully", async () => {
@@ -133,7 +136,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       expect(record.status).toBe("deploy_failed");
@@ -146,7 +151,9 @@ describe("EscrowManager", () => {
     it("retrieves by local ID", async () => {
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       const found = manager.getEscrow(record.id);
@@ -157,7 +164,9 @@ describe("EscrowManager", () => {
     it("returns a copy (not reference)", async () => {
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       const a = manager.getEscrow(record.id);
@@ -169,7 +178,9 @@ describe("EscrowManager", () => {
     it("retrieves by SCID", async () => {
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       const found = manager.getEscrowByScid(record.scid!);
@@ -188,17 +199,17 @@ describe("EscrowManager", () => {
 
   describe("listEscrows", () => {
     it("lists all escrows", async () => {
-      await manager.createEscrow({ sellerAddress: "a", arbitratorAddress: "b" });
-      await manager.createEscrow({ sellerAddress: "c", arbitratorAddress: "d" });
+      await manager.createEscrow({ sellerAddress: "a", buyerAddress: "b", arbitratorAddress: "c", expectedAmount: 500_000n });
+      await manager.createEscrow({ sellerAddress: "c", buyerAddress: "d", arbitratorAddress: "e", expectedAmount: 500_000n });
 
       const list = manager.listEscrows();
       expect(list).toHaveLength(2);
     });
 
     it("filters by status", async () => {
-      await manager.createEscrow({ sellerAddress: "a", arbitratorAddress: "b" });
+      await manager.createEscrow({ sellerAddress: "a", buyerAddress: "b", arbitratorAddress: "c", expectedAmount: 500_000n });
       mockContract.deploy.mockRejectedValueOnce(new Error("fail"));
-      await manager.createEscrow({ sellerAddress: "c", arbitratorAddress: "d" });
+      await manager.createEscrow({ sellerAddress: "c", buyerAddress: "d", arbitratorAddress: "e", expectedAmount: 500_000n });
 
       const awaiting = manager.listEscrows(["awaiting_deposit"]);
       expect(awaiting).toHaveLength(1);
@@ -210,11 +221,11 @@ describe("EscrowManager", () => {
 
   describe("activeCount", () => {
     it("counts non-terminal escrows", async () => {
-      await manager.createEscrow({ sellerAddress: "a", arbitratorAddress: "b" });
+      await manager.createEscrow({ sellerAddress: "a", buyerAddress: "b", arbitratorAddress: "c", expectedAmount: 500_000n });
       expect(manager.activeCount).toBe(1);
 
       mockContract.deploy.mockRejectedValueOnce(new Error("fail"));
-      await manager.createEscrow({ sellerAddress: "c", arbitratorAddress: "d" });
+      await manager.createEscrow({ sellerAddress: "c", buyerAddress: "d", arbitratorAddress: "e", expectedAmount: 500_000n });
       // deploy_failed is terminal, so activeCount stays at 1
       expect(manager.activeCount).toBe(1);
     });
@@ -230,7 +241,7 @@ describe("EscrowManager", () => {
         sellerAddress: "dero1qseller...",
         arbitratorAddress: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         expectedAmount: 500_000n,
         depositAmount: 500_000n,
         buyerAddress: "dero1qbuyer...",
@@ -254,7 +265,9 @@ describe("EscrowManager", () => {
     it("removes escrow from tracking", async () => {
       const record = await manager.createEscrow({
         sellerAddress: "a",
-        arbitratorAddress: "b",
+        buyerAddress: "b",
+        arbitratorAddress: "c",
+        expectedAmount: 500_000n,
       });
 
       manager.untrack(record.id);
@@ -269,7 +282,9 @@ describe("EscrowManager", () => {
     beforeEach(async () => {
       record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
     });
 
@@ -325,7 +340,9 @@ describe("EscrowManager", () => {
     it("returns on-chain state via contract", async () => {
       const record = await manager.createEscrow({
         sellerAddress: "a",
-        arbitratorAddress: "b",
+        buyerAddress: "b",
+        arbitratorAddress: "c",
+        expectedAmount: 500_000n,
       });
 
       const state = await manager.getOnChainState(record.scid!);
@@ -351,7 +368,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       // Simulate on-chain state showing funded
@@ -364,7 +383,7 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         escrowBalance: 500_000,
         depositHeight: 1005,
         scBalance: 500_000,
@@ -391,7 +410,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       // First make it funded
@@ -409,7 +430,7 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         escrowBalance: 0,
         depositHeight: 1005,
         scBalance: 0,
@@ -429,7 +450,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       manager.importEscrow({
@@ -446,7 +469,7 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         escrowBalance: 0,
         depositHeight: 1005,
         scBalance: 0,
@@ -465,7 +488,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       manager.importEscrow({
@@ -482,7 +507,7 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         escrowBalance: 500_000,
         depositHeight: 1005,
         scBalance: 500_000,
@@ -500,7 +525,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       manager.importEscrow({
@@ -517,9 +544,12 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         escrowBalance: 0,
         depositHeight: 1005,
+        // Direction is read from the on-chain arbitrateResult flag (1 = seller),
+        // NOT the balance — both arbitrate branches zero escrowBalance.
+        arbitrateResult: 1,
         scBalance: 0,
       } satisfies EscrowOnChainState);
 
@@ -536,7 +566,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       manager.importEscrow({
@@ -553,10 +585,14 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
-        escrowBalance: 500_000, // balance > 0 means refunded to buyer in the reconcile logic
+        blockExpiration: 600,
+        // Real on-chain state after a buyer refund: balance is zeroed (the
+        // contract sends the full balance out and STOREs escrowBalance=0). The
+        // direction comes from arbitrateResult=0, not the balance.
+        escrowBalance: 0,
         depositHeight: 1005,
-        scBalance: 500_000,
+        arbitrateResult: 0,
+        scBalance: 0,
       } satisfies EscrowOnChainState);
 
       await manager.start();
@@ -572,7 +608,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       manager.importEscrow({
@@ -589,7 +627,7 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         escrowBalance: 0,
         depositHeight: 1005,
         scBalance: 0,
@@ -608,7 +646,9 @@ describe("EscrowManager", () => {
 
       await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       // getState returns same status as local (awaiting_deposit)
@@ -624,7 +664,9 @@ describe("EscrowManager", () => {
 
       await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       mockContract.getState.mockRejectedValueOnce(new Error("rpc fail"));
@@ -640,7 +682,9 @@ describe("EscrowManager", () => {
       mockContract.deploy.mockRejectedValueOnce(new Error("fail"));
       await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       // deploy_failed is terminal — getState should not be called for it
@@ -661,7 +705,9 @@ describe("EscrowManager", () => {
 
       const record = await manager.createEscrow({
         sellerAddress: "dero1qseller...",
+        buyerAddress: "dero1qbuyer...",
         arbitratorAddress: "dero1qarbitrator...",
+        expectedAmount: 500_000n,
       });
 
       mockContract.getState.mockResolvedValueOnce({
@@ -673,7 +719,7 @@ describe("EscrowManager", () => {
         buyer: "dero1qbuyer...",
         arbitrator: "dero1qarbitrator...",
         feeBasisPoints: 250,
-        blockExpiration: 60,
+        blockExpiration: 600,
         escrowBalance: 500_000,
         depositHeight: 1005,
         scBalance: 500_000,

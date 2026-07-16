@@ -16,7 +16,35 @@ export type InvoiceStatus =
   | "confirming"
   | "completed"
   | "expired"
-  | "partial";
+  | "partial"
+  /**
+   * Escrow invoice received a payment on its integrated address instead of via
+   * the escrow contract's Deposit(). Those funds bypassed escrow protection and
+   * landed in the merchant base wallet. This is an alert/reconciliation state —
+   * NOT a settlement — and must never be treated as paid or shipped against.
+   */
+  | "misrouted_to_base"
+  /**
+   * Escrow contract funded via Deposit(). The invoice's economic settlement now
+   * proceeds through the escrow lifecycle (confirm/expiry/arbitrate); this is a
+   * non-terminal "paid into escrow" state that must not expire.
+   */
+  | "escrow_funded"
+  /**
+   * O19 — the escrow was funded then a dispute was raised on-chain (buyer called
+   * Dispute()). Non-terminal: settlement is now blocked pending Arbitrate().
+   * Distinct from escrow_funded so a dispute-in-flight is visible at the invoice
+   * layer, and distinct from any unpaid state (real DERO is locked in escrow).
+   */
+  | "disputed"
+  /**
+   * O19 — TERMINAL: the buyer got their money back (RefundBuyer, or an arbitrator
+   * ruled for the buyer). Funds moved on-chain to the buyer. This is a
+   * chargeback-equivalent and MUST NOT be conflated with 'expired' (a never-paid
+   * TTL timeout): merchant accounting/automation needs to tell "paid then
+   * refunded" apart from "nobody ever paid".
+   */
+  | "refunded";
 
 /** Wallet connection status for XSWD client-side usage */
 export type WalletStatus =
@@ -53,10 +81,14 @@ export type Payment = {
 
 /** Escrow data attached to an invoice */
 export type InvoiceEscrow = {
-  /** Smart Contract ID of the escrow contract */
-  scid: string;
-  /** Deployment TXID */
-  deployTxid: string;
+  /** Local escrow-manager record id — the handle used to claim (deploy) a
+   *  quoted escrow before it has an SCID. */
+  escrowId: string | null;
+  /** Smart Contract ID of the escrow contract. Null until the buyer is claimed
+   *  and the contract deploys (open escrow invoices start in "quoted"). */
+  scid: string | null;
+  /** Deployment TXID. Null until deploy (see scid). */
+  deployTxid: string | null;
   /** Escrow status (mirrors on-chain state) */
   escrowStatus: EscrowInvoiceStatus;
   /** Seller address */
@@ -75,10 +107,23 @@ export type InvoiceEscrow = {
   disputedAt: string | null;
   /** How the escrow was resolved */
   resolution: string | null;
+  /**
+   * O21 — auto-requote budget counters. These live on the engine-controlled
+   * escrow object (NOT invoice.metadata, which is caller-supplied at
+   * createInvoice and thus attacker-reachable) so a merchant/API cannot zero the
+   * counters to re-open the O9/O13 unbounded auto-requote gas amplifier. Reset to
+   * 0 on a successful escrow funding and on a fresh legitimate buyer binding, so
+   * a transient early grief no longer permanently exhausts a later honest buyer's
+   * requote budget. Optional/absent on pre-migration rows (treated as 0).
+   */
+  requoteCount?: number;
+  /** O21 — epoch-ms of the last auto-requote, for the cooldown gate. */
+  lastRequoteAt?: number;
 };
 
 /** Escrow status within an invoice context */
 export type EscrowInvoiceStatus =
+  | "quoted"
   | "deploying"
   | "awaiting_deposit"
   | "funded"
@@ -87,6 +132,7 @@ export type EscrowInvoiceStatus =
   | "expired_claimed"
   | "disputed"
   | "arbitrated"
+  | "cancelled"
   | "deploy_failed";
 
 /** An invoice representing a payment request */
@@ -159,11 +205,17 @@ export type CreateInvoiceParams = {
 export type CreateInvoiceEscrowParams = {
   /** Seller address (required) */
   sellerAddress: string;
-  /** Arbitrator address (defaults to platform wallet) */
+  /** Arbitrator address. Must be set explicitly. Self-arbitration
+   *  (arbitrator == the platform owner/fee-recipient) is rejected unless
+   *  allowSelfArbitration is true, to avoid the platform refereeing disputes
+   *  it also profits from. */
   arbitratorAddress?: string;
+  /** Opt in to arbitrator == platform owner (logged). Default false. */
+  allowSelfArbitration?: boolean;
   /** Fee in basis points (default: from config or 250) */
   feeBasisPoints?: number;
-  /** Block expiration (default: from config or 60) */
+  /** Block expiration in blocks (default: from config or 600 ~= 3h at ~18s/block).
+   *  Must be within [200, 10000000]; enforced on-chain. */
   blockExpiration?: number;
 };
 
@@ -199,6 +251,10 @@ export type WebhookEventType =
   | "invoice.completed"
   | "invoice.expired"
   | "invoice.partial"
+  | "invoice.misrouted_to_base"
+  | "invoice.escrow_funded"
+  | "invoice.disputed"
+  | "invoice.refunded"
   | "payment.detected"
   | "payment.confirmed"
   | "escrow.deployed"
@@ -206,7 +262,10 @@ export type WebhookEventType =
   | "escrow.released"
   | "escrow.refunded"
   | "escrow.disputed"
-  | "escrow.arbitrated";
+  | "escrow.arbitrated"
+  | "escrow.requoted"
+  | "escrow.cancel_griefed"
+  | "escrow.funding_mismatch";
 
 /** Webhook event payload */
 export type WebhookEvent = {

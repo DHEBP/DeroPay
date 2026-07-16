@@ -100,6 +100,8 @@ export class InvoiceEngine {
   > & {
     escrowFeeBasisPoints: number;
     escrowBlockExpiration: number;
+    escrowMaxAutoRequotes: number;
+    escrowRequoteCooldownMs: number;
   };
   private baseAddress: string | null = null;
   private isStarted = false;
@@ -114,10 +116,22 @@ export class InvoiceEngine {
       store?: InvoiceStore;
       /** Default escrow fee in basis points (default: 250 = 2.5%) */
       escrowFeeBasisPoints?: number;
-      /** Default block expiration for escrow (default: 60) */
+      /** Default block expiration for escrow (default: 9600 ~= 2 days at ~18s/block; must be >= 4000) */
       escrowBlockExpiration?: number;
       /** Enable escrow support (default: false — must be explicitly opted into) */
       enableEscrow?: boolean;
+      /**
+       * Max number of AUTOMATIC re-quotes a single invoice may receive after
+       * CancelUnfunded races (O13 amplifier guard). Once hit, the invoice is
+       * parked in a terminal alert state instead of looping. Default: 3.
+       */
+      escrowMaxAutoRequotes?: number;
+      /**
+       * Minimum wall-clock gap between automatic re-quotes of the same invoice
+       * (O13 amplifier guard). Requote events arriving sooner are dropped.
+       * Default: 60_000 ms.
+       */
+      escrowRequoteCooldownMs?: number;
       /** Inject RPC clients (for testing); when set, walletRpcUrl/daemonRpcUrl are ignored */
       walletRpc?: WalletRpcClient;
       daemonRpc?: DaemonRpcClient;
@@ -152,7 +166,11 @@ export class InvoiceEngine {
       defaultRequiredConfirmations: options.defaultRequiredConfirmations ?? 3,
       pollIntervalMs: options.pollIntervalMs ?? 5_000,
       escrowFeeBasisPoints: options.escrowFeeBasisPoints ?? 250,
-      escrowBlockExpiration: options.escrowBlockExpiration ?? 60,
+      // ~2 days at ~18s/block. Must clear the on-chain 4000-block floor and give
+      // a human buyer a realistic window to dispute before ClaimAfterExpiry.
+      escrowBlockExpiration: options.escrowBlockExpiration ?? 9600,
+      escrowMaxAutoRequotes: options.escrowMaxAutoRequotes ?? 3,
+      escrowRequoteCooldownMs: options.escrowRequoteCooldownMs ?? 60_000,
     };
 
     this.monitor = new PaymentMonitor({
@@ -258,6 +276,14 @@ export class InvoiceEngine {
     // Start the escrow manager
     if (this.escrowManager) {
       await this.escrowManager.start();
+      // O15 — REHYDRATE in-flight escrows before the poll loop runs. The escrow
+      // manager holds records purely in-memory; a bare start() begins polling an
+      // EMPTY map, so after any restart/crash/deploy every awaiting_deposit /
+      // funded / disputed escrow stops being reconciled — real locked DERO goes
+      // untracked, no escrowFunded/Released/Arbitrated event ever fires again,
+      // and the invoice never maps to its terminal state. Reload the persisted
+      // escrow bindings from the invoice store back into the poller.
+      await this.rehydrateEscrows();
     }
 
     // Start the expiry checker (runs every 30 seconds)
@@ -333,14 +359,52 @@ export class InvoiceEngine {
 
     if (params.escrow && this.escrowManager) {
       const sellerAddress = params.escrow.sellerAddress;
-      const arbitratorAddress =
-        params.escrow.arbitratorAddress ?? this.baseAddress;
+
+      // Arbitrator must be explicit — no silent platform default. Refereeing a
+      // dispute the platform also collects a fee on is a liability/conflict, so
+      // arbitrator == platform owner is rejected unless explicitly opted into.
+      const arbitratorAddress = params.escrow.arbitratorAddress;
+      if (!arbitratorAddress) {
+        throw new Error(
+          "escrow.arbitratorAddress is required (no default). Set a distinct arbitrator, or pass allowSelfArbitration: true to knowingly self-arbitrate."
+        );
+      }
+      if (
+        !params.escrow.allowSelfArbitration &&
+        this.baseAddress &&
+        arbitratorAddress === this.baseAddress
+      ) {
+        throw new Error(
+          "arbitrator == platform owner/fee-recipient (self-arbitration). Use a distinct arbitrator, or pass allowSelfArbitration: true to override."
+        );
+      }
+
+      // Collusion guard: the arbitrator is the buyer's ONLY protection once
+      // funded, so it must never be a party to the trade. A seller-as-arbitrator
+      // would self-release every dispute (Arbitrate(1) pays the seller), making
+      // Dispute() a no-op; a buyer-as-arbitrator would self-refund. This is NOT
+      // opt-out-able (unlike self-arbitration by the platform, which is at least
+      // a neutral-ish third party) — a trade party refereeing its own dispute is
+      // never acceptable. Also enforced on-chain in Initialize (lines 29-31).
+      // arbitrator == seller is checkable now (both known at quote time). The
+      // buyer isn't bound until claimEscrowInvoice(), so arbitrator == buyer and
+      // seller == buyer are enforced there (manager.claimEscrow) and on-chain in
+      // Initialize (lines 29-31) as the authoritative backstop.
+      if (arbitratorAddress === sellerAddress) {
+        throw new Error(
+          "arbitrator == seller. A seller cannot arbitrate their own dispute; the buyer's dispute path would be a no-op. Use a distinct, neutral arbitrator."
+        );
+      }
+
       const feeBasisPoints =
         params.escrow.feeBasisPoints ?? this.config.escrowFeeBasisPoints;
       const blockExpiration =
         params.escrow.blockExpiration ?? this.config.escrowBlockExpiration;
 
-      const escrowRecord = await this.escrowManager.createEscrow({
+      // Phase 1: QUOTE only — no buyer, no on-chain deploy. The escrow contract
+      // is deployed later by claimEscrowInvoice(), once a proven buyer address
+      // is bound. This structurally closes the deposit front-run.
+      const escrowRecord = await this.escrowManager.createEscrowQuote({
         sellerAddress,
         arbitratorAddress,
         feeBasisPoints,
@@ -349,23 +413,20 @@ export class InvoiceEngine {
         metadata: { invoicePaymentId: paymentId.toString() },
       });
 
-      if (escrowRecord.scid) {
-        escrowData = {
-          scid: escrowRecord.scid,
-          deployTxid: escrowRecord.deployTxid!,
-          escrowStatus: escrowRecord.status === "awaiting_deposit"
-            ? "awaiting_deposit"
-            : "deploying",
-          sellerAddress,
-          arbitratorAddress,
-          feeBasisPoints,
-          blockExpiration,
-          buyerAddress: null,
-          depositHeight: null,
-          disputedAt: null,
-          resolution: null,
-        };
-      }
+      escrowData = {
+        escrowId: escrowRecord.id,
+        scid: null,
+        deployTxid: null,
+        escrowStatus: "quoted",
+        sellerAddress,
+        arbitratorAddress,
+        feeBasisPoints,
+        blockExpiration,
+        buyerAddress: null,
+        depositHeight: null,
+        disputedAt: null,
+        resolution: null,
+      };
     }
 
     const invoice: Invoice = {
@@ -505,6 +566,24 @@ export class InvoiceEngine {
           const previousStatus = invoice.status;
           await this.store.updateInvoice(invoiceId, { status: newStatus });
           invoice.status = newStatus;
+          // O20 — a misrouted base payment to an escrow invoice must not leave a
+          // live escrow contract that a later correct Deposit could fund,
+          // overwriting the misroute flag and settling the invoice while the
+          // merchant silently keeps the orphaned base funds (a silent double
+          // charge). Tear down the still-open escrow binding on misroute: cancel
+          // the deployed status-0 contract (CancelUnfunded — it holds 0) and drop
+          // the quote, so no Deposit can ever land against this invoice again.
+          // The invoice STAYS in misrouted_to_base as the authoritative alert
+          // (reconciliation/refund is a merchant out-of-band action on the base
+          // funds; there is no escrow to refund from).
+          if (newStatus === "misrouted_to_base" && invoice.escrow) {
+            await this.teardownEscrowOnMisroute(invoice).catch((err) =>
+              this.emit(
+                "error",
+                new Error(`Escrow teardown on misroute failed: ${err}`)
+              )
+            );
+          }
           this.emit("invoiceStatusChanged", invoice, previousStatus);
           await this.webhook?.send(`invoice.${newStatus}` as `invoice.${typeof newStatus}`, invoice, payment);
         }
@@ -592,6 +671,14 @@ export class InvoiceEngine {
           this.monitor.updateInvoice(current); // refresh monitor's stale copy
           return;
         }
+        // Never expire an escrow invoice on the integrated-address clock once it
+        // has deployed a contract or been funded — settlement runs on the escrow
+        // rail with its own on-chain expiry window (blockExpiration). Expiring it
+        // here would strand DERO locked in the escrow SC.
+        if (this.isEscrowSettling(current)) {
+          this.monitor.untrack(invoiceId);
+          return;
+        }
 
         if (this.webhookSink) {
           // Bridge path: enqueue a durable terminal invoice.expired whose frozen
@@ -655,6 +742,19 @@ export class InvoiceEngine {
     invoice: Invoice,
     payment: Payment
   ): InvoiceStatus {
+    // Escrow-backed invoices are settled through the escrow SCID (Deposit ->
+    // ConfirmDelivery/ClaimAfterExpiry/Arbitrate), NOT the integrated-address
+    // rail. A payment that lands on the integrated address of an escrow invoice
+    // is a buyer routing error: those funds hit the merchant's base wallet with
+    // zero escrow protection and must NEVER be allowed to drive the invoice to
+    // confirming/completed (which would tell the merchant to ship with nothing
+    // in escrow). Flag it for reconciliation instead of settling. Escrow invoice
+    // completion is driven exclusively by escrow lifecycle events
+    // (onEscrowFunded / escrow released|expired_claimed|arbitrated).
+    if (invoice.escrow) {
+      return "misrouted_to_base";
+    }
+
     const totalReceived = invoice.amountReceived;
 
     if (totalReceived >= invoice.amount) {
@@ -673,6 +773,25 @@ export class InvoiceEngine {
   }
 
   /**
+   * True once an invoice's escrow has left the pre-deploy stage — i.e. a
+   * contract exists on-chain (awaiting_deposit) or funds are locked/settling.
+   * Such invoices must NOT be expired on the integrated-address TTL clock; they
+   * settle on the escrow contract's own on-chain window. A still-quoted (or
+   * deploy_failed / cancelled) escrow has no on-chain funds and may expire
+   * normally on the base rail.
+   */
+  private isEscrowSettling(invoice: Invoice): boolean {
+    const s = invoice.escrow?.escrowStatus;
+    if (!s) return false;
+    return (
+      s === "awaiting_deposit" ||
+      s === "funded" ||
+      s === "disputed" ||
+      s === "deploying"
+    );
+  }
+
+  /**
    * Get the escrow manager (if escrow is enabled).
    */
   getEscrowManager(): EscrowManager | null {
@@ -686,6 +805,69 @@ export class InvoiceEngine {
    * @param action - Escrow action to perform
    * @returns Transaction ID
    */
+  /**
+   * Bind a proven buyer to a QUOTED escrow invoice and deploy the contract.
+   *
+   * `buyerAddress` MUST come from an authenticated / wallet-connect source —
+   * binding an unproven address would let refunds and dispute payouts go to
+   * the wrong party. On success the invoice's escrow gains its scid/deployTxid
+   * and moves to "awaiting_deposit".
+   */
+  async claimEscrowInvoice(
+    invoiceId: string,
+    buyerAddress: string
+  ): Promise<Invoice> {
+    const invoice = await this.store.getInvoice(invoiceId);
+    if (!invoice) throw new Error(`Invoice ${invoiceId} not found`);
+    if (!invoice.escrow) throw new Error(`Invoice ${invoiceId} has no escrow`);
+    if (!this.escrowManager) throw new Error("Escrow manager not available");
+    if (invoice.escrow.escrowStatus !== "quoted") {
+      throw new Error(
+        `Invoice ${invoiceId} escrow is not claimable (status: ${invoice.escrow.escrowStatus})`
+      );
+    }
+    const escrowId = invoice.escrow.escrowId;
+    if (!escrowId) {
+      throw new Error(`Invoice ${invoiceId} escrow has no escrowId to claim`);
+    }
+
+    // O14 invariant — the amount that will be bound on-chain (and thus the most
+    // the seller can ever be protected for) MUST equal the invoice price the
+    // buyer sees. Guard here, before any deploy gas, against a quote whose
+    // expectedAmount drifted from invoice.amount (e.g. a mutated invoice.amount
+    // or a directly-constructed quote). The fee is deducted FROM expectedAmount
+    // on release (seller-borne, not added on top): at feeBps=250 the seller nets
+    // 97.5% of the price. That is the intended model and is disclosed via
+    // invoice.escrow.feeBasisPoints; this invariant only guarantees the escrowed
+    // principal matches the displayed price so the shortfall is exactly the fee,
+    // never a silent under-escrow.
+    const quotedEscrow = this.escrowManager.getEscrow(escrowId);
+    if (quotedEscrow && quotedEscrow.expectedAmount !== invoice.amount) {
+      throw new Error(
+        `Invoice ${invoiceId} escrow expectedAmount (${quotedEscrow.expectedAmount}) != invoice amount (${invoice.amount}); refusing to deploy an under/over-bound escrow.`
+      );
+    }
+
+    const record = await this.escrowManager.claimEscrow(escrowId, buyerAddress);
+    if (record.status === "deploy_failed" || !record.scid) {
+      invoice.escrow.escrowStatus = "deploy_failed";
+      await this.store.updateInvoice(invoice.id, {});
+      throw new Error(`Escrow deploy failed for invoice ${invoiceId}`);
+    }
+
+    invoice.escrow.scid = record.scid;
+    invoice.escrow.deployTxid = record.deployTxid;
+    invoice.escrow.buyerAddress = buyerAddress;
+    invoice.escrow.escrowStatus = "awaiting_deposit";
+    // O21 — a fresh, proven buyer bind is a legitimate new attempt: reset the
+    // auto-requote budget so an earlier griefing spree can't permanently deny a
+    // later honest buyer's ability to be re-quoted after a cancel race.
+    invoice.escrow.requoteCount = 0;
+    invoice.escrow.lastRequoteAt = 0;
+    await this.store.updateInvoice(invoice.id, {});
+    return invoice;
+  }
+
   async escrowAction(
     invoiceId: string,
     action: "confirmDelivery" | "refundBuyer" | "dispute" | "claimAfterExpiry" | "arbitrateRelease" | "arbitrateRefund"
@@ -696,6 +878,11 @@ export class InvoiceEngine {
     if (!this.escrowManager) throw new Error("Escrow manager not available");
 
     const scid = invoice.escrow.scid;
+    if (!scid) {
+      throw new Error(
+        `Invoice ${invoiceId} escrow is not yet claimed/deployed (no SCID). Bind a buyer with claimEscrowInvoice() first.`
+      );
+    }
 
     switch (action) {
       case "confirmDelivery":
@@ -737,10 +924,77 @@ export class InvoiceEngine {
       invoice.escrow.buyerAddress = escrow.buyerAddress;
       invoice.escrow.resolution = escrow.resolution;
 
+      // Map the escrow lifecycle onto the invoice's own status so the escrow
+      // rail — NOT the integrated-address monitor — drives an escrow invoice to
+      // its terminal state. Without this, a buyer who only calls Deposit() (and
+      // never pays the integrated address) leaves the invoice stuck 'pending'
+      // until it wrongly expires, even though real DERO is locked in escrow.
+      //  - funded            -> escrow_funded (paid into escrow; do not expire)
+      //  - disputed          -> disputed (non-terminal; settlement blocked, O19)
+      //  - released / expiry -> completed (seller got paid)
+      //  - refunded          -> refunded (buyer got their money back; O19 — a
+      //                         chargeback-equivalent, NOT 'expired'/never-paid)
+      //  - arbitrated        -> completed if seller-release, refunded if buyer-refund
+      let mappedStatus: InvoiceStatus | null = null;
+      switch (escrow.status) {
+        case "funded":
+          mappedStatus = "escrow_funded";
+          // O21 — a real deposit landed: this buyer succeeded, so clear the
+          // per-invoice auto-requote budget. A later grief (if the escrow is ever
+          // re-quoted) starts from a fresh budget instead of an exhausted one.
+          invoice.escrow.requoteCount = 0;
+          invoice.escrow.lastRequoteAt = 0;
+          break;
+        case "disputed":
+          mappedStatus = "disputed";
+          break;
+        case "released":
+        case "expired_claimed":
+          mappedStatus = "completed";
+          break;
+        case "refunded":
+          mappedStatus = "refunded";
+          break;
+        case "arbitrated":
+          mappedStatus =
+            escrow.resolution === "arbitrator_released_seller"
+              ? "completed"
+              : escrow.resolution === "arbitrator_refunded_buyer"
+                ? "refunded"
+                : null;
+          break;
+        default:
+          mappedStatus = null;
+      }
+
+      const previousStatus = invoice.status;
+      const statusChanged = mappedStatus !== null && mappedStatus !== previousStatus;
+      if (statusChanged) {
+        invoice.status = mappedStatus!;
+        if (mappedStatus === "completed") {
+          invoice.completedAt = new Date().toISOString();
+        }
+      }
+
       await this.store.updateInvoice(invoice.id, {
-        // Store the updated escrow data via metadata as a workaround
-        // since the store interface doesn't have an escrow-specific update
+        status: statusChanged ? invoice.status : undefined,
+        completedAt: statusChanged && invoice.status === "completed"
+          ? invoice.completedAt
+          : undefined,
       });
+
+      if (statusChanged) {
+        // Stop the integrated-address monitor once escrow reaches a terminal
+        // invoice state; the escrow rail is authoritative from here.
+        if (
+          invoice.status === "completed" ||
+          invoice.status === "expired" ||
+          invoice.status === "refunded"
+        ) {
+          this.monitor.untrack(invoice.id);
+        }
+        this.emit("invoiceStatusChanged", invoice, previousStatus);
+      }
 
       await this.webhook?.send(webhookType as Parameters<typeof this.webhook.send>[0], invoice);
     };
@@ -775,9 +1029,257 @@ export class InvoiceEngine {
       );
     });
 
+    this.escrowManager.on("escrowCancelled", (escrow) => {
+      this.requoteCancelledEscrow(escrow).catch((err) =>
+        this.emit("error", new Error(`Escrow cancelled handler: ${err}`))
+      );
+    });
+
+    // O18 — a funded escrow whose amount failed independent verification must
+    // NOT settle the invoice. Surface it as an alert (keep the invoice off the
+    // shippable path) rather than mapping funded -> escrow_funded.
+    this.escrowManager.on("escrowFundingMismatch", (escrow) => {
+      this.handleEscrowFundingMismatch(escrow).catch((err) =>
+        this.emit("error", new Error(`Escrow funding-mismatch handler: ${err}`))
+      );
+    });
+
     this.escrowManager.on("error", (err) => {
       this.emit("error", err);
     });
+  }
+
+  /**
+   * Re-quote a fresh escrow onto a still-open invoice whose escrow was cancelled
+   * while never funded. A hostile/regretful seller (or a griefer) can land
+   * CancelUnfunded ahead of a buyer's Deposit (both target status 0; SCDATA is
+   * plaintext in the mempool). That never risks funds — a status-0 contract
+   * holds 0 — but it strands the buyer against a dead SCID. Here we detect the
+   * dead binding and reset the invoice's escrow to a fresh QUOTE so the buyer
+   * can re-claim + deposit. No auto re-deploy: a new buyer proof is required at
+   * the next claim, preserving the two-phase front-run protection.
+   *
+   * Guarded to no-op if the invoice is already paid, completed, expired, or if
+   * its current escrow binding is not the cancelled SCID (so a stale event can't
+   * clobber a newer binding).
+   */
+  private async requoteCancelledEscrow(escrow: EscrowRecord): Promise<void> {
+    if (!this.escrowManager) return;
+    if (!escrow.scid) return;
+
+    const invoices = await this.store.listInvoices();
+    const invoice = invoices.find((i) => i.escrow?.scid === escrow.scid);
+    if (!invoice || !invoice.escrow) return;
+
+    // Only re-quote for an invoice that can still be paid.
+    const terminalInvoice: InvoiceStatus[] = [
+      "completed",
+      "expired",
+    ];
+    if (
+      terminalInvoice.includes(invoice.status) ||
+      invoice.amountReceived > 0n ||
+      invoice.payments.length > 0
+    ) {
+      return;
+    }
+
+    // O13 guard — bound the auto-requote loop. Without a cap, a hostile seller
+    // (or owner) can land CancelUnfunded on each freshly-deployed status-0 SCID
+    // before Deposit confirms; each cancel fires escrowCancelled -> auto-requote
+    // -> (on re-claim) another platform-gas deploy, forever, at the cost of one
+    // cheap CancelUnfunded per cycle. That is an unbounded platform-gas drain and
+    // a permanent denial of settlement for the buyer. We cap the number of
+    // automatic requotes per invoice and enforce a cooldown between them. Once
+    // the cap is hit the invoice is parked in a terminal alert state
+    // (escrow_cancel_griefed) for human/out-of-band handling rather than looping.
+    // O21 — counters live on the engine-controlled invoice.escrow object, NOT on
+    // the caller-supplied invoice.metadata (which createInvoice populates from
+    // params.metadata and a merchant/API can rewrite). This closes the reset
+    // vector that would otherwise re-open the O9/O13 unbounded gas amplifier.
+    const requoteCount = invoice.escrow.requoteCount ?? 0;
+    const lastRequoteAt = invoice.escrow.lastRequoteAt ?? 0;
+    const now = Date.now();
+    if (now - lastRequoteAt < this.config.escrowRequoteCooldownMs) {
+      // Too soon since the last auto-requote — drop this cancel (rate limit).
+      return;
+    }
+    if (requoteCount >= this.config.escrowMaxAutoRequotes) {
+      // Cap reached: stop auto-amplifying. Park the invoice for manual handling
+      // and stop tracking it on the base rail. No funds are at risk (every
+      // cancelled contract was status-0 / held 0).
+      invoice.escrow.escrowStatus = "cancelled";
+      invoice.status = "expired";
+      await this.store.updateInvoice(invoice.id, { status: "expired" });
+      this.monitor.untrack(invoice.id);
+      await this.webhook?.send(
+        "escrow.cancel_griefed" as Parameters<typeof this.webhook.send>[0],
+        invoice
+      );
+      return;
+    }
+    invoice.escrow.requoteCount = requoteCount + 1;
+    invoice.escrow.lastRequoteAt = now;
+
+    const fresh = await this.escrowManager.createEscrowQuote({
+      sellerAddress: invoice.escrow.sellerAddress,
+      arbitratorAddress: invoice.escrow.arbitratorAddress,
+      feeBasisPoints: invoice.escrow.feeBasisPoints,
+      blockExpiration: invoice.escrow.blockExpiration,
+      expectedAmount: invoice.amount,
+      metadata: { invoicePaymentId: invoice.paymentId.toString(), requotedFrom: escrow.scid },
+    });
+
+    invoice.escrow.escrowId = fresh.id;
+    invoice.escrow.scid = null;
+    invoice.escrow.deployTxid = null;
+    invoice.escrow.buyerAddress = null;
+    invoice.escrow.escrowStatus = "quoted";
+    invoice.escrow.depositHeight = null;
+    invoice.escrow.resolution = null;
+    await this.store.updateInvoice(invoice.id, {});
+    await this.webhook?.send("escrow.requoted" as Parameters<typeof this.webhook.send>[0], invoice);
+  }
+
+  /**
+   * O20 — tear down a still-open escrow binding when its invoice receives a
+   * misrouted base-rail payment. Prevents a later correct Deposit() from funding
+   * the escrow and silently overwriting the misrouted_to_base alert (which would
+   * settle the invoice while the merchant keeps the orphaned base funds = silent
+   * double-charge).
+   *
+   * - quoted / deploy_failed / no scid: just drop the local quote (no on-chain
+   *   contract exists).
+   * - awaiting_deposit (deployed, status-0): CancelUnfunded the contract so no
+   *   Deposit can land, then untrack. The cancel reverts iff a Deposit raced in
+   *   first; in that RARE case the escrow legitimately funds and we deliberately
+   *   let the escrow rail win (buyer's real escrow deposit is honored), but the
+   *   invoice keeps a metadata audit marker so the earlier misroute is never
+   *   invisible.
+   * - funded / disputed / terminal: do nothing — real funds are already in
+   *   escrow; the escrow rail is authoritative and the misroute is a separate
+   *   base-wallet reconciliation item.
+   */
+  private async teardownEscrowOnMisroute(invoice: Invoice): Promise<void> {
+    if (!this.escrowManager || !invoice.escrow) return;
+    const esc = invoice.escrow;
+    // Record the misroute permanently so a later settlement can never hide it.
+    (invoice.metadata as Record<string, unknown>).__escrowMisroutedToBase = true;
+    await this.store.updateInvoice(invoice.id, {});
+
+    const status = esc.escrowStatus;
+    if (status === "funded" || status === "disputed") {
+      // Real DERO already locked in escrow; leave the escrow rail authoritative.
+      return;
+    }
+    if (!esc.scid) {
+      // Only a quote exists — drop it locally so nothing can be claimed/deployed.
+      if (esc.escrowId) this.escrowManager.untrack(esc.escrowId);
+      esc.escrowStatus = "cancelled";
+      esc.escrowId = null;
+      await this.store.updateInvoice(invoice.id, {});
+      return;
+    }
+    // Deployed but status-0: cancel on-chain so no Deposit can fund it.
+    try {
+      await this.escrowManager.cancelUnfunded(esc.scid);
+    } catch {
+      // Reverted — a Deposit raced in and the contract is no longer status-0.
+      // The escrow legitimately funds; the __escrowMisroutedToBase marker above
+      // keeps the base-rail overpay auditable. Nothing further to do here.
+      return;
+    }
+    if (esc.escrowId) this.escrowManager.untrack(esc.escrowId);
+    esc.escrowStatus = "cancelled";
+    await this.store.updateInvoice(invoice.id, {});
+  }
+
+  /**
+   * O18 — an escrow reported on-chain "funded" but its amount failed independent
+   * verification (escrowBalance != expectedAmount or the contract's real DERO
+   * holdings do not cover it). The escrow manager already declined to settle it
+   * (left it in awaiting_deposit and did NOT emit escrowFunded). Here we make
+   * that visible at the invoice layer WITHOUT settling: the invoice stays off the
+   * shippable path (never escrow_funded/completed) and a funding_mismatch webhook
+   * fires for out-of-band handling. We do not expire it either — the buyer's real
+   * deposit may still be on the contract and recoverable via the normal paths.
+   */
+  private async handleEscrowFundingMismatch(
+    escrow: EscrowRecord
+  ): Promise<void> {
+    if (!escrow.scid) return;
+    const invoices = await this.store.listInvoices();
+    const invoice = invoices.find((i) => i.escrow?.scid === escrow.scid);
+    if (!invoice || !invoice.escrow) return;
+    // Do NOT change invoice.status to any settled/shippable value. Fire the alert.
+    await this.webhook?.send(
+      "escrow.funding_mismatch" as Parameters<typeof this.webhook.send>[0],
+      invoice
+    );
+    this.emit(
+      "error",
+      new Error(
+        `Escrow funding mismatch for invoice ${invoice.id} (scid ${escrow.scid}); invoice NOT settled.`
+      )
+    );
+  }
+
+  /**
+   * O15 — reload in-flight escrows from the invoice store into the escrow
+   * manager's poller after a restart.
+   *
+   * The escrow manager is in-memory only, so without this its poll loop runs
+   * over an empty map and every not-yet-terminal on-chain escrow (real locked
+   * DERO) goes permanently un-reconciled: no funded/released/arbitrated event
+   * fires again and the invoice never reaches its terminal state.
+   *
+   * We reconstruct the EscrowRecord from the persisted InvoiceEscrow binding and
+   * import it. Only escrows that have actually deployed (have an scid) and are in
+   * a non-terminal state need re-polling; a still-`quoted` / `deploy_failed`
+   * escrow has no on-chain contract to watch. The record we import is a
+   * best-effort local view — the very next poll overwrites status/depositAmount
+   * from authoritative on-chain state via reconcile().
+   */
+  private async rehydrateEscrows(): Promise<void> {
+    if (!this.escrowManager) return;
+    // Non-terminal on-chain escrow states worth polling. quoted/deploying/
+    // deploy_failed/cancelled and the resolved terminals are skipped: they have
+    // no live on-chain balance/transition left to observe.
+    const pollable = new Set<EscrowStatus>([
+      "awaiting_deposit",
+      "funded",
+      "disputed",
+    ]);
+    const invoices = await this.store.listInvoices();
+    for (const invoice of invoices) {
+      const e = invoice.escrow;
+      if (!e || !e.scid || !e.escrowId) continue;
+      if (!pollable.has(e.escrowStatus as EscrowStatus)) continue;
+      // Skip if the manager already knows this escrow (idempotent restart).
+      if (this.escrowManager.getEscrow(e.escrowId)) continue;
+
+      this.escrowManager.importEscrow({
+        id: e.escrowId,
+        scid: e.scid,
+        deployTxid: e.deployTxid,
+        status: e.escrowStatus as EscrowStatus,
+        sellerAddress: e.sellerAddress,
+        arbitratorAddress: e.arbitratorAddress,
+        feeBasisPoints: e.feeBasisPoints,
+        blockExpiration: e.blockExpiration,
+        // The O14 invariant guarantees the escrowed principal equals the invoice
+        // price, so invoice.amount is the authoritative expectedAmount.
+        expectedAmount: invoice.amount,
+        depositAmount: e.escrowStatus === "funded" ? invoice.amount : null,
+        buyerAddress: e.buyerAddress,
+        createdAt: invoice.createdAt,
+        depositedAt: null,
+        resolvedAt: null,
+        resolution: (e.resolution as EscrowRecord["resolution"]) ?? null,
+        invoiceId: invoice.id,
+        metadata: { invoicePaymentId: invoice.paymentId.toString() },
+      });
+    }
   }
 
   /**
@@ -801,6 +1303,13 @@ export class InvoiceEngine {
         // from under an in-flight settlement. A funded-but-unconfirmed invoice
         // keeps being tracked; only a zero-payment invoice expires here.
         if (invoice.amountReceived > 0n || invoice.payments.length > 0) {
+          continue;
+        }
+        // Escrow invoices past the quote stage settle on the escrow rail's own
+        // on-chain window, not the integrated-address TTL. Do not expire them
+        // here (would strand escrowed DERO); stop tracking on the base rail.
+        if (this.isEscrowSettling(invoice)) {
+          this.monitor.untrack(invoice.id);
           continue;
         }
 

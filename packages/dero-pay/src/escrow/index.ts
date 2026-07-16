@@ -29,4 +29,5 @@ export type {
   EscrowManagerEvents,
   EscrowManagerConfig,
   CreateEscrowParams,
+  CreateEscrowQuoteParams,
 } from "./types.js";

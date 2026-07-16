@@ -35,6 +35,12 @@ export type InvoiceStats = {
   completed: number;
   expired: number;
   partial: number;
+  misrouted_to_base: number;
+  escrow_funded: number;
+  /** O19 — dispute in flight (escrow funded, awaiting arbitration). */
+  disputed: number;
+  /** O19 — buyer refunded (chargeback-equivalent); distinct from expired. */
+  refunded: number;
   totalAmountReceived: bigint;
 };
 

@@ -22,15 +22,23 @@ import {
 // ---------------------------------------------------------------------------
 
 /** The escrow smart contract source code */
-const ESCROW_CONTRACT_SOURCE = `Function Initialize(sellerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64) Uint64
+const ESCROW_CONTRACT_SOURCE = `Function Initialize(sellerAddress String, buyerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64, expectedAmount Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF EXISTS("owner") THEN GOTO 200
-25 IF feeBasisPoints > 10000 THEN GOTO 200
-30 STORE("owner", SIGNER())
+25 IF feeBasisPoints >= 5000 THEN GOTO 200
+26 IF blockExpiration < 4000 THEN GOTO 200
+27 IF blockExpiration > 10000000 THEN GOTO 200
+28 IF expectedAmount == 0 THEN GOTO 200
+29 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(sellerAddress) THEN GOTO 200
+30 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(buyerAddress) THEN GOTO 200
+31 IF ADDRESS_RAW(sellerAddress) == ADDRESS_RAW(buyerAddress) THEN GOTO 200
+32 STORE("owner", SIGNER())
 40 STORE("seller", ADDRESS_RAW(sellerAddress))
+45 STORE("buyer", ADDRESS_RAW(buyerAddress))
 50 STORE("arbitrator", ADDRESS_RAW(arbitratorAddress))
 60 STORE("feeBasisPoints", feeBasisPoints)
 70 STORE("blockExpiration", blockExpiration)
+75 STORE("expectedAmount", expectedAmount)
 80 STORE("escrowBalance", 0)
 90 STORE("status", 0)
 100 RETURN 0
@@ -40,10 +48,25 @@ End Function
 Function Deposit() Uint64
 10 IF LOAD("status") != 0 THEN GOTO 200
 20 IF DEROVALUE() == 0 THEN GOTO 200
-30 STORE("buyer", SIGNER())
-40 STORE("escrowBalance", LOAD("escrowBalance") + DEROVALUE())
+30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
+35 IF DEROVALUE() < LOAD("expectedAmount") THEN GOTO 200
+40 STORE("escrowBalance", LOAD("expectedAmount"))
 50 STORE("status", 1)
 60 STORE("depositHeight", BLOCK_HEIGHT())
+65 IF DEROVALUE() > LOAD("expectedAmount") THEN GOTO 80 ELSE GOTO 70
+70 RETURN 0
+80 SEND_DERO_TO_ADDRESS(SIGNER(), DEROVALUE() - LOAD("expectedAmount"))
+90 RETURN 0
+200 RETURN 1
+End Function
+
+Function CancelUnfunded() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF LOAD("status") != 0 THEN GOTO 200
+30 IF SIGNER() == LOAD("seller") THEN GOTO 60
+40 IF SIGNER() == LOAD("owner") THEN GOTO 60
+50 GOTO 200
+60 STORE("status", 7)
 70 RETURN 0
 200 RETURN 1
 End Function
@@ -118,6 +141,7 @@ Function Arbitrate(releaseToSeller Uint64) Uint64
 80 IF releaseToSeller == 1 THEN GOTO 120
 90 SEND_DERO_TO_ADDRESS(LOAD("buyer"), balance)
 100 STORE("escrowBalance", 0)
+105 STORE("arbitrateResult", 0)
 110 STORE("status", 6)
 115 GOTO 170
 120 IF payout > 0 THEN GOTO 130 ELSE GOTO 140
@@ -125,6 +149,7 @@ Function Arbitrate(releaseToSeller Uint64) Uint64
 140 IF fee > 0 THEN GOTO 150 ELSE GOTO 160
 150 SEND_DERO_TO_ADDRESS(LOAD("owner"), fee)
 160 STORE("escrowBalance", 0)
+163 STORE("arbitrateResult", 1)
 165 STORE("status", 6)
 170 RETURN 0
 200 RETURN 1
@@ -134,7 +159,54 @@ Function GetStatus() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 RETURN LOAD("status")
 200 RETURN 1
+End Function
+
+Function TransferOwnership(newOwner String) Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+30 STORE("pendingOwner", ADDRESS_RAW(newOwner))
+40 RETURN 0
+200 RETURN 1
+End Function
+
+Function ClaimOwnership() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF EXISTS("pendingOwner") == 0 THEN GOTO 200
+30 IF SIGNER() != LOAD("pendingOwner") THEN GOTO 200
+40 STORE("owner", SIGNER())
+50 DELETE("pendingOwner")
+60 RETURN 0
+200 RETURN 1
 End Function`;
+
+/**
+ * Light DERO address sanity check for escrow PARTIES (seller/buyer/arbitrator).
+ *
+ * O17 — accepts ONLY base mainnet addresses ("dero1…") and REJECTS integrated
+ * addresses ("deto1…"). Reason: every escrow party is compared on-chain against
+ * SIGNER() (Deposit: `IF SIGNER() != LOAD("buyer")`) or is a SEND_DERO_TO_ADDRESS
+ * payout target. SIGNER() returns the bare account point of the signing wallet,
+ * with any payment-ID stripped. An integrated address embeds a base point PLUS a
+ * payment-ID; binding it via STORE("buyer", ADDRESS_RAW(deto1…)) can store a form
+ * that SIGNER() from that same wallet never matches — permanently bricking
+ * Deposit() for the genuine owner (a fund-safety/griefing hole). There is no
+ * legitimate reason to bind an integrated address as an escrow party: parties are
+ * identities, not payment-routing endpoints. The buyer-proof UI and manual-entry
+ * fallback MUST reject deto1… before it ever reaches here; this is the SDK-level
+ * backstop. Not a full bech32 decode — the chain is the authoritative validator.
+ */
+function assertDeroAddress(label: string, addr: string): void {
+  if (typeof addr !== "string" || !/^dero1[0-9a-z]{40,}$/i.test(addr)) {
+    if (typeof addr === "string" && /^deto1[0-9a-z]{40,}$/i.test(addr)) {
+      throw new Error(
+        `${label} is an integrated (deto1…) address; escrow parties must be base (dero1…) addresses. ` +
+          `An integrated address embeds a payment-ID and will not match SIGNER() on-chain, bricking Deposit(). ` +
+          `Use the party's base wallet address.`
+      );
+    }
+    throw new Error(`${label} is not a valid DERO base address: ${JSON.stringify(addr)}`);
+  }
+}
 
 /**
  * Typed wrapper around the escrow smart contract.
@@ -164,15 +236,62 @@ export class EscrowContract {
    */
   async deploy(params: {
     sellerAddress: string;
+    buyerAddress: string;
     arbitratorAddress: string;
     feeBasisPoints: number;
     blockExpiration: number;
+    expectedAmount: bigint;
   }): Promise<string> {
+    // Validate addresses up front so a typo fails here with a clear message
+    // instead of as an opaque ADDRESS_RAW() revert during on-chain deploy.
+    assertDeroAddress("sellerAddress", params.sellerAddress);
+    assertDeroAddress("buyerAddress", params.buyerAddress);
+    assertDeroAddress("arbitratorAddress", params.arbitratorAddress);
+
+    // Fee ceiling: a fee >= 50% would let the platform starve the seller of the
+    // release payout (at 100% the seller receives 0 and the owner takes all).
+    // Enforced on-chain too (Initialize line 25); mirrored here so a bad fee
+    // fails with a clear message before any deploy gas is spent.
+    if (
+      !Number.isInteger(params.feeBasisPoints) ||
+      params.feeBasisPoints < 0 ||
+      params.feeBasisPoints >= 5000
+    ) {
+      throw new Error(
+        `feeBasisPoints must be an integer in [0, 5000) (< 50%), got ${params.feeBasisPoints}`
+      );
+    }
+
+    // Defense in depth: the contract also enforces this range on-chain
+    // (an out-of-range blockExpiration otherwise inverts the dispute window).
+    if (
+      !Number.isInteger(params.blockExpiration) ||
+      params.blockExpiration < 4000 ||
+      params.blockExpiration > 10_000_000
+    ) {
+      throw new Error(
+        `blockExpiration must be an integer in [4000, 10000000] blocks (~20h to ~5.7y), got ${params.blockExpiration}`
+      );
+    }
+
+    // expectedAmount blocks dust deposits + underpayment on-chain. Real DERO
+    // amounts are far below MAX_SAFE_INTEGER; guard so the uint64 arg is exact.
+    if (params.expectedAmount <= 0n) {
+      throw new Error(`expectedAmount must be > 0, got ${params.expectedAmount}`);
+    }
+    if (params.expectedAmount > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(
+        `expectedAmount ${params.expectedAmount} exceeds the safe uint64 range for SC args`
+      );
+    }
+
     const initArgs: ScRpcArg[] = [
       { name: "sellerAddress", datatype: "S", value: params.sellerAddress },
+      { name: "buyerAddress", datatype: "S", value: params.buyerAddress },
       { name: "arbitratorAddress", datatype: "S", value: params.arbitratorAddress },
       { name: "feeBasisPoints", datatype: "U", value: params.feeBasisPoints },
       { name: "blockExpiration", datatype: "U", value: params.blockExpiration },
+      { name: "expectedAmount", datatype: "U", value: Number(params.expectedAmount) },
     ];
 
     return this.walletRpc.installSc(ESCROW_CONTRACT_SOURCE, initArgs);
@@ -197,6 +316,19 @@ export class EscrowContract {
    */
   async confirmDelivery(scid: string): Promise<string> {
     return this.walletRpc.invokeSc(scid, "ConfirmDelivery");
+  }
+
+  /**
+   * Cancel a never-funded escrow (seller/owner action). Closes a status-0
+   * contract whose bound buyer never deposited (e.g. buyer proved wallet A at
+   * claim but funds only from wallet B, so Deposit() perpetually reverts).
+   * No funds move — escrowBalance is 0 in status 0.
+   *
+   * @param scid - Smart Contract ID
+   * @returns Transaction ID
+   */
+  async cancelUnfunded(scid: string): Promise<string> {
+    return this.walletRpc.invokeSc(scid, "CancelUnfunded");
   }
 
   /**
@@ -244,6 +376,34 @@ export class EscrowContract {
   }
 
   /**
+   * Nominate a new owner (current-owner action). Two-step: the successor must
+   * ClaimOwnership() to take over. Use this to move owner authority off the hot
+   * deploy key onto a cold key, bounding a hot-key compromise.
+   *
+   * @param scid - Smart Contract ID
+   * @param newOwner - DERO address of the nominated successor
+   * @returns Transaction ID
+   */
+  async transferOwnership(scid: string, newOwner: string): Promise<string> {
+    assertDeroAddress("newOwner", newOwner);
+    const args: ScRpcArg[] = [
+      { name: "newOwner", datatype: "S", value: newOwner },
+    ];
+    return this.walletRpc.invokeSc(scid, "TransferOwnership", args);
+  }
+
+  /**
+   * Accept a pending ownership nomination (successor action). Must be signed by
+   * the exact address nominated via transferOwnership().
+   *
+   * @param scid - Smart Contract ID
+   * @returns Transaction ID
+   */
+  async claimOwnership(scid: string): Promise<string> {
+    return this.walletRpc.invokeSc(scid, "ClaimOwnership");
+  }
+
+  /**
    * Query the full on-chain state of an escrow contract.
    *
    * @param scid - Smart Contract ID
@@ -272,6 +432,12 @@ export class EscrowContract {
       blockExpiration: Number(vars["blockExpiration"]) || 0,
       escrowBalance: Number(vars["escrowBalance"]) || 0,
       depositHeight: vars["depositHeight"] ? Number(vars["depositHeight"]) : null,
+      // Direction of an Arbitrate() resolution, written on-chain by the contract
+      // (1 = released to seller, 0 = refunded to buyer). Undefined until the
+      // dispute is arbitrated. Required because BOTH Arbitrate branches zero
+      // escrowBalance, so balance alone cannot tell the two outcomes apart.
+      arbitrateResult:
+        vars["arbitrateResult"] != null ? Number(vars["arbitrateResult"]) : null,
       scBalance: result.balance ?? 0,
     };
   }

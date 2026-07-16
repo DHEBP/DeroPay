@@ -13,10 +13,11 @@ describe("EscrowStatusCode", () => {
     expect(EscrowStatusCode.EXPIRED_CLAIMED).toBe(4);
     expect(EscrowStatusCode.DISPUTED).toBe(5);
     expect(EscrowStatusCode.ARBITRATED).toBe(6);
+    expect(EscrowStatusCode.CANCELLED).toBe(7);
   });
 
-  it("has 7 status codes (0-6)", () => {
-    expect(Object.keys(EscrowStatusCode)).toHaveLength(7);
+  it("has 8 status codes (0-7)", () => {
+    expect(Object.keys(EscrowStatusCode)).toHaveLength(8);
   });
 });
 
@@ -29,6 +30,7 @@ describe("statusCodeToString", () => {
     expect(statusCodeToString[4]).toBe("expired_claimed");
     expect(statusCodeToString[5]).toBe("disputed");
     expect(statusCodeToString[6]).toBe("arbitrated");
+    expect(statusCodeToString[7]).toBe("cancelled");
   });
 
   it("covers every EscrowStatusCode value", () => {

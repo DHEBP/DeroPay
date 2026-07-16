@@ -18,6 +18,7 @@ const defaultOnChainState: EscrowOnChainState = {
   blockExpiration: 60,
   escrowBalance: 0,
   depositHeight: null,
+  arbitrateResult: null,
   scBalance: 0,
 };
 

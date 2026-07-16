@@ -16,15 +16,18 @@
  *
  * await manager.start();
  *
+ * // Merchant-known-buyer fast path (quote + deploy in one call):
  * const escrow = await manager.createEscrow({
- *   sellerAddress: "deto1q...",
- *   arbitratorAddress: "deto1q...",
+ *   sellerAddress: "dero1q...",      // base address (NOT integrated deto1…)
+ *   buyerAddress: "dero1q...",       // base addr; only this addr may fund (must match SIGNER())
+ *   arbitratorAddress: "dero1q...",
  *   feeBasisPoints: 250,
- *   blockExpiration: 60,
- *   expectedAmount: 5_000_000_000_000n, // 5 DERO
+ *   blockExpiration: 9600,           // ~2 days at ~18s/block; must be >= 4000
+ *   expectedAmount: 5_000_000_000_000n, // 5 DERO — deposit must be >= this
  * });
  *
- * // Escrow is now deployed and being monitored
+ * // Open flow: createEscrowQuote(...) then claimEscrow(id, provenBuyerAddr)
+ * // once the buyer connects their wallet.
  * ```
  */
 
@@ -35,6 +38,7 @@ import { EscrowContract } from "./contract.js";
 import {
   statusCodeToString,
   type CreateEscrowParams,
+  type CreateEscrowQuoteParams,
   type EscrowManagerConfig,
   type EscrowManagerEvents,
   type EscrowRecord,
@@ -46,10 +50,30 @@ import {
 /**
  * EscrowManager orchestrates the lifecycle of escrow smart contracts.
  */
+/**
+ * Durable compare-and-set hook for the quote->claim single-claim guard.
+ *
+ * The in-memory guard in {@link EscrowManager.claimEscrow} is atomic ONLY
+ * within a single process. The stated deployment target is a persistent,
+ * multi-process server; there, two workers can both read a "quoted" record and
+ * both proceed to deploy (a TOCTOU that re-opens the buyer-seat hijack at the
+ * claim window). Injecting a durable CAS closes this: `tryClaim` must perform an
+ * atomic conditional write (e.g. `UPDATE escrows SET status='deploying' WHERE
+ * id=$1 AND status='quoted'`) and return true ONLY if THIS caller won the row.
+ */
+export interface EscrowClaimGuard {
+  /** Atomically flip id from 'quoted' to 'deploying'. Returns true iff this
+   *  caller won the transition (i.e. it was still 'quoted'). */
+  tryClaim(id: string): Promise<boolean>;
+  /** Roll the row back to 'quoted' if the subsequent deploy failed. */
+  releaseClaim(id: string): Promise<void>;
+}
+
 export class EscrowManager {
   private walletRpc: WalletRpcClient;
   private daemonRpc: DaemonRpcClient;
   private contract: EscrowContract;
+  private claimGuard: EscrowClaimGuard | null;
   private escrows: Map<string, EscrowRecord> = new Map();
   private scidToId: Map<string, string> = new Map();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -68,6 +92,14 @@ export class EscrowManager {
       /** Inject RPC clients (for testing); when set, walletRpcUrl/daemonRpcUrl are ignored */
       walletRpc?: WalletRpcClient;
       daemonRpc?: DaemonRpcClient;
+      /**
+       * Durable single-claim guard. REQUIRED for any multi-process deployment:
+       * without it the quote->claim transition is only process-atomic and a
+       * claim-race attacker can re-open the buyer-seat hijack. When omitted the
+       * manager falls back to the in-memory guard (safe ONLY for a single
+       * process / tests).
+       */
+      claimGuard?: EscrowClaimGuard;
     }
   ) {
     this.walletRpc =
@@ -85,10 +117,14 @@ export class EscrowManager {
       });
 
     this.contract = new EscrowContract(this.walletRpc, this.daemonRpc);
+    this.claimGuard = config?.claimGuard ?? null;
 
     this.pollIntervalMs = config?.pollIntervalMs ?? 10_000;
     this.defaultFeeBasisPoints = config?.defaultFeeBasisPoints ?? 250;
-    this.defaultBlockExpiration = config?.defaultBlockExpiration ?? 60;
+    // ~2 days at ~18s/block. Must be >= the on-chain 4000-block floor; a shorter
+    // default would revert at deploy and, worse, would give a human buyer too
+    // little time to dispute before ClaimAfterExpiry becomes callable.
+    this.defaultBlockExpiration = config?.defaultBlockExpiration ?? 9600;
   }
 
   // -------------------------------------------------------------------------
@@ -176,7 +212,27 @@ export class EscrowManager {
    * Deploys the contract on-chain and returns a local EscrowRecord
    * that starts being polled for status updates.
    */
-  async createEscrow(params: CreateEscrowParams): Promise<EscrowRecord> {
+  /**
+   * Phase 1 — create a local QUOTE. No buyer, no on-chain deployment.
+   *
+   * The contract is NOT deployed until {@link claimEscrow} binds a proven
+   * buyer address. This is what structurally closes the deposit front-run:
+   * no unbound-buyer contract ever exists on-chain for an attacker to race.
+   */
+  async createEscrowQuote(params: CreateEscrowQuoteParams): Promise<EscrowRecord> {
+    if (params.expectedAmount == null || params.expectedAmount <= 0n) {
+      throw new Error("expectedAmount (> 0) is required to quote an escrow");
+    }
+
+    // Fee ceiling enforced at quote time too, so a predatory/misconfigured fee
+    // is rejected before a buyer ever claims (matches deploy() + on-chain cap).
+    const quotedFee = params.feeBasisPoints ?? this.defaultFeeBasisPoints;
+    if (!Number.isInteger(quotedFee) || quotedFee < 0 || quotedFee >= 5000) {
+      throw new Error(
+        `feeBasisPoints must be an integer in [0, 5000) (< 50%), got ${quotedFee}`
+      );
+    }
+
     const id = randomUUID();
     const now = new Date().toISOString();
 
@@ -184,12 +240,12 @@ export class EscrowManager {
       id,
       scid: null,
       deployTxid: null,
-      status: "deploying",
+      status: "quoted",
       sellerAddress: params.sellerAddress,
       arbitratorAddress: params.arbitratorAddress,
       feeBasisPoints: params.feeBasisPoints ?? this.defaultFeeBasisPoints,
       blockExpiration: params.blockExpiration ?? this.defaultBlockExpiration,
-      expectedAmount: params.expectedAmount ?? null,
+      expectedAmount: params.expectedAmount,
       depositAmount: null,
       buyerAddress: null,
       createdAt: now,
@@ -200,15 +256,75 @@ export class EscrowManager {
       metadata: params.metadata ?? {},
     };
 
-    // Store locally before deploying (track the "deploying" state)
     this.escrows.set(id, record);
+    return { ...record };
+  }
+
+  /**
+   * Phase 2 — bind a proven buyer and deploy the contract on-chain.
+   *
+   * IMPORTANT: `buyerAddress` MUST come from an authenticated / wallet-connect
+   * source. Binding an unproven address would let refunds and dispute payouts
+   * go to the wrong party. Guarded so a quote can be claimed only once.
+   *
+   * Note: the in-memory status guard is atomic within a single process. A
+   * server that persists escrows across processes must back this with a
+   * durable compare-and-set to prevent a double-deploy under a claim race.
+   */
+  async claimEscrow(id: string, buyerAddress: string): Promise<EscrowRecord> {
+    const record = this.escrows.get(id);
+    if (!record) {
+      throw new Error(`escrow ${id} not found`);
+    }
+    // Single-claim guard (compare-and-set; no await before the state flip).
+    if (record.status !== "quoted") {
+      throw new Error(
+        `escrow ${id} is not claimable (status: ${record.status})`
+      );
+    }
+    if (record.expectedAmount == null) {
+      throw new Error(`escrow ${id} has no expectedAmount; cannot deploy`);
+    }
+    // Collusion + validity guards that can only be checked once the buyer is
+    // known (quote time only had seller + arbitrator). The buyer must not be a
+    // party that would neutralize the escrow's protections, and must differ from
+    // the seller. Also enforced on-chain in Initialize (lines 29-31); mirrored
+    // here so the deploy gas is never spent on a doomed contract.
+    if (buyerAddress === record.sellerAddress) {
+      throw new Error("buyer == seller is not a valid escrow.");
+    }
+    if (buyerAddress === record.arbitratorAddress) {
+      throw new Error(
+        "buyer == arbitrator: a buyer cannot arbitrate their own dispute. Use a distinct, neutral arbitrator."
+      );
+    }
+
+    // Single-claim CAS. In a multi-process deployment the in-memory status flip
+    // below is NOT sufficient (two workers can both observe 'quoted'); a durable
+    // guard must win the row atomically first. If a durable guard is configured
+    // and THIS caller did not win, the quote was already claimed by another
+    // worker — reject rather than deploy a second contract.
+    if (this.claimGuard) {
+      const won = await this.claimGuard.tryClaim(id);
+      if (!won) {
+        // Re-sync local view if another process claimed it.
+        record.status = record.status === "quoted" ? "deploying" : record.status;
+        throw new Error(
+          `escrow ${id} was concurrently claimed by another worker; not claimable`
+        );
+      }
+    }
+    record.status = "deploying";
+    record.buyerAddress = buyerAddress;
 
     try {
       const txid = await this.contract.deploy({
-        sellerAddress: params.sellerAddress,
-        arbitratorAddress: params.arbitratorAddress,
+        sellerAddress: record.sellerAddress,
+        buyerAddress,
+        arbitratorAddress: record.arbitratorAddress,
         feeBasisPoints: record.feeBasisPoints,
         blockExpiration: record.blockExpiration,
+        expectedAmount: record.expectedAmount,
       });
 
       // The TXID of the deploy transaction is the SCID
@@ -222,6 +338,15 @@ export class EscrowManager {
       this.emit("escrowDeployed", { ...record });
     } catch (err) {
       record.status = "deploy_failed";
+      // Release the durable claim so the quote can be re-claimed after a
+      // transient deploy failure (RPC hiccup) instead of being stranded.
+      if (this.claimGuard) {
+        try {
+          await this.claimGuard.releaseClaim(id);
+        } catch {
+          // best-effort; the record is deploy_failed regardless
+        }
+      }
       this.emit(
         "escrowDeployFailed",
         { ...record },
@@ -230,6 +355,15 @@ export class EscrowManager {
     }
 
     return { ...record };
+  }
+
+  /**
+   * Convenience for the merchant-known-buyer fast path: quote + immediately
+   * claim (deploy) in one call. Requires the buyer address up front.
+   */
+  async createEscrow(params: CreateEscrowParams): Promise<EscrowRecord> {
+    const quote = await this.createEscrowQuote(params);
+    return this.claimEscrow(quote.id, params.buyerAddress);
   }
 
   /**
@@ -271,6 +405,7 @@ export class EscrowManager {
       "refunded",
       "expired_claimed",
       "arbitrated",
+      "cancelled",
       "deploy_failed",
     ];
     return Array.from(this.escrows.values()).filter(
@@ -321,6 +456,35 @@ export class EscrowManager {
   async confirmDelivery(scidOrId: string): Promise<string> {
     const scid = this.resolveScid(scidOrId);
     return this.contract.confirmDelivery(scid);
+  }
+
+  /**
+   * Cancel a never-funded escrow (seller/owner action). Recovers a status-0
+   * contract whose bound buyer never deposited — e.g. the buyer proved wallet A
+   * at claim but can only fund from wallet B, so Deposit() perpetually reverts.
+   * No funds are at risk (escrowBalance is 0 in status 0).
+   */
+  async cancelUnfunded(scidOrId: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.cancelUnfunded(scid);
+  }
+
+  /**
+   * Nominate a new owner for an escrow (current-owner action). Two-step: the
+   * successor must claimOwnership() to take over. Used to rotate owner authority
+   * onto a cold key, bounding a hot-key compromise across the escrow book.
+   */
+  async transferOwnership(scidOrId: string, newOwner: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.transferOwnership(scid, newOwner);
+  }
+
+  /**
+   * Accept a pending ownership nomination (successor action).
+   */
+  async claimOwnership(scidOrId: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.claimOwnership(scid);
   }
 
   /**
@@ -419,8 +583,62 @@ export class EscrowManager {
     const now = new Date().toISOString();
 
     if (newStatus === "funded" && previousStatus === "awaiting_deposit") {
-      record.depositAmount = BigInt(onChain.escrowBalance);
-      record.buyerAddress = onChain.buyer;
+      // O18 — do NOT settle a funded escrow on the on-chain status code alone.
+      // Independently verify the funded AMOUNT before telling the invoice layer
+      // (and thus the merchant) that this escrow is paid and shippable:
+      //   1. onChain.escrowBalance MUST equal the expectedAmount we bound at
+      //      claim (which O14 already tied to the invoice price). Today Deposit()
+      //      stores escrowBalance = expectedAmount, so they agree — but the SDK
+      //      must not take that on faith: any future contract edit, partial-
+      //      deposit path, or getSc parse quirk that made them diverge would
+      //      otherwise settle a wrong-amount invoice as fully funded.
+      //   2. onChain.scBalance (the contract's ACTUAL DERO holdings) MUST cover
+      //      escrowBalance. escrowBalance is a STORE()'d number; scBalance is the
+      //      real locked value. If the contract claims a balance it does not hold,
+      //      refuse to settle.
+      // On mismatch we do NOT flip the record to funded and do NOT emit
+      // escrowFunded; instead we surface an alert and leave the escrow in
+      // awaiting_deposit so the invoice never reaches escrow_funded/completed off
+      // an unverified amount. Fund-safety: the buyer's real deposit is still on
+      // the contract and remains recoverable via the normal refund/expiry paths.
+      const expected = record.expectedAmount;
+      const onChainBalance = BigInt(onChain.escrowBalance);
+      const scBalance = BigInt(onChain.scBalance);
+      const amountOk = expected != null && onChainBalance === expected;
+      const custodyOk = scBalance >= onChainBalance;
+      if (!amountOk || !custodyOk) {
+        // Revert the optimistic status bump — this is NOT a clean funded state.
+        record.status = previousStatus;
+        this.emit(
+          "escrowFundingMismatch",
+          { ...record },
+          {
+            expectedAmount: expected,
+            onChainBalance,
+            scBalance,
+            reason: !amountOk ? "amount_mismatch" : "custody_shortfall",
+          }
+        );
+        this.emit(
+          "error",
+          new Error(
+            `Escrow ${record.id} funded-amount verification failed ` +
+              `(expected=${expected} onChainBalance=${onChainBalance} scBalance=${scBalance}); ` +
+              `not settling.`
+          )
+        );
+        return;
+      }
+      record.depositAmount = onChainBalance;
+      // DO NOT overwrite record.buyerAddress with onChain.buyer here.
+      // The contract stores buyer via STORE("buyer", ADDRESS_RAW(...)) — the
+      // 33-byte RAW point, which GetSC returns as an opaque hex string, NOT the
+      // deto1/dero1 bech32 that claimEscrow bound. Overwriting would flip the
+      // record (and every downstream webhook/accounting consumer) from the
+      // proven, actionable address to an un-actionable hex blob. The proven
+      // bech32 bound at claim time is authoritative; the on-chain RAW form is
+      // surfaced separately as onChainBuyerRaw for verification only.
+      record.onChainBuyerRaw = onChain.buyer;
       record.depositedAt = now;
       this.emit("escrowFunded", { ...record });
     }
@@ -448,13 +666,29 @@ export class EscrowManager {
       this.emit("escrowDisputed", { ...record });
     }
 
+    if (newStatus === "cancelled") {
+      record.resolvedAt = now;
+      record.resolution = null;
+      // Emit so the invoice layer can re-quote a fresh escrow onto a still-open
+      // invoice. A CancelUnfunded only ever hits a never-funded (status 0)
+      // contract, so no funds are at risk — but the buyer's bound SCID is now
+      // dead and must be replaced for their paid intent to proceed.
+      this.emit("escrowCancelled", { ...record });
+    }
+
     if (newStatus === "arbitrated") {
       record.resolvedAt = now;
-      // Determine direction from balance: if seller has funds, released to seller
+      // Direction is read from the on-chain `arbitrateResult` flag the contract
+      // writes in each Arbitrate() branch (1 = seller, 0 = buyer). Balance can
+      // NOT disambiguate: both branches zero escrowBalance. If the flag is
+      // somehow absent (older contract), leave resolution null rather than
+      // reporting a false seller-release for a buyer refund.
       record.resolution =
-        onChain.escrowBalance === 0
-          ? "arbitrator_released_seller" // funds left the SC
-          : "arbitrator_refunded_buyer";
+        onChain.arbitrateResult === 1
+          ? "arbitrator_released_seller"
+          : onChain.arbitrateResult === 0
+            ? "arbitrator_refunded_buyer"
+            : null;
       this.emit("escrowArbitrated", { ...record });
     }
 

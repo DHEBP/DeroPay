@@ -21,7 +21,7 @@ const products: Product[] = [
     description:
       "Sign in with your DERO wallet. Schnorr signature verification, JWT sessions, React components, and Next.js middleware.",
     href: "/auth",
-    image: "/images/auth.png",
+    image: "/images/auth.webp",
   },
   {
     title: "DeroPay",
@@ -29,7 +29,7 @@ const products: Product[] = [
     description:
       "Create invoices, generate integrated addresses, monitor payments in real time. Webhooks, pluggable storage, and a merchant dashboard.",
     href: "/pay",
-    image: "/images/invoice.png",
+    image: "/images/invoice.webp",
   },
   {
     title: "x402",
@@ -37,7 +37,7 @@ const products: Product[] = [
     description:
       "Internet-native payment negotiation for APIs and agents. Request → 402 challenge → pay → retry with proof → response.",
     href: "/x402",
-    image: "/images/402.png",
+    image: "/images/402.webp",
   },
   {
     title: "Payment Router",
@@ -45,7 +45,7 @@ const products: Product[] = [
     description:
       "Deploy once, accept unlimited payments. A single smart contract splits funds instantly between merchant and fee recipient in one transaction.",
     href: "https://deropay.derod.org/payment-router/overview",
-    image: "/images/router.png",
+    image: "/images/router.webp",
   },
   {
     title: "Escrow",
@@ -53,7 +53,7 @@ const products: Product[] = [
     description:
       "One contract per transaction with arbitration, platform fees, and dispute resolution. Buyer protection backed by DERO\u2019s blockchain.",
     href: "/escrow",
-    image: "/images/escrow.png",
+    image: "/images/escrow.webp",
   },
 ];
 

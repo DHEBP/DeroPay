@@ -152,10 +152,10 @@ export const Hero = () => {
           />
           <div className="relative aspect-[3/2] w-full overflow-hidden">
             <Image
-              src="/images/hero_img.png"
+              src="/images/hero_img.webp"
               alt="DeroPay Dashboard"
-              width={3072}
-              height={2048}
+              width={2048}
+              height={1365}
               className="hero-image"
               priority
               style={{ objectFit: "cover", objectPosition: "center" }}

@@ -16,6 +16,7 @@ const defaultOnChainState: EscrowOnChainState = {
   arbitrator: "dero1qarbitrator...",
   feeBasisPoints: 250,
   blockExpiration: 60,
+  expectedAmount: 10000,
   escrowBalance: 0,
   depositHeight: null,
   arbitrateResult: null,

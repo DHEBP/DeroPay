@@ -164,11 +164,7 @@ describe("EscrowContract (integration)", () => {
       expect(state.status).toBe("awaiting_deposit");
       expect(state.feeBasisPoints).toBe(FEE_BPS);
       expect(state.blockExpiration).toBe(BLOCK_EXPIRATION);
-
-      // expectedAmount is stored on-chain but not surfaced by getState(); read
-      // it via the raw stringkey (do not modify src/).
-      const rawExpected = await daemon.getScVariable(scid, "expectedAmount");
-      expect(Number(rawExpected)).toBe(Number(EXPECTED_AMOUNT));
+      expect(state.expectedAmount).toBe(Number(EXPECTED_AMOUNT));
 
       // owner/seller/buyer/arbitrator are all distinct raw points.
       const parties = [state.owner, state.seller, state.buyer, state.arbitrator];

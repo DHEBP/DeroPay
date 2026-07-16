@@ -105,6 +105,8 @@ export type EscrowOnChainState = {
   feeBasisPoints: number;
   /** Block expiration window */
   blockExpiration: number;
+  /** Expected deposit amount in atomic units (a deposit must be >= this) */
+  expectedAmount: number;
   /** Current escrow balance in atomic units */
   escrowBalance: number;
   /** Block height of the deposit (set after deposit) */

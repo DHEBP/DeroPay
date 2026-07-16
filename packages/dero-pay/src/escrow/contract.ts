@@ -430,6 +430,7 @@ export class EscrowContract {
       arbitrator: String(vars["arbitrator"] ?? ""),
       feeBasisPoints: Number(vars["feeBasisPoints"]) || 0,
       blockExpiration: Number(vars["blockExpiration"]) || 0,
+      expectedAmount: Number(vars["expectedAmount"]) || 0,
       escrowBalance: Number(vars["escrowBalance"]) || 0,
       depositHeight: vars["depositHeight"] ? Number(vars["depositHeight"]) : null,
       // Direction of an Arbitrate() resolution, written on-chain by the contract

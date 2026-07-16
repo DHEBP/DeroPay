@@ -14,12 +14,16 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { RouterManager } from "../src/router/manager.js";
 import { hasLiveRpc, WALLET_RPC, DAEMON_RPC } from "./integration/helpers.js";
 
+// Resolve liveness at module load. `it.skipIf` reads its condition at COLLECTION
+// time, before beforeAll runs — so a `let live` set inside beforeAll always reads
+// false and every test silently skips even against a live node. Top-level await
+// fixes that; beforeAll still does client setup.
+const live = await hasLiveRpc();
+
 describe("RouterManager (integration)", () => {
   let manager: RouterManager;
-  let live = false;
 
   beforeAll(async () => {
-    live = await hasLiveRpc();
     if (!live) return;
     manager = new RouterManager({
       walletRpcUrl: WALLET_RPC,

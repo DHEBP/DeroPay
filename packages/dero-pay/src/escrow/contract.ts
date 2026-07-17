@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { WalletRpcClient } from "../rpc/wallet-rpc.js";
 import { DaemonRpcClient } from "../rpc/daemon-rpc.js";
+import { tryDeroAddressToRawHex } from "../rpc/dero-address.js";
 import type { ScRpcArg } from "../rpc/types.js";
 import {
   EscrowStatusCode,
@@ -425,9 +426,14 @@ export class EscrowContract {
       statusCode,
       status,
       owner: String(vars["owner"] ?? ""),
-      seller: String(vars["seller"] ?? ""),
-      buyer: vars["buyer"] ? String(vars["buyer"]) : null,
-      arbitrator: String(vars["arbitrator"] ?? ""),
+      // O15e — the party keys hold ADDRESS_RAW hex compared byte-for-byte against
+      // the codec's decode of the SDK's bech32 (verifyBinding). GetSC emits lowercase
+      // (Go `%x`), but normalize defensively so any daemon/serialization variance in
+      // hex case can never turn a genuine match into a false non-match (which would
+      // downgrade an indeterminate row and re-open the double-deploy).
+      seller: String(vars["seller"] ?? "").toLowerCase(),
+      buyer: vars["buyer"] ? String(vars["buyer"]).toLowerCase() : null,
+      arbitrator: String(vars["arbitrator"] ?? "").toLowerCase(),
       feeBasisPoints: Number(vars["feeBasisPoints"]) || 0,
       blockExpiration: Number(vars["blockExpiration"]) || 0,
       expectedAmount: Number(vars["expectedAmount"]) || 0,
@@ -469,12 +475,29 @@ export class EscrowContract {
    *
    * Returns true ONLY if the on-chain seller, arbitrator, feeBasisPoints,
    * blockExpiration and expectedAmount all match the expected (frozen quote-time)
-   * values. Note the buyer is NOT compared here: in the crash window the deploy
-   * was broadcast but the invoice blob may not yet record which buyer was bound,
-   * and buyer is stored on-chain as a RAW point (opaque hex) not the bech32 the
-   * SDK holds. The seller/arbitrator/amount/fee/expiry tuple is what pins the
-   * contract to THIS invoice's economic terms; a re-claim still can't rebind a
-   * different buyer because the honest re-claim path is closed once scid is set.
+   * values.
+   *
+   * O15c — the buyer comparison is OPT-IN via `expected.buyerAddress`. By DEFAULT
+   * the buyer is NOT compared: in the crash-recovery (Case 2) window the deploy was
+   * broadcast but the invoice blob may not yet record which buyer was bound, so
+   * that path must keep the documented crash-window justification for omitting the
+   * buyer — do NOT pass buyerAddress from Case 2. But the O15b recovery sweep can
+   * match a DIFFERENT invoice's already-deployed contract that happens to share the
+   * identical seller/arbitrator/fee/expiry/amount tuple (only the buyer differs) —
+   * `matched.length===1` would then adopt the WRONG contract, misrouting refunds/
+   * disputes and false-funding (the real buyer can never deposit because the on-
+   * chain SIGNER()==buyer gate binds a different buyer). So when — and only when —
+   * `buyerAddress` is supplied, ALSO require the on-chain buyer to match; the sweep
+   * passes it, dropping any terms-match-but-buyer-mismatch candidate to a non-match.
+   *
+   * O15d — party comparison is done in RAW-HEX form. getState surfaces the on-chain
+   * seller/buyer/arbitrator as the raw 33-byte compressed point (GetSC hex-encodes
+   * the ADDRESS_RAW string a contract stores), while `expected.*` are the "dero1…"
+   * bech32 the SDK holds. Comparing the two forms directly NEVER matches, so the
+   * expected bech32 is decoded to raw here (tryDeroAddressToRawHex) and compared to
+   * the raw state.*. FAIL CLOSED: if an expected address can't be decoded (null) or
+   * a required on-chain party is missing, verifyBinding returns false — never a
+   * spurious match that could adopt the wrong contract and misroute funds.
    */
   async verifyBinding(
     scid: string,
@@ -484,6 +507,9 @@ export class EscrowContract {
       feeBasisPoints: number;
       blockExpiration: number;
       expectedAmount: bigint;
+      /** O15c — when present, the on-chain buyer MUST also match (opt-in; the
+       *  O15b sweep passes this, Case-2 crash-recovery deliberately does not). */
+      buyerAddress?: string;
     }
   ): Promise<boolean> {
     let state: EscrowOnChainState;
@@ -495,12 +521,30 @@ export class EscrowContract {
     // getState maps an absent contract to a default status; require the real
     // string-key surface to have populated the binding fields.
     if (!state.seller || !state.arbitrator) return false;
-    return (
-      state.seller === expected.sellerAddress &&
-      state.arbitrator === expected.arbitratorAddress &&
+
+    // O15d — decode the expected bech32 parties to the RAW-HEX form the chain
+    // stores (state.* are raw). A null decode = un-parseable expected address =
+    // FAIL CLOSED (no spurious match).
+    const expectedSellerRaw = tryDeroAddressToRawHex(expected.sellerAddress);
+    const expectedArbitratorRaw = tryDeroAddressToRawHex(expected.arbitratorAddress);
+    if (expectedSellerRaw === null || expectedArbitratorRaw === null) return false;
+
+    const termsMatch =
+      state.seller === expectedSellerRaw &&
+      state.arbitrator === expectedArbitratorRaw &&
       state.feeBasisPoints === expected.feeBasisPoints &&
       state.blockExpiration === expected.blockExpiration &&
-      BigInt(state.expectedAmount) === expected.expectedAmount
-    );
+      BigInt(state.expectedAmount) === expected.expectedAmount;
+    if (!termsMatch) return false;
+
+    // O15c — opt-in buyer pin. A candidate with matching terms but no on-chain
+    // buyer, or a different buyer, is NOT this invoice's contract.
+    // O15d — buyer is likewise compared in raw-hex; an un-decodable buyer fails closed.
+    if (expected.buyerAddress !== undefined) {
+      const expectedBuyerRaw = tryDeroAddressToRawHex(expected.buyerAddress);
+      if (expectedBuyerRaw === null) return false;
+      if (!state.buyer || state.buyer !== expectedBuyerRaw) return false;
+    }
+    return true;
   }
 }

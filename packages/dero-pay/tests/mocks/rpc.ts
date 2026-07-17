@@ -71,6 +71,7 @@ export function createMockDaemonRpc(
       version: "3.5.0",
     }),
     getHeight: vi.fn().mockResolvedValue(1000),
+    getBlockHeight: vi.fn().mockResolvedValue(1000),
     getStableHeight: vi.fn().mockResolvedValue(990),
     getTransactions: vi.fn().mockResolvedValue({ txs_as_hex: [], txs: [], status: "OK" }),
     getSc: vi.fn().mockResolvedValue({

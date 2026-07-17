@@ -145,7 +145,15 @@ export type EscrowInvoiceStatus =
   | "disputed"
   | "arbitrated"
   | "cancelled"
-  | "deploy_failed";
+  | "deploy_failed"
+  /**
+   * O15b — a broadcast-ambiguous deploy (installSc timed out / network-failed
+   * after the daemon may have accepted it). Quarantined: NOT claimable, NOT
+   * auto-requoted, and the guard row is HELD (never released) until the wallet-
+   * side recovery sweep in reconcileOrphanedClaims resolves it. Fund-safety hold,
+   * distinct from the deterministically-refused, safely-requotable deploy_failed.
+   */
+  | "deploy_indeterminate";
 
 /** An invoice representing a payment request */
 export type Invoice = {

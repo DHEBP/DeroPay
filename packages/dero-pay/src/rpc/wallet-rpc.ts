@@ -37,6 +37,59 @@ import type {
   InvokeScResult,
 } from "./types.js";
 
+/**
+ * O15b — a wallet RPC call whose outcome is BROADCAST-AMBIGUOUS: the wallet's
+ * HTTP response was lost (request-abort/timeout, or a raw fetch/network failure)
+ * so we do NOT know whether the daemon already accepted the transaction. For an
+ * `installSc` (contract deploy) this is the fund-safety-critical case: a live,
+ * fundable escrow contract MAY exist on-chain even though the SDK never learned
+ * its SCID. Callers MUST treat this differently from a DETERMINISTIC failure (a
+ * JSON-RPC `{error}` response or an HTTP non-200 — the daemon definitively
+ * refused, nothing broadcast): an ambiguous deploy must be QUARANTINED (held,
+ * never released, never auto-requoted) so a second contract is not deployed and
+ * a wallet-side recovery sweep can reconcile the possibly-live first one.
+ *
+ * SECURITY-CRITICAL taxonomy — FAIL CLOSED. Once the fetch has been ISSUED, the
+ * ONLY failures that are DETERMINISTIC (safe to treat as a definitive refusal
+ * that broadcast nothing) are the two the client throws ITSELF above and tags
+ * with a `Wallet RPC (HTTP|error)` message prefix:
+ *   - HTTP non-200                    -> deterministic (our own Error)
+ *   - JSON-RPC `{error}` response     -> deterministic (our own Error)
+ * EVERY OTHER post-send throw is reclassified BROADCAST-AMBIGUOUS (this class):
+ *   - AbortError / timeout                              -> ambiguous
+ *   - fetch TypeError / network error                  -> ambiguous
+ *   - SyntaxError / RangeError from a corrupt/truncated
+ *     HTTP-200 body (response.json() throws)           -> ambiguous
+ *   - any unknown / future error type                  -> ambiguous
+ * O15c — the default MUST be ambiguous, not deterministic. A SyntaxError/RangeError
+ * from response.json() on an HTTP-200-but-truncated/corrupt body means the daemon
+ * may have ACCEPTED the installSc while the wallet's response was lost; classifying
+ * it deterministic would land 'deploy_failed', RELEASE the guard row, and re-open
+ * the double-deploy. Absence of proof-of-refusal, once the request may have hit the
+ * wire, must be treated as possible-acceptance.
+ */
+export class WalletRpcAmbiguousError extends Error {
+  /** Discriminant so a caller can classify without an instanceof (survives a
+   *  serialize boundary / a different module realm). */
+  readonly broadcastAmbiguous = true as const;
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options as ErrorOptions);
+    this.name = "WalletRpcAmbiguousError";
+  }
+}
+
+/** True iff `err` is a broadcast-ambiguous wallet RPC failure (see
+ *  {@link WalletRpcAmbiguousError}). Checks the discriminant property so it
+ *  survives an instanceof-defeating realm/serialize boundary. */
+export function isBroadcastAmbiguous(err: unknown): boolean {
+  return (
+    err instanceof WalletRpcAmbiguousError ||
+    (typeof err === "object" &&
+      err !== null &&
+      (err as { broadcastAmbiguous?: unknown }).broadcastAmbiguous === true)
+  );
+}
+
 /** Wallet RPC client configuration */
 export type WalletRpcConfig = {
   /** Wallet RPC endpoint (default: http://127.0.0.1:10103/json_rpc) */
@@ -163,21 +216,52 @@ export class WalletRpcClient {
       });
 
       if (!response.ok) {
+        // DETERMINISTIC — the daemon/wallet answered with a non-200; nothing was
+        // broadcast into consensus. Safe to treat as a definitive refusal.
         throw new Error(`Wallet RPC HTTP ${response.status}: ${response.statusText}`);
       }
 
       const json = (await response.json()) as JsonRpcResponse<T>;
 
       if (json.error) {
+        // DETERMINISTIC — a JSON-RPC error response is a definitive refusal from
+        // the wallet (bad params, insufficient funds, rejected tx); no broadcast.
         throw new Error(`Wallet RPC error ${json.error.code}: ${json.error.message}`);
       }
 
       return json.result as T;
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        throw new Error(`Wallet RPC timeout after ${this.timeoutMs}ms`);
+      // O15c — FAIL CLOSED. Classify BROADCAST-AMBIGUOUS vs DETERMINISTIC by an
+      // ALLOW-LIST of the deterministic case, defaulting everything else to
+      // ambiguous. The ONLY deterministic failures are the two we threw OURSELVES
+      // above (HTTP non-200 / JSON-RPC {error}), matched by their message prefix:
+      // the daemon/wallet gave a definitive refusal and nothing broadcast. EVERY
+      // other post-send throw — abort/timeout, fetch TypeError, a SyntaxError/
+      // RangeError from response.json() on a truncated/corrupt HTTP-200 body, or
+      // any unknown/future type — leaves it UNKNOWN whether the daemon already
+      // accepted the transaction. For an installSc that means a live contract MAY
+      // exist, so it MUST be quarantined: mis-tagging any of these deterministic
+      // would land 'deploy_failed', RELEASE the guard row, and re-open the double-
+      // deploy. The pre-O15c code inverted this (only Abort/TypeError ambiguous,
+      // default deterministic), letting a corrupt-body SyntaxError leak through.
+      if (
+        err instanceof Error &&
+        /^Wallet RPC (HTTP|error)/.test(err.message)
+      ) {
+        throw err;
       }
-      throw err;
+      // Everything else after the request was issued is broadcast-ambiguous.
+      const name = err instanceof Error ? err.name : "unknown";
+      const detail = err instanceof Error ? err.message : String(err);
+      const reason =
+        err instanceof Error && err.name === "AbortError"
+          ? `timeout after ${this.timeoutMs}ms`
+          : `${name}: ${detail}`;
+      throw new WalletRpcAmbiguousError(
+        `Wallet RPC broadcast-ambiguous (${reason}): the daemon may have accepted ` +
+          `the transaction before the response was received/parsed`,
+        { cause: err }
+      );
     } finally {
       clearTimeout(timeout);
     }
@@ -219,6 +303,51 @@ export class WalletRpcClient {
   async getTransfers(params?: GetTransfersParams): Promise<TransferEntry[]> {
     const result = await this.rpcCall<GetTransfersResult>("GetTransfers", params ?? {});
     return (result.entries ?? []).map(normalizeTransferEntry);
+  }
+
+  /**
+   * O15b — enumerate the wallet's OWN outgoing smart-contract-install TXIDs at or
+   * after `sinceHeight`, for the broadcast-ambiguous deploy recovery sweep.
+   *
+   * When an installSc broadcast was ambiguous (timeout/network — the response was
+   * lost) the SCID is UNKNOWABLE client-side: SCID == deploy txid, surfaced ONLY
+   * on the RPC success path; there is no client-side pre-derivation and no
+   * daemon by-variable/list-contracts query. The ONLY recovery channel is the
+   * wallet itself: enumerate our own outgoing SC-install transfers around the
+   * crash window and let the caller confirm each candidate txid against the
+   * frozen quote terms via `EscrowContract.verifyBinding`.
+   *
+   * We filter to OUTGOING entries (`incoming === false`) and keep only SC-install
+   * TXs. An SC deploy's txid IS its scid, so we return each candidate's txid; a
+   * non-escrow (or non-SC) txid simply fails verifyBinding downstream and is
+   * discarded — this method is deliberately permissive and pushes the
+   * authoritative check to verifyBinding. `sinceHeight` bounds the scan so it is
+   * not a full-history walk; derive it CONSERVATIVELY (well before the claim) so a
+   * ms-clock-vs-block-height mismatch never drops the real candidate.
+   *
+   * NOTE: this uses ONLY the wallet's GetTransfers — no daemon scan.
+   */
+  async listOwnScDeploys(sinceHeight?: number): Promise<string[]> {
+    const params: GetTransfersParams = { out: true };
+    if (sinceHeight !== undefined && sinceHeight > 0) {
+      params.min_height = sinceHeight;
+    }
+    const entries = await this.getTransfers(params);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const e of entries) {
+      if (e.incoming) continue; // only our own outgoing broadcasts
+      // An SC-install entry carries an `scid` equal to its own txid (the wallet
+      // sets it on contract-install transfers); fall back to txid when the wallet
+      // build does not surface scid so a candidate is never silently dropped.
+      const scEntry = e as TransferEntry & { scid?: string };
+      const candidate =
+        scEntry.scid && scEntry.scid.length > 0 ? scEntry.scid : e.txid;
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      out.push(candidate);
+    }
+    return out;
   }
 
   /**

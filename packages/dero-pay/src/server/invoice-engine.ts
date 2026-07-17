@@ -32,6 +32,7 @@ import { WebhookDispatcher } from "../webhook/dispatcher.js";
 import { MemoryInvoiceStore } from "../store/memory.js";
 import { generatePaymentId } from "../core/payment-id.js";
 import { EscrowManager } from "../escrow/manager.js";
+import type { EscrowClaimGuard } from "../escrow/manager.js";
 import type { EscrowRecord, EscrowStatus } from "../escrow/types.js";
 import type {
   Invoice,
@@ -40,6 +41,7 @@ import type {
   CreateInvoiceParams,
   DeroPayConfig,
   InvoiceStatus,
+  EscrowInvoiceStatus,
 } from "../core/types.js";
 import type { InvoiceStore, InvoiceFilter, InvoiceStats } from "../store/types.js";
 import type { WebhookSink } from "../webhook/outbox-types.js";
@@ -110,6 +112,10 @@ export class InvoiceEngine {
    *  durable-claim-guard startup assertion. */
   private multiProcess = false;
   private expiryTimer: ReturnType<typeof setInterval> | null = null;
+  /** O15c — re-entrancy guard so a slow reconcile pass never stacks on the next
+   *  tick of the engine's expiry timer (the reconciler is idempotent via its CAS
+   *  gates, but overlapping passes would waste RPC and could interleave releases). */
+  private reconcileInFlight = false;
   private listeners: Partial<{
     [K in keyof InvoiceEngineEvents]: InvoiceEngineEvents[K][];
   }> = {};
@@ -396,8 +402,16 @@ export class InvoiceEngine {
       await this.reconcileOrphanedClaims();
     }
 
-    // Start the expiry checker (runs every 30 seconds)
-    this.expiryTimer = setInterval(() => this.checkExpiredInvoices(), 30_000);
+    // Start the expiry checker (runs every 30 seconds). O15c — the same engine
+    // timer also drives a periodic orphaned-claim reconcile so a RUNTIME broadcast-
+    // ambiguous quarantine (or an enumeration-unavailable park) is healed once the
+    // wallet recovers, WITHOUT waiting for a process restart. Reuses the existing
+    // cadence — no new dependency; the reconciler is idempotent (CAS-gated) and
+    // guarded against overlapping passes.
+    this.expiryTimer = setInterval(() => {
+      this.checkExpiredInvoices();
+      void this.periodicReconcile();
+    }, 30_000);
 
     this.isStarted = true;
   }
@@ -900,7 +914,14 @@ export class InvoiceEngine {
       s === "awaiting_deposit" ||
       s === "funded" ||
       s === "disputed" ||
-      s === "deploying"
+      s === "deploying" ||
+      // O15b — a broadcast-ambiguous deploy MAY have mined a live, fundable
+      // contract whose SCID we never learned. Treat it as settling so the base-rail
+      // TTL does NOT terminalize the invoice out from under a possibly-locked
+      // deposit before the wallet-side recovery sweep resolves it (adopt -> keep
+      // settling; zero candidates -> downgrade to deploy_failed which then expires
+      // normally). Fail closed.
+      s === "deploy_indeterminate"
     );
   }
 
@@ -1037,6 +1058,37 @@ export class InvoiceEngine {
 
     const record = await this.escrowManager.claimEscrow(escrowId, buyerAddress);
     const guard = this.escrowManager.getClaimGuard();
+    if (record.status === "deploy_indeterminate") {
+      // O15b — QUARANTINE, do NOT release. The deploy broadcast was ambiguous
+      // (installSc timed out / network-failed after the daemon may have accepted
+      // it): a live, fundable contract MAY exist on-chain with an SCID we never
+      // learned, and the held guard row (deployTxid=null) is the ONLY breadcrumb
+      // the wallet-side recovery sweep follows. Persist the quarantine status so
+      // the top-of-method 'must be quoted' gate blocks any re-claim, and — unlike
+      // the deploy_failed branch — do NOT release the row and do NOT auto-requote:
+      // releasing/requoting would deploy a SECOND contract past the possibly-live
+      // first one. Emit an operator alert; recovery runs in reconcileOrphanedClaims.
+      esc0.escrowStatus = "deploy_indeterminate";
+      // O15c — persist the PROVEN buyer bound at this claim so the O15b recovery
+      // sweep can pin any candidate contract's on-chain buyer to THIS invoice's
+      // buyer (verifyBinding buyerAddress opt-in). Without it, a different invoice's
+      // already-deployed contract with identical seller/arbitrator/fee/expiry/amount
+      // could be the sole terms-match and get adopted for the wrong buyer.
+      esc0.buyerAddress = buyerAddress;
+      await this.store.updateInvoice(invoice.id, { escrow: esc0 });
+      this.emit(
+        "error",
+        new Error(
+          `Invoice ${invoiceId} escrow deploy is BROADCAST-INDETERMINATE (escrowId ` +
+            `${escrowId}): a contract may be live on-chain with an unknown SCID. ` +
+            `Row HELD (not released), NOT auto-requoted; awaiting wallet-side ` +
+            `recovery reconciliation.`
+        )
+      );
+      throw new Error(
+        `Escrow deploy indeterminate for invoice ${invoiceId} (broadcast ambiguous; quarantined)`
+      );
+    }
     if (record.status === "deploy_failed" || !record.scid) {
       // O6 — persist deploy_failed FIRST, THEN release the guard row. The manager
       // deliberately no longer releases on failure: releasing before this persist
@@ -1124,8 +1176,13 @@ export class InvoiceEngine {
   private async resetDeployFailedEscrow(invoice: Invoice): Promise<Invoice | null> {
     if (!this.escrowManager || !invoice.escrow) return null;
     const esc = invoice.escrow;
+    // O15b — fire ONLY for a DETERMINISTIC deploy_failed, NEVER for a
+    // 'deploy_indeterminate' quarantine. An indeterminate deploy MAY have mined a
+    // live contract; auto-requoting one would deploy a SECOND contract past the
+    // possibly-live first — exactly the double-deploy this whole fix closes. This
+    // guard also absorbs a concurrent reset that already advanced the status.
     if (esc.escrowStatus !== "deploy_failed") {
-      // Someone else already advanced it (e.g. a concurrent reset). Re-read.
+      // Not a re-quotable failure (already advanced, or a held indeterminate). Re-read.
       return this.store.getInvoice(invoice.id);
     }
     const observedEscrowId = esc.escrowId ?? null;
@@ -1519,6 +1576,18 @@ export class InvoiceEngine {
       // Real DERO already locked in escrow; leave the escrow rail authoritative.
       return;
     }
+    // O15c — a broadcast-INDETERMINATE quarantine has scid=null yet MAY have a
+    // live, fundable contract on-chain whose SCID we never learned; the held
+    // guard row is the ONLY breadcrumb the O15b recovery sweep follows. A misroute
+    // teardown must NOT flip it to 'cancelled': that would drop it out of the
+    // reconcileOrphanedClaims recovery branch (which keys on 'deploy_indeterminate')
+    // and release the fund-safety hold on a possibly-live contract. Leave the
+    // quarantine status UNTOUCHED (still held) so recovery still owns it; the
+    // __escrowMisroutedToBase marker (stamped above) keeps the base overpay
+    // auditable, and recovery resolves the quarantine independently.
+    if (status === "deploy_indeterminate") {
+      return;
+    }
     if (!esc.scid) {
       // Only a quote exists — drop it locally so nothing can be claimed/deployed.
       if (esc.escrowId) this.escrowManager.untrack(esc.escrowId);
@@ -1625,6 +1694,73 @@ export class InvoiceEngine {
    *     the on-chain SIGNER()==buyer gate and O14 anchor still protect the deploy.
    *   - no invoice maps to the row (orphan): release it — nothing to heal.
    */
+  /**
+   * O14/O16 — adopt a verified-live contract `scid` onto a still-`fromStatus`
+   * escrow via a COMPARE-AND-SET, then import it into the poller and release the
+   * held row. Extracted so the crash-recovery Case-2 heal and the O15b broadcast-
+   * indeterminate recovery sweep share ONE adoption path (no forked logic that
+   * could drift): both must (a) CAS the durable blob so a concurrent
+   * claim/requote/peer-reconciler is never clobbered, (b) import the healed record
+   * only if the manager doesn't already hold it, and (c) release the breadcrumb
+   * row. `fromStatus` is the exact status the durable blob must still read for the
+   * CAS to apply ('quoted' for Case 2, 'deploy_indeterminate' for the O15b sweep).
+   * Returns true iff the CAS applied and the row was adopted.
+   */
+  private async adoptHealedScid(
+    invoice: Invoice,
+    esc: InvoiceEscrow,
+    scid: string,
+    anchored: bigint,
+    fromStatus: EscrowInvoiceStatus,
+    guard: EscrowClaimGuard,
+    rowId: string
+  ): Promise<boolean> {
+    if (!this.escrowManager) return false;
+    esc.scid = scid;
+    esc.deployTxid = scid;
+    esc.escrowStatus = "awaiting_deposit";
+    const applied = await this.store.updateInvoice(
+      invoice.id,
+      { escrow: esc },
+      { expectedEscrow: { escrowId: esc.escrowId!, escrowStatus: fromStatus } }
+    );
+    if (!applied) {
+      // Lost the heal CAS to a concurrent writer — the winner owns the durable
+      // blob; leave the row untouched so we neither double-import nor free a row
+      // the winner may still reference.
+      return false;
+    }
+    if (!this.escrowManager.getEscrow(esc.escrowId!)) {
+      this.escrowManager.importEscrow({
+        id: esc.escrowId!,
+        scid: esc.scid,
+        deployTxid: esc.deployTxid,
+        status: "awaiting_deposit",
+        sellerAddress: esc.sellerAddress,
+        arbitratorAddress: esc.arbitratorAddress,
+        feeBasisPoints: esc.feeBasisPoints,
+        blockExpiration: esc.blockExpiration,
+        // O8 — anchor to the FROZEN quote principal, never re-derive from
+        // invoice.amount (that would make the drift/funded-amount guard vacuous).
+        expectedAmount: anchored,
+        depositAmount: null,
+        buyerAddress: esc.buyerAddress,
+        createdAt: invoice.createdAt,
+        depositedAt: null,
+        resolvedAt: null,
+        resolution: null,
+        invoiceId: invoice.id,
+        metadata: { invoicePaymentId: invoice.paymentId.toString() },
+      });
+    }
+    try {
+      await guard.releaseClaim(rowId);
+    } catch {
+      /* best-effort */
+    }
+    return true;
+  }
+
   private async reconcileOrphanedClaims(): Promise<void> {
     if (!this.escrowManager) return;
     const guard = this.escrowManager.getClaimGuard();
@@ -1743,63 +1879,21 @@ export class InvoiceEngine {
         }
 
         if (contractLive) {
-          // O14 — heal via a COMPARE-AND-SET, not a whole-blob overwrite. Two
-          // workers can run this reconciler concurrently (each in its own
-          // start()), and the heal also races the ordinary claim/requote writers.
-          // A plain updateInvoice would re-introduce the O10 last-writer-wins lost
-          // update the A9 CAS closed elsewhere. Gate the write on the escrow still
-          // being the SAME 'quoted' binding we observed; on a miss, another writer
-          // already transitioned it — do NOT clobber, do NOT release (leave the
-          // row for the winning path or a later sweep).
-          esc.scid = row.deployTxid;
-          esc.deployTxid = row.deployTxid;
-          esc.escrowStatus = "awaiting_deposit";
-          const applied = await this.store.updateInvoice(
-            invoice.id,
-            { escrow: esc },
-            {
-              expectedEscrow: {
-                escrowId: esc.escrowId!,
-                escrowStatus: "quoted",
-              },
-            }
+          // O14 — heal via the shared COMPARE-AND-SET adoption path (adoptHealedScid):
+          // a plain overwrite would re-introduce the O10 last-writer-wins lost update.
+          // The CAS gates on the escrow still being the SAME 'quoted' binding we
+          // observed; on a miss another writer already transitioned it, so we do NOT
+          // clobber and do NOT release (leave the row for the winning path/a sweep).
+          const adopted = await this.adoptHealedScid(
+            invoice,
+            esc,
+            row.deployTxid,
+            anchored,
+            "quoted",
+            guard,
+            row.id
           );
-          if (!applied) {
-            // Lost the heal CAS to a concurrent writer (peer reconciler, a
-            // completing claim, or a requote). The winner owns the durable blob;
-            // leave the row untouched so we neither double-import nor free a row
-            // the winner may still reference.
-            continue;
-          }
-          if (!this.escrowManager.getEscrow(esc.escrowId!)) {
-            this.escrowManager.importEscrow({
-              id: esc.escrowId!,
-              scid: esc.scid,
-              deployTxid: esc.deployTxid,
-              status: "awaiting_deposit",
-              sellerAddress: esc.sellerAddress,
-              arbitratorAddress: esc.arbitratorAddress,
-              feeBasisPoints: esc.feeBasisPoints,
-              blockExpiration: esc.blockExpiration,
-              // O8 — anchor to the FROZEN quote principal, never re-derive from
-              // invoice.amount (that would make the drift/funded-amount guard
-              // vacuous on the healed record).
-              expectedAmount: anchored,
-              depositAmount: null,
-              buyerAddress: esc.buyerAddress,
-              createdAt: invoice.createdAt,
-              depositedAt: null,
-              resolvedAt: null,
-              resolution: null,
-              invoiceId: invoice.id,
-              metadata: { invoicePaymentId: invoice.paymentId.toString() },
-            });
-          }
-          try {
-            await guard.releaseClaim(row.id);
-          } catch {
-            /* best-effort */
-          }
+          if (!adopted) continue; // CAS lost to a concurrent writer.
           continue;
         }
         // Contract NOT on-chain: the broadcast never mined. Fall through to
@@ -1808,6 +1902,211 @@ export class InvoiceEngine {
         esc.scid = null;
         esc.deployTxid = null;
         esc.escrowStatus = "quoted";
+      }
+
+      // O15b — broadcast-INDETERMINATE recovery. The deploy broadcast was
+      // ambiguous (installSc timed out / network-failed AFTER the daemon may have
+      // accepted it): the row carries NO deployTxid (recordDeployTxid never ran)
+      // yet a live, fundable contract MAY exist on-chain with an SCID we never
+      // learned. There is no daemon-side way to find it (SCID == deploy txid, only
+      // surfaced on RPC success; no by-variable/list-contracts query; the contract
+      // embeds no invoiceId). The ONLY recovery channel is the wallet's OWN
+      // outgoing SC-install TXs. Enumerate them in [conservative floor, now] and
+      // verifyBinding each candidate against the FROZEN quote terms:
+      //   - EXACTLY ONE match  -> adopt via the shared Case-2 CAS heal path.
+      //   - ZERO matches       -> the deploy provably never mined -> downgrade to
+      //                           deploy_failed + release (an honest re-claim can
+      //                           proceed; NO second contract was created).
+      //   - MULTIPLE matches / enumeration unavailable -> leave PARKED (manual),
+      //     emit an alert, do NOT adopt or release. Even with the O15c buyer pin,
+      //     two of THIS buyer's own indeterminate deploys could both match; adopting
+      //     under that ambiguity could bind the wrong contract. Fail closed.
+      //
+      // O15c — pin the on-chain buyer too. Each candidate is verifyBinding'd with
+      // buyerAddress=esc.buyerAddress (the proven buyer persisted at quarantine).
+      // A DIFFERENT invoice's already-deployed contract that shares the identical
+      // seller/arbitrator/fee/expiry/amount tuple but a different buyer would
+      // otherwise be the sole terms-match and get adopted for THIS invoice —
+      // misrouting refunds/disputes and false-funding (the real buyer can never
+      // deposit; SIGNER()==buyer binds the other buyer). The buyer pin drops that
+      // candidate to a non-match, so the sweep sees zero/other matches and
+      // downgrades/parks correctly. A legacy row with no persisted buyer (null)
+      // falls back to terms-only (undefined), preserving the prior behavior.
+      if (esc.escrowStatus === "deploy_indeterminate" && !row.deployTxid) {
+        // O15e — FAIL CLOSED without a buyer to pin. The adoption below relies on
+        // verifyBinding's buyer check to keep a different invoice's same-terms
+        // contract from being mis-adopted. If esc.buyerAddress is absent (a legacy
+        // row quarantined before the buyer was persisted, or corrupt data), the
+        // buyer pin would silently degrade to a TERMS-ONLY match and could adopt
+        // the wrong contract — misrouting refunds/disputes. Never do that: leave the
+        // row PARKED (held, not released) for manual handling instead.
+        if (!esc.buyerAddress) {
+          this.emit(
+            "error",
+            new Error(
+              `Invoice ${invoice.id} deploy_indeterminate recovery has no bound buyer ` +
+                `(escrowId ${esc.escrowId}); cannot buyer-pin a candidate, left PARKED ` +
+                `for manual handling (no terms-only adoption).`
+            )
+          );
+          continue;
+        }
+        const anchored =
+          esc.escrowAmount != null ? BigInt(esc.escrowAmount) : invoice.amount;
+        // Conservative scan floor: the escrow cannot have deployed before its
+        // invoice was created, so anchor to the invoice's creation block height
+        // (minus a reorg buffer). Absent (legacy row) -> scan from 0 (all history:
+        // safe, just slower). This avoids any ms-epoch <-> block-height conversion
+        // that could sit ABOVE the real candidate and drop it.
+        // O15c — CLAMP the floor to the CURRENT daemon height. createdBlockHeight
+        // is captured at invoice creation and can be stale/wrong, or a deep reorg
+        // can leave it ABOVE the real deploy height. An uncapped floor above the
+        // candidate yields zero matches -> downgrade+release -> double-deploy. So
+        // floor = max(0, min(createdBlockHeight, currentDaemonHeight) - REORG_BUFFER).
+        // If the height query fails or createdBlockHeight is absent, fall back to 0
+        // (scan all history: safe, just slower) rather than risk a too-high floor.
+        // O15e — a deep reorg can move the real deploy well below createdBlockHeight;
+        // a floor only 5 blocks back could still sit ABOVE it (observed stableheight
+        // lag is already ~8). listOwnScDeploys enumerates the platform's OWN outgoing
+        // SC-installs (a small set), so a generous buffer is nearly free — set it far
+        // beyond any realistic DERO reorg depth. Anomalies still fall back to 0 below.
+        const REORG_BUFFER = 64;
+        let currentDaemonHeight: number | null = null;
+        try {
+          currentDaemonHeight = await this.daemonRpc.getBlockHeight();
+        } catch {
+          currentDaemonHeight = null;
+        }
+        const scanFloor =
+          typeof invoice.createdBlockHeight === "number" &&
+          typeof currentDaemonHeight === "number"
+            ? Math.max(
+                0,
+                Math.min(invoice.createdBlockHeight, currentDaemonHeight) -
+                  REORG_BUFFER
+              )
+            : 0;
+
+        let candidates: string[] | null = null;
+        try {
+          candidates = await this.escrowManager
+            .getWalletRpc()
+            .listOwnScDeploys(scanFloor);
+        } catch {
+          candidates = null; // enumeration unavailable -> park (handled below).
+        }
+
+        if (candidates === null) {
+          // Cannot enumerate the wallet's own deploys -> cannot prove absence and
+          // cannot safely adopt. Leave PARKED (held, not released); alert.
+          this.emit(
+            "error",
+            new Error(
+              `Invoice ${invoice.id} deploy_indeterminate recovery could not enumerate ` +
+                `wallet SC-installs (escrowId ${esc.escrowId}); left PARKED for manual handling.`
+            )
+          );
+          continue;
+        }
+
+        // Confirm each candidate against the frozen quote terms. Collect the
+        // matches; uniqueness is enforced strictly.
+        const matched: string[] = [];
+        for (const scid of candidates) {
+          let ok = false;
+          try {
+            ok = await this.escrowManager.getContract().verifyBinding(scid, {
+              sellerAddress: esc.sellerAddress,
+              arbitratorAddress: esc.arbitratorAddress,
+              feeBasisPoints: esc.feeBasisPoints,
+              blockExpiration: esc.blockExpiration,
+              expectedAmount: anchored,
+              // O15c — opt-in buyer pin (see comment above). Only pass a non-null
+              // proven buyer; a legacy row without one falls back to terms-only.
+              ...(esc.buyerAddress ? { buyerAddress: esc.buyerAddress } : {}),
+            });
+          } catch {
+            ok = false;
+          }
+          if (ok) matched.push(scid);
+        }
+
+        if (matched.length === 1) {
+          // Exactly one live contract binds these terms -> adopt it via the SAME
+          // CAS heal path as Case 2 (gated on the blob still reading
+          // deploy_indeterminate, so a concurrent writer is never clobbered).
+          await this.adoptHealedScid(
+            invoice,
+            esc,
+            matched[0]!,
+            anchored,
+            "deploy_indeterminate",
+            guard,
+            row.id
+          );
+          // On a CAS miss adoptHealedScid returns false and leaves the row held —
+          // a peer/manual path owns it. Either way we're done with this row.
+          continue;
+        }
+
+        if (matched.length === 0) {
+          // No wallet SC-install binds these terms -> the ambiguous broadcast
+          // provably never produced a live escrow. Downgrade to deploy_failed so an
+          // honest re-claim can re-quote, then release the row. CAS-gated on the
+          // blob still reading deploy_indeterminate.
+          esc.scid = null;
+          esc.deployTxid = null;
+          esc.escrowStatus = "deploy_failed";
+          const applied = await this.store.updateInvoice(
+            invoice.id,
+            { escrow: esc },
+            {
+              expectedEscrow: {
+                escrowId: esc.escrowId!,
+                escrowStatus: "deploy_indeterminate",
+              },
+            }
+          );
+          if (applied) {
+            try {
+              await guard.releaseClaim(row.id);
+            } catch {
+              /* best-effort */
+            }
+          }
+          // On a CAS miss, another writer already advanced it — leave the row.
+          continue;
+        }
+
+        // MULTIPLE matches -> ambiguous which invoice each belongs to (verifyBinding
+        // does not compare the buyer). Adopting could bind the wrong contract. Leave
+        // PARKED (held, not released); alert for manual resolution.
+        this.emit(
+          "error",
+          new Error(
+            `Invoice ${invoice.id} deploy_indeterminate recovery found ${matched.length} ` +
+              `contracts matching the frozen terms (escrowId ${esc.escrowId}); ambiguous ` +
+              `ownership, left PARKED for manual handling (no adoption/release).`
+          )
+        );
+        continue;
+      }
+
+      // O15b — a held 'deploy_indeterminate' is NEVER released by the Case-3
+      // catch-all: it is resolved ONLY by the recovery branch above (adopt /
+      // downgrade-and-release / park). If it reached here (e.g. a defensively-
+      // stamped deployTxid excluded it from the branch above), leave it PARKED so
+      // the fund-safety hold survives; do NOT free it into an honest re-claim that
+      // could double-deploy past a possibly-live contract.
+      if (esc.escrowStatus === "deploy_indeterminate") {
+        this.emit(
+          "error",
+          new Error(
+            `Invoice ${invoice.id} deploy_indeterminate row was not resolved by recovery ` +
+              `(escrowId ${esc.escrowId}); left PARKED (held) pending manual handling.`
+          )
+        );
+        continue;
       }
 
       // Case 3 — 'quoted' with no (mined) contract, or a persisted 'deploy_failed'
@@ -1820,6 +2119,104 @@ export class InvoiceEngine {
         /* best-effort */
       }
     }
+  }
+
+  /**
+   * O15c — periodic, overlap-guarded wrapper around reconcileOrphanedClaims, run
+   * on the engine's existing expiry-timer cadence (see start()). A broadcast-
+   * ambiguous quarantine created at RUNTIME (or a park because the wallet was
+   * momentarily un-enumerable) would otherwise stay HELD until the next process
+   * restart even after the wallet recovers; this heals it in-process. Idempotent
+   * (reconcileOrphanedClaims is fully CAS-gated); the flag only prevents a slow
+   * pass from stacking on the next tick.
+   */
+  private async periodicReconcile(): Promise<void> {
+    if (!this.escrowManager) return;
+    if (this.reconcileInFlight) return;
+    this.reconcileInFlight = true;
+    try {
+      await this.reconcileOrphanedClaims();
+    } catch (err) {
+      this.emit("error", new Error(`Periodic reconcile failed: ${err}`));
+    } finally {
+      this.reconcileInFlight = false;
+    }
+  }
+
+  /**
+   * O15c — operator surface for a stuck deploy_indeterminate quarantine. Meant to
+   * be called behind the caller's OWN auth (the SDK ships no auth). Lets an operator
+   * resolve a park that the periodic reconcile cannot clear on its own — e.g. a
+   * permanently wallet-down enumeration park, or an ambiguous multi-match — WITHOUT
+   * a process restart:
+   *   - 'retry'     -> run one reconcile pass now (same idempotent entrypoint as the
+   *                    periodic loop). Use once the wallet is reachable again so the
+   *                    quarantine adopts/downgrades instead of waiting for the timer.
+   *   - 'downgrade' -> manually force the quarantine to deploy_failed and RELEASE the
+   *                    held row, so an honest re-claim can re-quote. ONLY safe once the
+   *                    operator has confirmed OUT OF BAND that no live contract exists
+   *                    for this invoice (recovery could not prove absence); it drops the
+   *                    fund-safety hold, so it is a deliberate operator override.
+   * Returns the (possibly updated) invoice. Throws if the invoice/escrow is absent
+   * or is not currently a deploy_indeterminate quarantine.
+   */
+  async forceResolveIndeterminate(
+    invoiceId: string,
+    action: "retry" | "downgrade"
+  ): Promise<Invoice> {
+    if (!this.escrowManager) throw new Error("Escrow manager not available");
+    const invoice = await this.store.getInvoice(invoiceId);
+    if (!invoice) throw new Error(`Invoice ${invoiceId} not found`);
+    if (!invoice.escrow) throw new Error(`Invoice ${invoiceId} has no escrow`);
+    if (invoice.escrow.escrowStatus !== "deploy_indeterminate") {
+      throw new Error(
+        `Invoice ${invoiceId} escrow is not deploy_indeterminate (status: ${invoice.escrow.escrowStatus}); nothing to force-resolve.`
+      );
+    }
+
+    if (action === "retry") {
+      // Reuse the SAME reconcile entrypoint (idempotent, CAS-gated) so a manual
+      // retry cannot double-adopt against a concurrent periodic pass.
+      await this.periodicReconcile();
+      return (await this.store.getInvoice(invoiceId)) ?? invoice;
+    }
+
+    // action === 'downgrade' — operator override: force deploy_failed + release the
+    // held guard row (CAS-gated on the blob still reading deploy_indeterminate so a
+    // concurrent recovery adoption is never clobbered).
+    const esc = invoice.escrow;
+    esc.scid = null;
+    esc.deployTxid = null;
+    esc.escrowStatus = "deploy_failed";
+    const applied = await this.store.updateInvoice(
+      invoiceId,
+      { escrow: esc },
+      { expectedEscrow: { escrowId: esc.escrowId!, escrowStatus: "deploy_indeterminate" } }
+    );
+    if (!applied) {
+      // A recovery pass already transitioned it; return the current durable state.
+      return (await this.store.getInvoice(invoiceId)) ?? invoice;
+    }
+    const guard = this.escrowManager.getClaimGuard();
+    if (guard && esc.escrowId) {
+      try {
+        await guard.releaseClaim(esc.escrowId);
+      } catch {
+        // O15e — best-effort: deploy_failed is already durable so the re-claim gate
+        // stays closed and no double-deploy is possible, but SURFACE the failed
+        // release so an operator knows the row is still held (the periodic reconcile
+        // Case-3 path will also retry it) rather than swallowing it silently.
+        this.emit(
+          "error",
+          new Error(
+            `forceResolveIndeterminate('downgrade') persisted deploy_failed for invoice ` +
+              `${invoiceId} but the guard-row release failed (escrowId ${esc.escrowId}); ` +
+              `row still held — the periodic reconcile will retry, or release manually.`
+          )
+        );
+      }
+    }
+    return (await this.store.getInvoice(invoiceId)) ?? invoice;
   }
 
   private async rehydrateEscrows(): Promise<void> {

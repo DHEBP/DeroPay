@@ -32,7 +32,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { WalletRpcClient } from "../rpc/wallet-rpc.js";
+import { WalletRpcClient, isBroadcastAmbiguous } from "../rpc/wallet-rpc.js";
 import { DaemonRpcClient } from "../rpc/daemon-rpc.js";
 import { EscrowContract } from "./contract.js";
 import {
@@ -407,19 +407,35 @@ export class EscrowManager {
 
       this.emit("escrowDeployed", { ...record });
     } catch (err) {
-      record.status = "deploy_failed";
-      // O6 — do NOT release the durable claim here. Releasing before the caller
-      // has persisted escrowStatus='deploy_failed' would open a window where the
-      // row is free AND the durable invoice still reads 'quoted', letting a
-      // second worker win the row and deploy a SECOND contract. The engine
-      // releases the row only AFTER persisting deploy_failed, so the invoice-
-      // level 'must be quoted' gate is closed before the row can be re-won. See
-      // claimEscrowInvoice's deploy_failed branch.
-      this.emit(
-        "escrowDeployFailed",
-        { ...record },
-        err instanceof Error ? err : new Error(String(err))
-      );
+      const error = err instanceof Error ? err : new Error(String(err));
+      // O15b — classify the deploy failure. A BROADCAST-AMBIGUOUS error (installSc
+      // timed out / network-failed after the daemon may have accepted it) means a
+      // live, fundable contract MAY exist on-chain with an SCID we never learned;
+      // recordDeployTxid never ran, so the held row still reads deployTxid=null.
+      // We must QUARANTINE this (deploy_indeterminate) — NOT deploy_failed — so the
+      // engine neither releases the row nor auto-requotes it, and the wallet-side
+      // recovery sweep can reconcile the possibly-live contract. A DETERMINISTIC
+      // failure (daemon definitively refused; nothing broadcast) stays
+      // deploy_failed and remains safely releasable + re-quotable.
+      if (isBroadcastAmbiguous(err)) {
+        record.status = "deploy_indeterminate";
+        // O6/O15b — do NOT release the durable claim here (mirrors deploy_failed):
+        // releasing before the engine persists the quarantine status would let a
+        // second worker win the row and deploy a SECOND contract. For an
+        // indeterminate deploy the hold is PERMANENT until recovery — the engine's
+        // deploy_indeterminate branch persists the status and holds the row.
+        this.emit("escrowDeployIndeterminate", { ...record }, error);
+      } else {
+        record.status = "deploy_failed";
+        // O6 — do NOT release the durable claim here. Releasing before the caller
+        // has persisted escrowStatus='deploy_failed' would open a window where the
+        // row is free AND the durable invoice still reads 'quoted', letting a
+        // second worker win the row and deploy a SECOND contract. The engine
+        // releases the row only AFTER persisting deploy_failed, so the invoice-
+        // level 'must be quoted' gate is closed before the row can be re-won. See
+        // claimEscrowInvoice's deploy_failed branch.
+        this.emit("escrowDeployFailed", { ...record }, error);
+      }
     }
 
     return { ...record };
@@ -481,6 +497,10 @@ export class EscrowManager {
       "arbitrated",
       "cancelled",
       "deploy_failed",
+      // O15b — 'deploy_indeterminate' is deliberately NOT terminal: a possibly-
+      // live contract is being HELD pending recovery, so it counts as ACTIVE. If
+      // it were listed terminal it would be dropped from the active book and the
+      // fund-safety hold would silently disappear.
     ];
     return Array.from(this.escrows.values()).filter(
       (e) => !terminalStatuses.includes(e.status)
@@ -512,10 +532,24 @@ export class EscrowManager {
         "refunded",
         "expired_claimed",
         "arbitrated",
+        // O15b — listed for completeness of the scid-bearing clobber guard. A
+        // 'deploy_indeterminate' normally has NO scid (handled by the dedicated
+        // guard below), but if a recovery ever adopts a scid onto it before the
+        // status flips, this keeps a stale scid-less rebuild from clobbering it.
+        "deploy_indeterminate",
       ];
       // Existing record already advanced with a real scid: refuse to clobber it
       // with a stale scid-less rebuild. Preserve the live binding.
       if (existing.scid && liveStatuses.includes(existing.status) && !record.scid) {
+        return;
+      }
+      // O15b — a held 'deploy_indeterminate' quarantine has NO scid (that is the
+      // whole failure), so the scid guard above cannot protect it. Refuse to let a
+      // rebuild demote it back to a scid-less 'quoted'/'deploying' placeholder: the
+      // demotion would drop the fund-safety hold and let the invoice re-quote a
+      // SECOND contract past the ambiguous first one. Only the recovery sweep may
+      // transition it (to awaiting_deposit on adopt, or deploy_failed on downgrade).
+      if (existing.status === "deploy_indeterminate" && !record.scid) {
         return;
       }
     }
@@ -636,6 +670,15 @@ export class EscrowManager {
     return this.contract;
   }
 
+  /**
+   * O15b — the underlying wallet RPC client. Exposed so the crash reconciler can
+   * enumerate the platform wallet's OWN outgoing SC-install TXs (listOwnScDeploys)
+   * to recover a broadcast-indeterminate deploy whose SCID was never learned.
+   */
+  getWalletRpc(): WalletRpcClient {
+    return this.walletRpc;
+  }
+
   // -------------------------------------------------------------------------
   // Internal: polling
   // -------------------------------------------------------------------------
@@ -649,6 +692,10 @@ export class EscrowManager {
       "funded",
       "disputed",
       "deploying",
+      // O15b — 'deploy_indeterminate' is intentionally EXCLUDED: it has no scid to
+      // poll (its SCID is exactly what was lost). The `!record.scid` guard below
+      // would skip it regardless, but keeping it out of this set makes the
+      // not-pollable invariant explicit.
     ];
 
     for (const record of this.escrows.values()) {

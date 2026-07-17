@@ -739,6 +739,15 @@ function getEscrowStatusInfo(status: EscrowInvoiceStatus): {
         bgColor: "rgba(239,68,68,0.12)",
         textColor: "#ef4444",
       };
+    case "deploy_indeterminate":
+      // O15b \u2014 a held/uncertain state pending recovery, NOT a confirmed alarm.
+      // Amber caution (red is reserved for true alarms), and NOT terminal.
+      return {
+        label: "Verifying Deployment...",
+        icon: "\u23f3",
+        bgColor: "rgba(245,166,35,0.12)",
+        textColor: "#f5a623",
+      };
     default:
       return {
         label: "Unknown",

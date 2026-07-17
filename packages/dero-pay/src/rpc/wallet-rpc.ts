@@ -89,6 +89,25 @@ function serializeRpcBody(request: unknown): string {
 }
 
 /**
+ * Normalize a wallet transfer entry to the SDK's canonical field names.
+ *
+ * derohe's wallet RPC emits the payment-id ports as `dstport`/`srcport`
+ * (the JSON tags on its `rpc.Entry` struct), but the SDK and DERO docs
+ * refer to them as `destination_port`/`source_port`. Without this bridge
+ * the monitor reads `entry.destination_port` as undefined and throws
+ * `BigInt(undefined)` on every poll, so no live payment is ever detected.
+ * Fill the canonical fields from whichever alias the wallet provided.
+ */
+function normalizeTransferEntry(entry: TransferEntry): TransferEntry {
+  const raw = entry as TransferEntry & { dstport?: number; srcport?: number };
+  return {
+    ...entry,
+    destination_port: entry.destination_port ?? raw.dstport ?? 0,
+    source_port: entry.source_port ?? raw.srcport ?? 0,
+  };
+}
+
+/**
  * DERO Wallet RPC client for server-side payment operations.
  */
 export class WalletRpcClient {
@@ -199,7 +218,7 @@ export class WalletRpcClient {
    */
   async getTransfers(params?: GetTransfersParams): Promise<TransferEntry[]> {
     const result = await this.rpcCall<GetTransfersResult>("GetTransfers", params ?? {});
-    return result.entries ?? [];
+    return (result.entries ?? []).map(normalizeTransferEntry);
   }
 
   /**
@@ -234,7 +253,7 @@ export class WalletRpcClient {
       "GetTransferbyTXID",
       { txid } satisfies GetTransferByTXIDParams
     );
-    return result.entry;
+    return normalizeTransferEntry(result.entry);
   }
 
   /**

@@ -18,6 +18,7 @@ export default defineConfig({
     "x402/server": "src/x402/server.ts",
     "x402/client": "src/x402/client.ts",
     "x402/next": "src/x402/next.ts",
+    "agent/index": "src/agent/index.ts",
   },
   format: ["esm"],
   dts: true,

@@ -65,6 +65,10 @@
     "./x402/next": {
       "types": "./dist/x402/next.d.ts",
       "import": "./dist/x402/next.js"
+    },
+    "./agent": {
+      "types": "./dist/agent/index.d.ts",
+      "import": "./dist/agent/index.js"
     }
   },
   "bin": {

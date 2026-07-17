@@ -8,6 +8,7 @@ Minimal runnable example that shows:
 - protected route access with `X-DeroPay-Receipt` or `Authorization: X402 ...`
 - dynamic pricing with `X402PolicyResolver`
 - route-level quota enforcement via `maxReceiptsPerDay` and `maxAtomicPerWindow`
+- autonomous agent payment via `dero-pay/agent` (`scripts/agent-pay.ts`)
 
 ## How x402 Works (Simple)
 
@@ -126,6 +127,27 @@ curl -sS -X POST http://localhost:3000/api/pay/receipts/issue \
 curl -sS "http://localhost:3000/api/protected/inference?tokens=2500" \
   -H "X-DeroPay-Receipt: <receipt>"
 ```
+
+## 6) Autonomous agent payer (no curl, no human)
+
+`scripts/agent-pay.ts` runs steps A–D automatically through
+`createPayingFetch` from `dero-pay/agent`: it receives the 402, pays the
+invoice's integrated address from the agent's own wallet, polls
+`/api/pay/status`, redeems the receipt, and retries — all under a
+deny-by-default spending policy.
+
+Requirements: the app running (step 3) and a SECOND wallet RPC for the
+agent — paying the merchant wallet from itself won't register as an
+incoming transfer.
+
+```bash
+cd apps/x402-example
+AGENT_WALLET_RPC_URL=http://127.0.0.1:10104/json_rpc bun run agent-pay
+```
+
+The script pays once, then calls the route a second time to show receipt
+reuse (no new payment). Spending caps: `MAX_ATOMIC_PER_REQUEST`,
+`MAX_ATOMIC_PER_HOUR`; target route: `RESOURCE_URL`.
 
 ## Routes included
 

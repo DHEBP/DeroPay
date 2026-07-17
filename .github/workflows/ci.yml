@@ -21,11 +21,21 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Guard: the SQLite-backed suites import better-sqlite3 at module load and
+      # have no skip fallback, so a missing native binding must fail loudly here
+      # rather than surfacing as opaque import errors — and never be skipped.
+      - name: Verify better-sqlite3 native binding built
+        run: test -f packages/dero-pay/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+          || (echo "::error::better-sqlite3 native binding missing — SQLite suites would not run" && exit 1)
+
       - name: Typecheck SDK
         run: bun run typecheck
 
       - name: Run SDK unit tests
         run: bun run --cwd packages/dero-pay test:unit
+
+      - name: Verify published subpath exports resolve
+        run: bun run --cwd packages/dero-pay test:exports
 
       - name: Build SDK
         run: bun run --cwd packages/dero-pay build

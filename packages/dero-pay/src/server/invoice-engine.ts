@@ -328,6 +328,20 @@ export class InvoiceEngine {
               "(e.g. SqliteInvoiceStore) or run single-process."
           );
         }
+      } else {
+        // O4 (default-safe) — not declared multiProcess, but a process-local
+        // guard is only safe for a SINGLE process. There is no portable way to
+        // detect sibling workers, so this cannot be auto-enforced; warn LOUD so a
+        // clustered memory-store deployment is never SILENTLY unprotected.
+        const guard = this.escrowManager.getClaimGuard();
+        if (guard && !guard.durable) {
+          console.warn(
+            "[dero-pay] escrow claim guard is process-local (durable=false). " +
+              "Safe for a SINGLE process only — a clustered/multi-worker deployment " +
+              "will double-deploy escrows. For clusters use a durable store " +
+              "(e.g. SqliteInvoiceStore) and set multiProcess=true."
+          );
+        }
       }
       // O15 — the deploy lease is a LOAD-BEARING timing invariant, not a comment.
       // The reconciler distinguishes "a peer worker is mid-broadcast" from "a

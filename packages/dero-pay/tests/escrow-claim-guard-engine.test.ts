@@ -69,12 +69,19 @@ describe("O4 — multiProcess demands a durable claim guard (fail loud, not open
     if (engine.running) await engine.stop();
   });
 
-  it("starts fine single-process on the same process-local guard", async () => {
+  it("starts fine single-process on the same process-local guard, but warns loud", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const store = new MemoryInvoiceStore();
     const engine = makeEngine(store); // multiProcess defaults false
     await engine.start();
     expect(engine.running).toBe(true);
+    // O4 default-safe — the process-local guard must not be SILENTLY unprotected:
+    // a single loud warning fires so a clustered memory-store deploy is visible.
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/process-local.*single process|double-deploy/is)
+    );
     await engine.stop();
+    warn.mockRestore();
   });
 });
 

@@ -62,11 +62,60 @@ import {
  * id=$1 AND status='quoted'`) and return true ONLY if THIS caller won the row.
  */
 export interface EscrowClaimGuard {
+  /**
+   * Whether this guard is atomic ACROSS processes. A process-local guard (e.g.
+   * the in-memory Set) is `false` and provides NO protection in a clustered
+   * deployment; a shared-storage guard (SQLite/DB) is `true`. The engine uses
+   * this to fail LOUD at startup when a multi-process server is configured with
+   * a process-local guard (O4) instead of silently failing open.
+   */
+  readonly durable: boolean;
   /** Atomically flip id from 'quoted' to 'deploying'. Returns true iff this
    *  caller won the transition (i.e. it was still 'quoted'). */
   tryClaim(id: string): Promise<boolean>;
   /** Roll the row back to 'quoted' if the subsequent deploy failed. */
   releaseClaim(id: string): Promise<void>;
+  /**
+   * Record the deploy TXID against a won claim as soon as the deploy is
+   * broadcast, BEFORE the (separate) invoice-blob persist. This is the durable
+   * breadcrumb a crash-recovery reconciler follows: a held row carrying a
+   * deployTxid means "an on-chain contract for this quote exists" even if the
+   * invoice blob never got its scid (O5). Optional so process-local guards may
+   * no-op. */
+  recordDeployTxid?(id: string, txid: string): Promise<void>;
+  /**
+   * Enumerate held claim rows for crash recovery (O5). Returns every claimed id
+   * with the deployTxid recorded (or null if the crash happened before the
+   * deploy was even broadcast) AND the claimedAt epoch-ms the row was won.
+   *
+   * claimedAt is load-bearing for O12: the reconciler MUST NOT release a row a
+   * live peer worker is still mid-deploy against (it has won tryClaim but not yet
+   * reached recordDeployTxid). Because a broadcast completes in seconds while a
+   * crashed claim leaves an aged row, the reconciler only heals/releases rows
+   * older than a deploy lease — never a fresh, actively-deploying peer's row.
+   * Optional; a process-local guard returns nothing durable so it may omit this.
+   */
+  listClaims?(): Promise<
+    Array<{ id: string; deployTxid: string | null; claimedAt: number }>
+  >;
+  /**
+   * O18 — return held rows that are OLDER than `leaseMs`, with the age computed
+   * against the SAME clock authority that stamped `claimed_at`. The reconciler
+   * MUST use this instead of comparing `claimedAt` to its own `Date.now()`:
+   * `claimed_at` is stamped by the DEPLOYING worker and the cutoff is evaluated
+   * by the RECONCILING worker, which in a multi-host cluster is a different wall
+   * clock. Cross-host NTP skew larger than (lease − broadcast latency) would let
+   * a reconciler free a live, mid-broadcast peer row and re-open the double-deploy
+   * A12 closed. Evaluating age inside the guard (SQLite `unixepoch`) makes the
+   * lease a single-clock interval. Each returned row is eligible to heal/release.
+   * Optional; a process-local guard has no cross-host concern so it may omit this
+   * and the reconciler falls back to listClaims() (single-process = one clock).
+   */
+  listExpiredClaims?(
+    leaseMs: number
+  ): Promise<
+    Array<{ id: string; deployTxid: string | null; claimedAt: number }>
+  >;
 }
 
 export class EscrowManager {
@@ -307,8 +356,15 @@ export class EscrowManager {
     if (this.claimGuard) {
       const won = await this.claimGuard.tryClaim(id);
       if (!won) {
-        // Re-sync local view if another process claimed it.
-        record.status = record.status === "quoted" ? "deploying" : record.status;
+        // O17 — the loser MUST NOT mutate its local view. This record is a rebuilt
+        // copy of a quote THIS worker does not own and will never deploy. Flipping
+        // it to 'deploying' would strand a scid-less, buyer-less record permanently
+        // in the escrows map, poisoning every later getEscrowByScid / poll / import
+        // that trusts the in-memory record (the winning worker's deploy lives in
+        // ITS process; nothing in this process ever reconciles this stale copy).
+        // Drop the untracked loser copy instead so a later getEscrow re-imports a
+        // fresh, faithful view from the durable invoice when needed.
+        this.escrows.delete(id);
         throw new Error(
           `escrow ${id} was concurrently claimed by another worker; not claimable`
         );
@@ -327,6 +383,20 @@ export class EscrowManager {
         expectedAmount: record.expectedAmount,
       });
 
+      // O5 — the on-chain contract now EXISTS (the deploy TX is broadcast).
+      // Stamp the deployTxid onto the held guard row FIRST, before the caller's
+      // separate invoice-blob persist. If the process dies in the window between
+      // here and that persist, the held row carries the txid so the startup
+      // reconciler can find the orphaned live contract and heal the invoice
+      // instead of stranding a fundable escrow forever.
+      if (this.claimGuard?.recordDeployTxid) {
+        try {
+          await this.claimGuard.recordDeployTxid(id, txid);
+        } catch {
+          // best-effort breadcrumb; deploy already succeeded either way.
+        }
+      }
+
       // The TXID of the deploy transaction is the SCID
       record.deployTxid = txid;
       record.scid = txid;
@@ -338,15 +408,13 @@ export class EscrowManager {
       this.emit("escrowDeployed", { ...record });
     } catch (err) {
       record.status = "deploy_failed";
-      // Release the durable claim so the quote can be re-claimed after a
-      // transient deploy failure (RPC hiccup) instead of being stranded.
-      if (this.claimGuard) {
-        try {
-          await this.claimGuard.releaseClaim(id);
-        } catch {
-          // best-effort; the record is deploy_failed regardless
-        }
-      }
+      // O6 — do NOT release the durable claim here. Releasing before the caller
+      // has persisted escrowStatus='deploy_failed' would open a window where the
+      // row is free AND the durable invoice still reads 'quoted', letting a
+      // second worker win the row and deploy a SECOND contract. The engine
+      // releases the row only AFTER persisting deploy_failed, so the invoice-
+      // level 'must be quoted' gate is closed before the row can be re-won. See
+      // claimEscrowInvoice's deploy_failed branch.
       this.emit(
         "escrowDeployFailed",
         { ...record },
@@ -372,6 +440,12 @@ export class EscrowManager {
   getEscrow(id: string): EscrowRecord | null {
     const record = this.escrows.get(id);
     return record ? { ...record } : null;
+  }
+
+  /** The configured single-claim guard, or null if none was injected. Exposed
+   *  so the engine can assert a durable guard in a multi-process deployment (O4). */
+  getClaimGuard(): EscrowClaimGuard | null {
+    return this.claimGuard;
   }
 
   /**
@@ -415,8 +489,36 @@ export class EscrowManager {
 
   /**
    * Import an existing escrow (e.g. from persistent storage on restart).
+   *
+   * O17 — the import is DEFENSIVE, not unconditional. A rebuild-on-any-worker
+   * path (claimEscrowInvoice / the reconciler) calls this whenever getEscrow()
+   * returns falsy, but a near-simultaneous request in the SAME process can have
+   * already advanced the record past 'quoted' (deploying/awaiting_deposit) and
+   * bound its scid. An unconditional `set` would blow that live binding away with
+   * a fresh scid=null 'quoted' record and desync scidToId. So: NEVER overwrite an
+   * existing record that is already past 'quoted'. If a record already exists and
+   * is in a live/deployed state, the import is a no-op (the caller's rebuild is
+   * stale). We only accept the import when there is no record, or the existing one
+   * is still a scid-less 'quoted'/'deploying' placeholder being (re)hydrated.
    */
   importEscrow(record: EscrowRecord): void {
+    const existing = this.escrows.get(record.id);
+    if (existing) {
+      const liveStatuses: EscrowStatus[] = [
+        "awaiting_deposit",
+        "funded",
+        "disputed",
+        "released",
+        "refunded",
+        "expired_claimed",
+        "arbitrated",
+      ];
+      // Existing record already advanced with a real scid: refuse to clobber it
+      // with a stale scid-less rebuild. Preserve the live binding.
+      if (existing.scid && liveStatuses.includes(existing.status) && !record.scid) {
+        return;
+      }
+    }
     this.escrows.set(record.id, { ...record });
     if (record.scid) {
       this.scidToId.set(record.scid, record.id);

@@ -91,6 +91,18 @@ export type InvoiceEscrow = {
   deployTxid: string | null;
   /** Escrow status (mirrors on-chain state) */
   escrowStatus: EscrowInvoiceStatus;
+  /**
+   * O14/O3 — the quote-time escrow principal, frozen at createEscrowQuote as a
+   * decimal atomic-unit STRING (bigint is not JSON-serializable and the escrow
+   * blob round-trips through JSON in both stores). This is the price the buyer
+   * agreed to; it is the authoritative cross-check for the on-chain bind on ANY
+   * worker. The claim path compares invoice.amount against THIS frozen value,
+   * NOT against a value it just re-derived from invoice.amount (which would make
+   * the drift guard a tautology on a rebuilding worker). Optional/absent on
+   * pre-migration rows — treated as "no anchor recorded" and the guard falls
+   * back to invoice.amount for those, preserving prior behavior.
+   */
+  escrowAmount?: string;
   /** Seller address */
   sellerAddress: string;
   /** Arbitrator address */

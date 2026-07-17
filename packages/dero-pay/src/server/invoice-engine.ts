@@ -102,9 +102,13 @@ export class InvoiceEngine {
     escrowBlockExpiration: number;
     escrowMaxAutoRequotes: number;
     escrowRequoteCooldownMs: number;
+    escrowClaimLeaseMs: number;
   };
   private baseAddress: string | null = null;
   private isStarted = false;
+  /** O4 — set when the caller declares a multi-process deployment; drives the
+   *  durable-claim-guard startup assertion. */
+  private multiProcess = false;
   private expiryTimer: ReturnType<typeof setInterval> | null = null;
   private listeners: Partial<{
     [K in keyof InvoiceEngineEvents]: InvoiceEngineEvents[K][];
@@ -121,6 +125,17 @@ export class InvoiceEngine {
       /** Enable escrow support (default: false — must be explicitly opted into) */
       enableEscrow?: boolean;
       /**
+       * O4 — declare that this engine runs in a MULTI-PROCESS deployment
+       * (cluster / PM2 / multiple pods sharing one store). When true and escrow
+       * is enabled, start() HARD-FAILS unless the store provides a DURABLE
+       * (cross-process) claim guard. This turns the silent fail-open — a
+       * clustered server on the memory store, or any store whose createClaimGuard
+       * yields a process-local guard, gets N independent guards and N deploys —
+       * into a loud startup error. Default false (single-process); a single
+       * process is safe with the in-memory guard.
+       */
+      multiProcess?: boolean;
+      /**
        * Max number of AUTOMATIC re-quotes a single invoice may receive after
        * CancelUnfunded races (O13 amplifier guard). Once hit, the invoice is
        * parked in a terminal alert state instead of looping. Default: 3.
@@ -132,6 +147,16 @@ export class InvoiceEngine {
        * Default: 60_000 ms.
        */
       escrowRequoteCooldownMs?: number;
+      /**
+       * O12 — deploy lease for the crash-recovery reconciler. A won claim row is
+       * considered ACTIVELY-DEPLOYING (a live peer worker mid-broadcast) until it
+       * is older than this many ms; the reconciler NEVER touches a row younger
+       * than the lease, so a rolling-deploy / autoscale / restart peer cannot free
+       * a row whose deploy is still in flight and trigger a second deploy. Set
+       * comfortably above the worst-case wallet installSc broadcast latency.
+       * Default: 120_000 ms (2 min).
+       */
+      escrowClaimLeaseMs?: number;
       /** Inject RPC clients (for testing); when set, walletRpcUrl/daemonRpcUrl are ignored */
       walletRpc?: WalletRpcClient;
       daemonRpc?: DaemonRpcClient;
@@ -171,6 +196,7 @@ export class InvoiceEngine {
       escrowBlockExpiration: options.escrowBlockExpiration ?? 9600,
       escrowMaxAutoRequotes: options.escrowMaxAutoRequotes ?? 3,
       escrowRequoteCooldownMs: options.escrowRequoteCooldownMs ?? 60_000,
+      escrowClaimLeaseMs: options.escrowClaimLeaseMs ?? 120_000,
     };
 
     this.monitor = new PaymentMonitor({
@@ -192,6 +218,8 @@ export class InvoiceEngine {
 
     this.webhookSink = options.webhookSink ?? null;
 
+    this.multiProcess = options.multiProcess === true;
+
     // Set up escrow manager (opt-in: must be explicitly enabled)
     if (options.enableEscrow === true) {
       this.escrowManager = new EscrowManager({
@@ -203,6 +231,9 @@ export class InvoiceEngine {
         pollIntervalMs: this.config.pollIntervalMs * 2, // poll escrows less frequently
         defaultFeeBasisPoints: this.config.escrowFeeBasisPoints,
         defaultBlockExpiration: this.config.escrowBlockExpiration,
+        // Durable claim guard from the store (if it provides one) so a
+        // multi-process server cannot double-claim a quote at the claim window.
+        claimGuard: this.store.createClaimGuard?.(),
       });
       this.setupEscrowEvents();
     }
@@ -275,6 +306,64 @@ export class InvoiceEngine {
 
     // Start the escrow manager
     if (this.escrowManager) {
+      // O4 — a multi-process deployment MUST use a durable (cross-process) claim
+      // guard. A process-local guard (memory store, or a store whose
+      // createClaimGuard yields a per-process guard) gives each worker its own
+      // guard, so N workers win N claims and deploy N contracts — silently. Fail
+      // LOUD at startup rather than fail open at the claim window.
+      if (this.multiProcess) {
+        const guard = this.escrowManager.getClaimGuard();
+        if (!guard) {
+          throw new Error(
+            "multiProcess=true but the store provides no escrow claim guard " +
+              "(createClaimGuard is absent). A clustered server would double-deploy " +
+              "escrows. Use a durable store (e.g. SqliteInvoiceStore) or run single-process."
+          );
+        }
+        if (!guard.durable) {
+          throw new Error(
+            "multiProcess=true but the escrow claim guard is process-local " +
+              "(durable=false, e.g. the in-memory guard). Each worker would hold an " +
+              "independent guard and double-deploy escrows. Use a durable store " +
+              "(e.g. SqliteInvoiceStore) or run single-process."
+          );
+        }
+      }
+      // O15 — the deploy lease is a LOAD-BEARING timing invariant, not a comment.
+      // The reconciler distinguishes "a peer worker is mid-broadcast" from "a
+      // crashed orphan" purely by row age: a row younger than escrowClaimLeaseMs is
+      // presumed live and left alone; older, it's fair game to free (Case 3 frees a
+      // 'quoted'+no-txid row with NO on-chain check). If the lease is NOT provably
+      // larger than the worst-case deploy broadcast, a slow-but-alive deploy crosses
+      // the lease while installSc is still in flight, a peer's reconciler frees the
+      // live row, a third claim wins it, and a SECOND contract deploys — the exact
+      // double-deploy Gate 1 exists to prevent. The only bound on broadcast latency
+      // is the wallet RPC timeout (installSc aborts at timeoutMs), so ASSERT the
+      // lease clears it with margin rather than leaving the inequality to prose.
+      // A retrying transport that stacks attempts must be reflected by the operator
+      // raising escrowClaimLeaseMs accordingly; this guard makes a lease set BELOW a
+      // single broadcast timeout a hard startup error instead of a silent reopening.
+      // Fall back to the documented default (30s) if the client does not expose
+      // its timeout (e.g. an injected test double) so the guard is never silently
+      // skipped by a NaN comparison.
+      const walletTimeoutMs =
+        typeof this.walletRpc.requestTimeoutMs === "number" &&
+        Number.isFinite(this.walletRpc.requestTimeoutMs)
+          ? this.walletRpc.requestTimeoutMs
+          : 30_000;
+      const LEASE_SAFETY_FACTOR = 2;
+      const minLease = LEASE_SAFETY_FACTOR * walletTimeoutMs;
+      if (this.config.escrowClaimLeaseMs < minLease) {
+        throw new Error(
+          `escrowClaimLeaseMs (${this.config.escrowClaimLeaseMs}ms) is below the ` +
+            `safe floor of ${minLease}ms (${LEASE_SAFETY_FACTOR}x the wallet RPC ` +
+            `timeout of ${walletTimeoutMs}ms). The crash reconciler would be able to ` +
+            `free a row whose deploy broadcast is still in flight, allowing a second ` +
+            `contract to deploy for the same quote. Raise escrowClaimLeaseMs to at ` +
+            `least ${minLease}ms, or lower the wallet RPC timeout. If your RPC ` +
+            `transport RETRIES installSc, set the lease above N x timeout for N attempts.`
+        );
+      }
       await this.escrowManager.start();
       // O15 — REHYDRATE in-flight escrows before the poll loop runs. The escrow
       // manager holds records purely in-memory; a bare start() begins polling an
@@ -284,6 +373,13 @@ export class InvoiceEngine {
       // and the invoice never maps to its terminal state. Reload the persisted
       // escrow bindings from the invoice store back into the poller.
       await this.rehydrateEscrows();
+      // O5 — heal escrows that crashed BETWEEN a successful on-chain deploy and
+      // the invoice-blob persist. In that window the durable invoice still reads
+      // 'quoted'/scid=null (so rehydrateEscrows skipped it) yet a fundable
+      // contract exists on-chain and its guard row is still held. Walk the held
+      // claim rows and reconcile each against durable state before the claim path
+      // (or a buyer) can act on a stale 'quoted' invoice.
+      await this.reconcileOrphanedClaims();
     }
 
     // Start the expiry checker (runs every 30 seconds)
@@ -418,6 +514,9 @@ export class InvoiceEngine {
         scid: null,
         deployTxid: null,
         escrowStatus: "quoted",
+        // O14/O3 — freeze the quote-time principal so the drift guard has a real
+        // anchor on every worker, not a value re-derived from invoice.amount.
+        escrowAmount: params.amount.toString(),
         sellerAddress,
         arbitratorAddress,
         feeBasisPoints,
@@ -817,18 +916,81 @@ export class InvoiceEngine {
     invoiceId: string,
     buyerAddress: string
   ): Promise<Invoice> {
-    const invoice = await this.store.getInvoice(invoiceId);
+    let invoice = await this.store.getInvoice(invoiceId);
     if (!invoice) throw new Error(`Invoice ${invoiceId} not found`);
     if (!invoice.escrow) throw new Error(`Invoice ${invoiceId} has no escrow`);
     if (!this.escrowManager) throw new Error("Escrow manager not available");
-    if (invoice.escrow.escrowStatus !== "quoted") {
+    // O19 — a deploy_failed escrow is RECOVERABLE, not a dead end. A deploy can
+    // fail transiently (installSc RPC timeout — the very case the A15 lease models
+    // — daemon eviction/rejection, momentarily empty gas wallet). The old code
+    // durably stamped 'deploy_failed' and the entry gate below rejected everything
+    // not 'quoted', so a proven buyer whose deploy merely blipped was stranded
+    // forever with no retry surface. Instead: on a fresh proven-buyer claim against
+    // a deploy_failed escrow, re-quote a NEW escrow inline (new escrowId, fresh
+    // two-phase proof) and proceed. This preserves the front-run protection (a new
+    // buyer proof is required for the new quote) and is bounded by the SAME O13/O21
+    // auto-requote budget as the cancel-griefing path, so it cannot become an
+    // unbounded platform-gas amplifier. If the budget is exhausted the invoice is
+    // parked in the terminal cancel_griefed alert for out-of-band handling.
+    if (invoice.escrow.escrowStatus === "deploy_failed") {
+      const reset = await this.resetDeployFailedEscrow(invoice);
+      if (!reset) {
+        throw new Error(
+          `Invoice ${invoiceId} escrow deploy has failed too many times ` +
+            `(auto-retry budget exhausted); parked for manual handling.`
+        );
+      }
+      invoice = reset;
+    }
+    const esc0 = invoice.escrow;
+    if (!esc0) throw new Error(`Invoice ${invoiceId} has no escrow`);
+    if (esc0.escrowStatus !== "quoted") {
       throw new Error(
-        `Invoice ${invoiceId} escrow is not claimable (status: ${invoice.escrow.escrowStatus})`
+        `Invoice ${invoiceId} escrow is not claimable (status: ${esc0.escrowStatus})`
       );
     }
-    const escrowId = invoice.escrow.escrowId;
+    const escrowId = esc0.escrowId;
     if (!escrowId) {
       throw new Error(`Invoice ${invoiceId} escrow has no escrowId to claim`);
+    }
+
+    // O14/O3 — the authoritative expected principal is the value FROZEN at quote
+    // time (invoice.escrow.escrowAmount), NOT the current invoice.amount. On a
+    // rebuilding worker, seeding the record from invoice.amount and then checking
+    // it against invoice.amount is a tautology; anchoring to the frozen quote
+    // value gives the drift guard teeth on every worker. Pre-migration rows have
+    // no frozen anchor: fall back to invoice.amount (prior behavior) rather than
+    // hard-fail an in-flight legacy quote.
+    const anchoredExpected =
+      esc0.escrowAmount != null
+        ? BigInt(esc0.escrowAmount)
+        : invoice.amount;
+
+    // Multi-process claim: a quoted escrow lives only in the worker that created
+    // it (rehydrateEscrows skips scid-less quotes). If THIS worker doesn't hold
+    // the record, rebuild it from the persisted invoice so any worker can claim;
+    // the durable claim guard then guarantees only one worker actually deploys.
+    if (!this.escrowManager.getEscrow(escrowId)) {
+      this.escrowManager.importEscrow({
+        id: escrowId,
+        scid: null,
+        deployTxid: null,
+        status: "quoted",
+        sellerAddress: esc0.sellerAddress,
+        arbitratorAddress: esc0.arbitratorAddress,
+        feeBasisPoints: esc0.feeBasisPoints,
+        blockExpiration: esc0.blockExpiration,
+        // Seed from the frozen quote-time anchor, not the current invoice.amount.
+        expectedAmount: anchoredExpected,
+        depositAmount: null,
+        buyerAddress: null,
+        createdAt: invoice.createdAt,
+        depositedAt: null,
+        resolvedAt: null,
+        resolution: null,
+        invoiceId: invoice.id,
+        metadata: { invoicePaymentId: invoice.paymentId.toString() },
+      });
     }
 
     // O14 invariant — the amount that will be bound on-chain (and thus the most
@@ -841,31 +1003,169 @@ export class InvoiceEngine {
     // invoice.escrow.feeBasisPoints; this invariant only guarantees the escrowed
     // principal matches the displayed price so the shortfall is exactly the fee,
     // never a silent under-escrow.
-    const quotedEscrow = this.escrowManager.getEscrow(escrowId);
-    if (quotedEscrow && quotedEscrow.expectedAmount !== invoice.amount) {
+    // Cross-check the CURRENT invoice price against the FROZEN quote-time anchor.
+    // If invoice.amount was mutated after the quote (or a record was constructed
+    // with a mismatched amount), the frozen anchor no longer equals invoice.amount
+    // and we refuse to deploy — this is the real drift guard, and it fires on any
+    // worker because the anchor is not re-derived from invoice.amount. Then also
+    // confirm the record we're about to deploy carries that same anchor.
+    if (esc0.escrowAmount != null && anchoredExpected !== invoice.amount) {
       throw new Error(
-        `Invoice ${invoiceId} escrow expectedAmount (${quotedEscrow.expectedAmount}) != invoice amount (${invoice.amount}); refusing to deploy an under/over-bound escrow.`
+        `Invoice ${invoiceId} escrow amount drift: frozen quote principal (${anchoredExpected}) != current invoice amount (${invoice.amount}); refusing to deploy an under/over-bound escrow.`
+      );
+    }
+    const quotedEscrow = this.escrowManager.getEscrow(escrowId);
+    if (quotedEscrow && quotedEscrow.expectedAmount !== anchoredExpected) {
+      throw new Error(
+        `Invoice ${invoiceId} escrow expectedAmount (${quotedEscrow.expectedAmount}) != frozen quote principal (${anchoredExpected}); refusing to deploy an under/over-bound escrow.`
       );
     }
 
     const record = await this.escrowManager.claimEscrow(escrowId, buyerAddress);
+    const guard = this.escrowManager.getClaimGuard();
     if (record.status === "deploy_failed" || !record.scid) {
-      invoice.escrow.escrowStatus = "deploy_failed";
-      await this.store.updateInvoice(invoice.id, {});
+      // O6 — persist deploy_failed FIRST, THEN release the guard row. The manager
+      // deliberately no longer releases on failure: releasing before this persist
+      // would open a window where the row is free yet the durable invoice still
+      // reads 'quoted', letting a second worker win the row and deploy a SECOND
+      // contract. By ordering persist-before-release, the invoice-level 'must be
+      // quoted' gate (top of this method) is already closed when the row frees, so
+      // no concurrent re-claim can slip through.
+      esc0.escrowStatus = "deploy_failed";
+      await this.store.updateInvoice(invoice.id, { escrow: esc0 });
+      if (guard) {
+        try {
+          await guard.releaseClaim(escrowId);
+        } catch {
+          // best-effort; deploy_failed is already durable, which blocks re-claim.
+        }
+      }
       throw new Error(`Escrow deploy failed for invoice ${invoiceId}`);
     }
 
-    invoice.escrow.scid = record.scid;
-    invoice.escrow.deployTxid = record.deployTxid;
-    invoice.escrow.buyerAddress = buyerAddress;
-    invoice.escrow.escrowStatus = "awaiting_deposit";
+    esc0.scid = record.scid;
+    esc0.deployTxid = record.deployTxid;
+    esc0.buyerAddress = buyerAddress;
+    esc0.escrowStatus = "awaiting_deposit";
     // O21 — a fresh, proven buyer bind is a legitimate new attempt: reset the
     // auto-requote budget so an earlier griefing spree can't permanently deny a
     // later honest buyer's ability to be re-quoted after a cancel race.
-    invoice.escrow.requoteCount = 0;
-    invoice.escrow.lastRequoteAt = 0;
-    await this.store.updateInvoice(invoice.id, {});
+    esc0.requoteCount = 0;
+    esc0.lastRequoteAt = 0;
+    // O10 — the invoice blob is the post-success ARBITER (A6/O7), so this write
+    // must be a compare-and-set: apply it ONLY if the persisted escrow is STILL
+    // the 'quoted' record with the escrowId we claimed. A concurrent requote (or
+    // any other lifecycle writer) that flipped the blob first would otherwise be
+    // silently rolled back by this whole-blob overwrite, stranding a freshly
+    // deployed, buyer-bound contract invisibly (no invoice maps its scid). On a
+    // precondition miss we do NOT clobber: the deployTxid breadcrumb is already
+    // stamped on the held guard row, so the on-restart reconciler (or a manual
+    // sweep) can adopt the live contract; here we surface an alert and leave the
+    // durable blob to the winning writer.
+    const applied = await this.store.updateInvoice(
+      invoice.id,
+      { escrow: esc0 },
+      { expectedEscrow: { escrowId, escrowStatus: "quoted" } }
+    );
+    if (!applied) {
+      this.emit(
+        "error",
+        new Error(
+          `Invoice ${invoiceId} escrow claim CAS lost to a concurrent writer ` +
+            `(escrowId ${escrowId} no longer the quoted binding); deployed scid ` +
+            `${record.scid} left for reconcile via the guard-row deployTxid breadcrumb.`
+        )
+      );
+      // Do NOT release the guard row: the held row + deployTxid is the ONLY
+      // durable pointer to the orphaned live contract until the reconciler heals it.
+      return invoice;
+    }
+    // O7 — the invoice blob is now durably 'awaiting_deposit' WITH its scid, so
+    // that record (not the guard row) is henceforth the arbiter: the top-of-method
+    // 'must be quoted' gate blocks any re-claim, and the on-chain SIGNER()==buyer
+    // gate independently closes the buyer-seat. The guard row has done its job and
+    // can be released to bound table growth (one row per successful escrow would
+    // otherwise leak forever). Ordered AFTER the persist so there is never a window
+    // where the row is free while the invoice still reads 'quoted' (mirrors O6).
+    if (guard) {
+      try {
+        await guard.releaseClaim(escrowId);
+      } catch {
+        // best-effort GC; correctness does not depend on the row being gone.
+      }
+    }
     return invoice;
+  }
+
+  /**
+   * O19 — recover a deploy_failed escrow into a fresh QUOTE so a proven buyer can
+   * re-claim. Mints a NEW escrow quote (new escrowId, no scid) and persists it
+   * under a compare-and-set against the observed deploy_failed binding, so a
+   * concurrent writer (a peer also retrying, a reconciler) cannot be clobbered.
+   * Bounded by the same O13/O21 auto-requote budget as the cancel path to keep a
+   * flapping deploy from becoming an unbounded platform-gas amplifier. Returns the
+   * updated invoice (escrow reset to 'quoted') on success, or null if the retry
+   * budget is exhausted / the CAS was lost (caller should re-read + retry or park).
+   */
+  private async resetDeployFailedEscrow(invoice: Invoice): Promise<Invoice | null> {
+    if (!this.escrowManager || !invoice.escrow) return null;
+    const esc = invoice.escrow;
+    if (esc.escrowStatus !== "deploy_failed") {
+      // Someone else already advanced it (e.g. a concurrent reset). Re-read.
+      return this.store.getInvoice(invoice.id);
+    }
+    const observedEscrowId = esc.escrowId ?? null;
+
+    // Budget gate — share the auto-requote counters so deploy_failed retries and
+    // cancel-grief requotes draw from ONE bounded budget (an attacker can't get 2x
+    // the deploys by alternating the two failure modes).
+    const requoteCount = esc.requoteCount ?? 0;
+    const lastRequoteAt = esc.lastRequoteAt ?? 0;
+    const now = Date.now();
+    if (now - lastRequoteAt < this.config.escrowRequoteCooldownMs) {
+      // Too soon since the last auto attempt — treat as budget-blocked for now.
+      return null;
+    }
+    if (requoteCount >= this.config.escrowMaxAutoRequotes) {
+      esc.escrowStatus = "cancelled";
+      await this.store.updateInvoice(
+        invoice.id,
+        { escrow: esc },
+        { expectedEscrow: { escrowId: observedEscrowId, escrowStatus: "deploy_failed" } }
+      );
+      return null;
+    }
+
+    const anchored =
+      esc.escrowAmount != null ? BigInt(esc.escrowAmount) : invoice.amount;
+    const fresh = await this.escrowManager.createEscrowQuote({
+      sellerAddress: esc.sellerAddress,
+      arbitratorAddress: esc.arbitratorAddress,
+      feeBasisPoints: esc.feeBasisPoints,
+      blockExpiration: esc.blockExpiration,
+      expectedAmount: anchored,
+      metadata: { invoicePaymentId: invoice.paymentId.toString(), retriedFrom: observedEscrowId ?? "" },
+    });
+
+    esc.escrowId = fresh.id;
+    esc.scid = null;
+    esc.deployTxid = null;
+    esc.buyerAddress = null;
+    esc.escrowStatus = "quoted";
+    esc.requoteCount = requoteCount + 1;
+    esc.lastRequoteAt = now;
+    const applied = await this.store.updateInvoice(
+      invoice.id,
+      { escrow: esc },
+      { expectedEscrow: { escrowId: observedEscrowId, escrowStatus: "deploy_failed" } }
+    );
+    if (!applied) {
+      // A concurrent writer transitioned the escrow first; drop our unreferenced
+      // fresh quote and let the winner stand. Caller re-reads.
+      this.escrowManager.untrack(fresh.id);
+      return null;
+    }
+    return this.store.getInvoice(invoice.id);
   }
 
   async escrowAction(
@@ -981,6 +1281,10 @@ export class InvoiceEngine {
         completedAt: statusChanged && invoice.status === "completed"
           ? invoice.completedAt
           : undefined,
+        // Persist the escrow-blob mutations above (escrowStatus/buyerAddress/
+        // resolution + the O21 budget reset). Without this the durable escrow
+        // status lags the on-chain state and a restart re-imports a stale blob.
+        escrow: invoice.escrow,
       });
 
       if (statusChanged) {
@@ -1067,9 +1371,21 @@ export class InvoiceEngine {
     if (!this.escrowManager) return;
     if (!escrow.scid) return;
 
-    const invoices = await this.store.listInvoices();
-    const invoice = invoices.find((i) => i.escrow?.scid === escrow.scid);
+    // O20 — targeted lookup by scid, not a full-table scan per cancel event.
+    const invoice = this.store.getInvoiceByScid
+      ? await this.store.getInvoiceByScid(escrow.scid)
+      : (await this.store.listInvoices()).find(
+          (i) => i.escrow?.scid === escrow.scid
+        ) ?? null;
     if (!invoice || !invoice.escrow) return;
+
+    // O10 — snapshot the escrow binding we observed so the requote write can be a
+    // compare-and-set. If a concurrent claim-success (or another lifecycle
+    // handler) transitions this invoice's escrow between our read and our write,
+    // our whole-blob overwrite must NOT clobber it — we abort and let the winner
+    // stand rather than replace a live binding with a fresh scid=null quote.
+    const observedEscrowId = invoice.escrow.escrowId ?? null;
+    const observedEscrowStatus = invoice.escrow.escrowStatus;
 
     // Only re-quote for an invoice that can still be paid.
     const terminalInvoice: InvoiceStatus[] = [
@@ -1137,7 +1453,24 @@ export class InvoiceEngine {
     invoice.escrow.escrowStatus = "quoted";
     invoice.escrow.depositHeight = null;
     invoice.escrow.resolution = null;
-    await this.store.updateInvoice(invoice.id, {});
+    const applied = await this.store.updateInvoice(
+      invoice.id,
+      { escrow: invoice.escrow },
+      {
+        expectedEscrow: {
+          escrowId: observedEscrowId,
+          escrowStatus: observedEscrowStatus,
+        },
+      }
+    );
+    if (!applied) {
+      // A concurrent writer transitioned the escrow first; the fresh quote we
+      // just created is unreferenced (never persisted, never deployed) and is
+      // harmless — the manager drops it on next restart. Untrack it so it does
+      // not linger in the in-memory map.
+      this.escrowManager.untrack(fresh.id);
+      return;
+    }
     await this.webhook?.send("escrow.requoted" as Parameters<typeof this.webhook.send>[0], invoice);
   }
 
@@ -1165,7 +1498,7 @@ export class InvoiceEngine {
     const esc = invoice.escrow;
     // Record the misroute permanently so a later settlement can never hide it.
     (invoice.metadata as Record<string, unknown>).__escrowMisroutedToBase = true;
-    await this.store.updateInvoice(invoice.id, {});
+    await this.store.updateInvoice(invoice.id, { metadata: invoice.metadata });
 
     const status = esc.escrowStatus;
     if (status === "funded" || status === "disputed") {
@@ -1177,7 +1510,11 @@ export class InvoiceEngine {
       if (esc.escrowId) this.escrowManager.untrack(esc.escrowId);
       esc.escrowStatus = "cancelled";
       esc.escrowId = null;
-      await this.store.updateInvoice(invoice.id, {});
+      // O9 — persist the escrow blob (NOT an empty patch). An empty {} patch
+      // emits no `escrow=@escrow` SET clause, so the cancel would be silently
+      // discarded on both stores; on restart rehydrate/claim would then re-open
+      // the misrouted binding and re-enable the O20 silent double-charge.
+      await this.store.updateInvoice(invoice.id, { escrow: esc });
       return;
     }
     // Deployed but status-0: cancel on-chain so no Deposit can fund it.
@@ -1191,7 +1528,11 @@ export class InvoiceEngine {
     }
     if (esc.escrowId) this.escrowManager.untrack(esc.escrowId);
     esc.escrowStatus = "cancelled";
-    await this.store.updateInvoice(invoice.id, {});
+    // O9 — persist the escrow blob (NOT an empty patch); see the quote-only
+    // branch above. An empty {} patch silently drops the cancel, leaving a live
+    // scid + pollable status that rehydrate re-imports, re-opening the O20
+    // silent double-charge the teardown exists to prevent.
+    await this.store.updateInvoice(invoice.id, { escrow: esc });
   }
 
   /**
@@ -1208,8 +1549,12 @@ export class InvoiceEngine {
     escrow: EscrowRecord
   ): Promise<void> {
     if (!escrow.scid) return;
-    const invoices = await this.store.listInvoices();
-    const invoice = invoices.find((i) => i.escrow?.scid === escrow.scid);
+    // O20 — targeted lookup by scid, not a full-table scan per mismatch event.
+    const invoice = this.store.getInvoiceByScid
+      ? await this.store.getInvoiceByScid(escrow.scid)
+      : (await this.store.listInvoices()).find(
+          (i) => i.escrow?.scid === escrow.scid
+        ) ?? null;
     if (!invoice || !invoice.escrow) return;
     // Do NOT change invoice.status to any settled/shippable value. Fire the alert.
     await this.webhook?.send(
@@ -1240,6 +1585,229 @@ export class InvoiceEngine {
    * best-effort local view — the very next poll overwrites status/depositAmount
    * from authoritative on-chain state via reconcile().
    */
+  /**
+   * O5 — crash-recovery reconciler for held escrow claim rows.
+   *
+   * The guard-win, the on-chain deploy, and the invoice-blob persist are three
+   * separate operations spanning an awaited network call, so they cannot be one
+   * SQLite transaction (better-sqlite3 transactions are synchronous). A crash in
+   * the window after the deploy TX is broadcast but before the invoice persists
+   * would otherwise leave a LIVE, fundable contract invisible: the durable
+   * invoice still reads 'quoted'/scid=null, rehydrateEscrows skips it (needs an
+   * scid), and its guard row stays held forever so every re-claim throws
+   * 'concurrently claimed'. This reconciler closes that gap by walking the held
+   * rows the guard exposes and, using the deployTxid breadcrumb the manager
+   * stamps onto the row the instant the deploy is broadcast, healing each case:
+   *
+   *   - invoice already deployed (scid present): a post-success GC that the crash
+   *     interrupted. Just release the stale row (O7 growth bound).
+   *   - invoice still 'quoted' but the row carries a deployTxid: the contract
+   *     EXISTS on-chain. Adopt txid as the scid, flip the invoice to
+   *     awaiting_deposit, import into the poller, then release the row. The next
+   *     poll reconciles authoritative on-chain state (O15/O18 still apply).
+   *   - invoice still 'quoted' with NO deployTxid: the crash happened before the
+   *     deploy was broadcast (the txid is stamped before any in-memory mutation),
+   *     so no contract exists. Release the row so an honest re-claim can proceed;
+   *     the on-chain SIGNER()==buyer gate and O14 anchor still protect the deploy.
+   *   - no invoice maps to the row (orphan): release it — nothing to heal.
+   */
+  private async reconcileOrphanedClaims(): Promise<void> {
+    if (!this.escrowManager) return;
+    const guard = this.escrowManager.getClaimGuard();
+    if (!guard?.listClaims) return; // process-local guard: nothing durable to heal.
+
+    // O12/O18 — fetch ONLY lease-expired rows, and let the guard compute the age
+    // against the SAME clock authority that stamped claimed_at (SQLite unixepoch
+    // for the durable guard; a single process clock for the memory guard). A peer
+    // that has won tryClaim but not yet persisted looks IDENTICAL to a crash
+    // orphan (invoice 'quoted', scid=null, deploy_txid maybe null); the ONLY
+    // signal that distinguishes "peer actively deploying" from "crashed" is row
+    // age. Computing that age here with THIS worker's Date.now() (as before) would
+    // compare the reconciling host's wall clock against the deploying host's
+    // stamp — cross-host NTP skew larger than (lease − broadcast latency) would
+    // free a live peer row and re-open the double-deploy. listExpiredClaims keeps
+    // both timestamps on one clock, so the lease is skew-immune.
+    let held: Array<{ id: string; deployTxid: string | null; claimedAt: number }>;
+    try {
+      held = guard.listExpiredClaims
+        ? await guard.listExpiredClaims(this.config.escrowClaimLeaseMs)
+        : // Fallback: no single-clock filter (older guard). Safe only single-process,
+          // where the stamp and the cutoff share one clock anyway.
+          (await guard.listClaims()).filter(
+            (r) => r.claimedAt <= Date.now() - this.config.escrowClaimLeaseMs
+          );
+    } catch {
+      return; // best-effort; a failed scan must not block startup.
+    }
+    if (held.length === 0) return;
+
+    // O20 — resolve each held row's invoice by a DIRECT per-escrowId lookup, NOT a
+    // full-table listInvoices() scan. The old scan (a) cost O(N) rows + N payment
+    // round-trips on every boot as the invoice book grew, and (b) was a correctness
+    // landmine: any future default page limit would silently omit invoices outside
+    // the page, so a held row whose invoice fell off the page would be misclassified
+    // as an ORPHAN and freed — re-opening a double-deploy. Driving off the BOUNDED
+    // held-rows set with a targeted lookup makes the reconciler's completeness rest
+    // only on the escrow_claims table. Falls back to a one-time scan only for a
+    // legacy store that does not implement getInvoiceByEscrowId.
+    let scanFallback: Map<string, Invoice> | null = null;
+    const lookupInvoice = async (escrowId: string): Promise<Invoice | null> => {
+      if (this.store.getInvoiceByEscrowId) {
+        return this.store.getInvoiceByEscrowId(escrowId);
+      }
+      if (!scanFallback) {
+        const invoices = await this.store.listInvoices();
+        scanFallback = new Map(
+          invoices
+            .filter((i) => i.escrow?.escrowId)
+            .map((i) => [i.escrow!.escrowId!, i])
+        );
+      }
+      return scanFallback.get(escrowId) ?? null;
+    };
+
+    for (const row of held) {
+      // Every row here is already lease-expired (filtered by listExpiredClaims on
+      // a single clock). A pre-migration claimed_at===0 sorts as expired, so
+      // legacy rows still heal; a live mid-broadcast peer's fresh row was excluded.
+      const invoice = await lookupInvoice(row.id);
+      // Orphan row (no invoice, or a fresh requote replaced escrowId): drop it.
+      if (!invoice || !invoice.escrow) {
+        try {
+          await guard.releaseClaim(row.id);
+        } catch {
+          /* best-effort */
+        }
+        continue;
+      }
+      const esc = invoice.escrow;
+
+      // Case 1 — persist already completed; this is an interrupted GC. Release.
+      if (esc.scid) {
+        try {
+          await guard.releaseClaim(row.id);
+        } catch {
+          /* best-effort */
+        }
+        continue;
+      }
+
+      // Case 2 — the row carries a deployTxid, so a contract MAY have been
+      // broadcast. But the txid the manager stamps is the wallet's raw
+      // broadcast/predicted TXID from installSc — NOT a confirmation that the
+      // contract actually mined. A broadcast tx can fail to mine (fee too low,
+      // mempool eviction/expiry, daemon rejection, reorg). O13 — before durably
+      // adopting the txid as the authoritative scid (which would permanently move
+      // the invoice off 'quoted' and PERMANENTLY CLOSE the honest re-claim path),
+      // VERIFY the contract exists on-chain. If it does not, fall through to the
+      // release path so the buyer can honestly re-claim rather than being stranded
+      // on a phantom scid.
+      if (esc.escrowStatus === "quoted" && row.deployTxid) {
+        const anchored =
+          esc.escrowAmount != null ? BigInt(esc.escrowAmount) : invoice.amount;
+        // O16 — exists() only proves *some* escrow-shaped contract mined at this
+        // txid; it reads none of the binding fields. Adopting a confirmed-but-WRONG
+        // contract (reorg replacement, shared-wallet txid collision, or any tx that
+        // mined at the predicted txid with different init args) would durably bind
+        // the invoice to parties/amount the platform never validated — and the
+        // on-chain SIGNER()==buyer net does not help, since the reconciler set a
+        // scid whose seller/arbitrator/amount were never checked. Require a full
+        // binding match against the frozen quote-time terms before adopting.
+        let contractLive = false;
+        try {
+          contractLive = await this.escrowManager
+            .getContract()
+            .verifyBinding(row.deployTxid, {
+              sellerAddress: esc.sellerAddress,
+              arbitratorAddress: esc.arbitratorAddress,
+              feeBasisPoints: esc.feeBasisPoints,
+              blockExpiration: esc.blockExpiration,
+              expectedAmount: anchored,
+            });
+        } catch {
+          contractLive = false;
+        }
+
+        if (contractLive) {
+          // O14 — heal via a COMPARE-AND-SET, not a whole-blob overwrite. Two
+          // workers can run this reconciler concurrently (each in its own
+          // start()), and the heal also races the ordinary claim/requote writers.
+          // A plain updateInvoice would re-introduce the O10 last-writer-wins lost
+          // update the A9 CAS closed elsewhere. Gate the write on the escrow still
+          // being the SAME 'quoted' binding we observed; on a miss, another writer
+          // already transitioned it — do NOT clobber, do NOT release (leave the
+          // row for the winning path or a later sweep).
+          esc.scid = row.deployTxid;
+          esc.deployTxid = row.deployTxid;
+          esc.escrowStatus = "awaiting_deposit";
+          const applied = await this.store.updateInvoice(
+            invoice.id,
+            { escrow: esc },
+            {
+              expectedEscrow: {
+                escrowId: esc.escrowId!,
+                escrowStatus: "quoted",
+              },
+            }
+          );
+          if (!applied) {
+            // Lost the heal CAS to a concurrent writer (peer reconciler, a
+            // completing claim, or a requote). The winner owns the durable blob;
+            // leave the row untouched so we neither double-import nor free a row
+            // the winner may still reference.
+            continue;
+          }
+          if (!this.escrowManager.getEscrow(esc.escrowId!)) {
+            this.escrowManager.importEscrow({
+              id: esc.escrowId!,
+              scid: esc.scid,
+              deployTxid: esc.deployTxid,
+              status: "awaiting_deposit",
+              sellerAddress: esc.sellerAddress,
+              arbitratorAddress: esc.arbitratorAddress,
+              feeBasisPoints: esc.feeBasisPoints,
+              blockExpiration: esc.blockExpiration,
+              // O8 — anchor to the FROZEN quote principal, never re-derive from
+              // invoice.amount (that would make the drift/funded-amount guard
+              // vacuous on the healed record).
+              expectedAmount: anchored,
+              depositAmount: null,
+              buyerAddress: esc.buyerAddress,
+              createdAt: invoice.createdAt,
+              depositedAt: null,
+              resolvedAt: null,
+              resolution: null,
+              invoiceId: invoice.id,
+              metadata: { invoicePaymentId: invoice.paymentId.toString() },
+            });
+          }
+          try {
+            await guard.releaseClaim(row.id);
+          } catch {
+            /* best-effort */
+          }
+          continue;
+        }
+        // Contract NOT on-chain: the broadcast never mined. Fall through to
+        // release so an honest re-claim can proceed. Reset the stale scid/status
+        // fields we speculatively set above.
+        esc.scid = null;
+        esc.deployTxid = null;
+        esc.escrowStatus = "quoted";
+      }
+
+      // Case 3 — 'quoted' with no (mined) contract, or a persisted 'deploy_failed'
+      // whose release was lost. No live contract exists, so release the row so an
+      // honest re-claim can proceed; the invoice status gate + on-chain
+      // SIGNER gate still prevent any double-bind.
+      try {
+        await guard.releaseClaim(row.id);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+
   private async rehydrateEscrows(): Promise<void> {
     if (!this.escrowManager) return;
     // Non-terminal on-chain escrow states worth polling. quoted/deploying/
@@ -1258,6 +1826,16 @@ export class InvoiceEngine {
       // Skip if the manager already knows this escrow (idempotent restart).
       if (this.escrowManager.getEscrow(e.escrowId)) continue;
 
+      // O8 — anchor expectedAmount to the FROZEN quote-time principal
+      // (escrowAmount), NOT the current invoice.amount. The claim path already
+      // trusts this frozen anchor; if rehydrate re-derived from invoice.amount the
+      // two rebuild paths would disagree, and a post-quote-mutated invoice.amount
+      // would silently redefine what reconcile()'s O18 funded-amount check
+      // compares against on-chain — settling a wrong price or stranding a
+      // correctly-funded escrow. Pre-migration rows without a frozen anchor fall
+      // back to invoice.amount (prior behavior).
+      const rehydratedExpected =
+        e.escrowAmount != null ? BigInt(e.escrowAmount) : invoice.amount;
       this.escrowManager.importEscrow({
         id: e.escrowId,
         scid: e.scid,
@@ -1267,10 +1845,8 @@ export class InvoiceEngine {
         arbitratorAddress: e.arbitratorAddress,
         feeBasisPoints: e.feeBasisPoints,
         blockExpiration: e.blockExpiration,
-        // The O14 invariant guarantees the escrowed principal equals the invoice
-        // price, so invoice.amount is the authoritative expectedAmount.
-        expectedAmount: invoice.amount,
-        depositAmount: e.escrowStatus === "funded" ? invoice.amount : null,
+        expectedAmount: rehydratedExpected,
+        depositAmount: e.escrowStatus === "funded" ? rehydratedExpected : null,
         buyerAddress: e.buyerAddress,
         createdAt: invoice.createdAt,
         depositedAt: null,

@@ -13,13 +13,23 @@ import type {
   X402UsageReservation,
   X402UsageBatchReservationResult,
   X402UsageReservationResult,
+  UpdateInvoiceOpts,
 } from "./types.js";
+import type { EscrowClaimGuard } from "../escrow/manager.js";
+import { MemoryEscrowClaimGuard } from "../escrow/claim-guard.js";
 
 /**
  * In-memory implementation of InvoiceStore.
  */
 export class MemoryInvoiceStore implements InvoiceStore {
   private invoices = new Map<string, Invoice>();
+  private claimGuard?: EscrowClaimGuard;
+
+  /** Per-process claim guard (in-memory). Memoized for the store's lifetime. */
+  createClaimGuard(): EscrowClaimGuard {
+    return (this.claimGuard ??= new MemoryEscrowClaimGuard());
+  }
+
   private paymentIdIndex = new Map<bigint, string>();
   private usedReceiptJtis = new Map<string, number>();
   private x402UsageWindows = new Map<
@@ -37,7 +47,27 @@ export class MemoryInvoiceStore implements InvoiceStore {
 
   async getInvoice(id: string): Promise<Invoice | null> {
     const invoice = this.invoices.get(id);
-    return invoice ? { ...invoice } : null;
+    return invoice ? this.snapshot(invoice) : null;
+  }
+
+  /**
+   * O10 — return a fully DETACHED copy so a caller mutating invoice.escrow (or
+   * metadata) in place cannot "write through" to the stored blob by shared
+   * reference. A shallow `{ ...invoice }` aliases the nested escrow object, which
+   * both masks a missing persist AND defeats the updateInvoice compare-and-set
+   * (the CAS would read the caller's in-place mutation instead of the committed
+   * state). Deep-copying the nested blobs makes the in-memory store model the
+   * same serialize/deserialize boundary the SQLite store has. bigint scalars are
+   * copied by the spread; only escrow/metadata need the structured clone.
+   */
+  private snapshot(invoice: Invoice): Invoice {
+    const copy: Invoice = { ...invoice };
+    if (invoice.escrow) {
+      copy.escrow = JSON.parse(JSON.stringify(invoice.escrow)) as Invoice["escrow"];
+    }
+    copy.metadata = { ...invoice.metadata };
+    copy.payments = invoice.payments.map((p) => ({ ...p }));
+    return copy;
   }
 
   async getInvoiceByPaymentId(paymentId: bigint): Promise<Invoice | null> {
@@ -46,19 +76,72 @@ export class MemoryInvoiceStore implements InvoiceStore {
     return this.getInvoice(id);
   }
 
+  async getInvoiceByEscrowId(escrowId: string): Promise<Invoice | null> {
+    // O20 — mirror the SQLite direct lookup so the reconciler takes the same
+    // no-full-scan path on both stores. Single-process, so a linear find over the
+    // in-memory map is fine and stays a detached snapshot via getInvoice.
+    for (const inv of this.invoices.values()) {
+      if (inv.escrow?.escrowId === escrowId) return this.getInvoice(inv.id);
+    }
+    return null;
+  }
+
+  async getInvoiceByScid(scid: string): Promise<Invoice | null> {
+    for (const inv of this.invoices.values()) {
+      if (inv.escrow?.scid === scid) return this.getInvoice(inv.id);
+    }
+    return null;
+  }
+
   async updateInvoice(
     id: string,
-    updates: Partial<Pick<Invoice, "status" | "amountReceived" | "completedAt" | "payments">>
-  ): Promise<void> {
+    updates: Partial<
+      Pick<
+        Invoice,
+        "status" | "amountReceived" | "completedAt" | "payments" | "escrow" | "metadata"
+      >
+    >,
+    opts?: UpdateInvoiceOpts
+  ): Promise<boolean> {
     const invoice = this.invoices.get(id);
     if (!invoice) {
       throw new Error(`Invoice ${id} not found`);
+    }
+
+    // O10 — compare-and-set precondition. The check and the mutation below run
+    // with no intervening await, so within this single-threaded process they are
+    // atomic; a stale caller whose expected escrow no longer matches the current
+    // blob is rejected (returns false) rather than clobbering a newer transition.
+    if (opts?.expectedEscrow) {
+      const cur = invoice.escrow;
+      const curId = cur?.escrowId ?? null;
+      const curStatus = cur?.escrowStatus ?? null;
+      if (
+        curId !== opts.expectedEscrow.escrowId ||
+        curStatus !== opts.expectedEscrow.escrowStatus
+      ) {
+        return false;
+      }
     }
 
     if (updates.status !== undefined) invoice.status = updates.status;
     if (updates.amountReceived !== undefined) invoice.amountReceived = updates.amountReceived;
     if (updates.completedAt !== undefined) invoice.completedAt = updates.completedAt;
     if (updates.payments !== undefined) invoice.payments = [...updates.payments];
+    // Deep-copy escrow/metadata so the stored record does not alias the caller's
+    // object. getInvoice returns a shallow copy that shares these nested refs;
+    // without an explicit persist here a caller mutating invoice.escrow would
+    // "write through" by reference and mask a store that never persists escrow
+    // (exactly what hid the SQLite empty-patch bug). Require the explicit patch.
+    if (updates.escrow !== undefined) {
+      invoice.escrow = updates.escrow
+        ? (JSON.parse(JSON.stringify(updates.escrow)) as typeof invoice.escrow)
+        : null;
+    }
+    if (updates.metadata !== undefined) {
+      invoice.metadata = { ...updates.metadata };
+    }
+    return true;
   }
 
   async addPayment(invoiceId: string, payment: Payment): Promise<void> {
@@ -129,7 +212,9 @@ export class MemoryInvoiceStore implements InvoiceStore {
 
     const offset = filter?.offset ?? 0;
     const limit = filter?.limit ?? invoices.length;
-    return invoices.slice(offset, offset + limit).map((inv) => ({ ...inv }));
+    // O10 — detached snapshots (see getInvoice): handlers mutate the returned
+    // escrow blob then CAS-persist it, so they must NOT alias the stored object.
+    return invoices.slice(offset, offset + limit).map((inv) => this.snapshot(inv));
   }
 
   async getActiveInvoices(): Promise<Invoice[]> {

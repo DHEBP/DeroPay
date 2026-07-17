@@ -15,6 +15,13 @@ export {
   EscrowManager,
 } from "./manager.js";
 
+export type { EscrowClaimGuard } from "./manager.js";
+
+export {
+  MemoryEscrowClaimGuard,
+  SqliteEscrowClaimGuard,
+} from "./claim-guard.js";
+
 export {
   EscrowStatusCode,
   statusCodeToString,

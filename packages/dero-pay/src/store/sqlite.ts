@@ -24,12 +24,15 @@ import type {
   X402UsageReservation,
   X402UsageBatchReservationResult,
   X402UsageReservationResult,
+  UpdateInvoiceOpts,
 } from "./types.js";
 import type {
   OutboxEvent,
   OutboxRecord,
   OutboxStatus,
 } from "../webhook/outbox-types.js";
+import type { EscrowClaimGuard } from "../escrow/manager.js";
+import { SqliteEscrowClaimGuard } from "../escrow/claim-guard.js";
 
 /** SQLite row for invoices table */
 type InvoiceRow = {
@@ -146,6 +149,13 @@ export type SqliteStoreConfig = {
   path: string;
   /** Enable WAL mode for better concurrent read performance (default: true) */
   walMode?: boolean;
+  /**
+   * O11 — how long a contended writer blocks for the SQLite write lock before
+   * throwing SQLITE_BUSY (default: 5000ms). Pinned explicitly so the claim
+   * guard's cross-process serialization does not depend on an unasserted binding
+   * default. Set to 0 only if you deliberately want fail-fast contention.
+   */
+  busyTimeoutMs?: number;
 };
 
 /**
@@ -156,6 +166,15 @@ export type SqliteStoreConfig = {
 export class SqliteInvoiceStore implements InvoiceStore {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private db: any;
+  private claimGuard?: EscrowClaimGuard;
+
+  /**
+   * Durable, multi-process claim guard sharing this store's database. Memoized
+   * so the escrow_claims table is created once.
+   */
+  createClaimGuard(): EscrowClaimGuard {
+    return (this.claimGuard ??= new SqliteEscrowClaimGuard(this.db));
+  }
 
   constructor(config: SqliteStoreConfig) {
     // Dynamic require to keep better-sqlite3 optional as a peer dep
@@ -166,6 +185,16 @@ export class SqliteInvoiceStore implements InvoiceStore {
     if (config.walMode !== false) {
       this.db.pragma("journal_mode = WAL");
     }
+
+    // O11 — pin busy_timeout explicitly. The claim guard's "exactly one deploy"
+    // serialization depends on a contended writer BLOCKING for the lock (then
+    // seeing the winner's row via INSERT OR IGNORE) rather than throwing an
+    // immediate SQLITE_BUSY. better-sqlite3 defaults to 5000ms, but the
+    // correctness of the durable guard must not silently ride on an unasserted
+    // library default (a raw sqlite3 binding defaults to 0 = fail-fast). Assert
+    // it here so a busy writer waits for the lock — including the WAL
+    // write-lock contention that arises during the reconciler's startup path.
+    this.db.pragma(`busy_timeout = ${config.busyTimeoutMs ?? 5000}`);
 
     this.db.pragma("foreign_keys = ON");
     this.initSchema();
@@ -409,10 +438,52 @@ export class SqliteInvoiceStore implements InvoiceStore {
     return this.rowToInvoice(row, payments);
   }
 
+  async getInvoiceByEscrowId(escrowId: string): Promise<Invoice | null> {
+    // O20 — direct indexed-ish lookup by the escrow blob's escrowId. json_extract
+    // matches the same field the O10 CAS uses. Bounded single-row read (plus its
+    // payments) instead of a full-table scan; the reconciler calls this once per
+    // held guard row. There is at most one invoice per escrowId binding.
+    const row = this.db
+      .prepare(
+        "SELECT * FROM invoices WHERE json_extract(escrow, '$.escrowId') = ? LIMIT 1"
+      )
+      .get(escrowId) as InvoiceRow | undefined;
+
+    if (!row) return null;
+
+    const payments = this.db
+      .prepare("SELECT * FROM payments WHERE invoice_id = ? ORDER BY detected_at")
+      .all(row.id) as PaymentRow[];
+
+    return this.rowToInvoice(row, payments);
+  }
+
+  async getInvoiceByScid(scid: string): Promise<Invoice | null> {
+    const row = this.db
+      .prepare(
+        "SELECT * FROM invoices WHERE json_extract(escrow, '$.scid') = ? LIMIT 1"
+      )
+      .get(scid) as InvoiceRow | undefined;
+
+    if (!row) return null;
+
+    const payments = this.db
+      .prepare("SELECT * FROM payments WHERE invoice_id = ? ORDER BY detected_at")
+      .all(row.id) as PaymentRow[];
+
+    return this.rowToInvoice(row, payments);
+  }
+
   async updateInvoice(
     id: string,
-    updates: Partial<Pick<Invoice, "status" | "amountReceived" | "completedAt" | "payments">>
-  ): Promise<void> {
+    updates: Partial<
+      Pick<
+        Invoice,
+        "status" | "amountReceived" | "completedAt" | "payments" | "escrow" | "metadata"
+      >
+    >,
+    opts?: UpdateInvoiceOpts
+  ): Promise<boolean> {
     const sets: string[] = [];
     const params: Record<string, unknown> = { id };
 
@@ -428,12 +499,46 @@ export class SqliteInvoiceStore implements InvoiceStore {
       sets.push("completed_at = @completed_at");
       params.completed_at = updates.completedAt;
     }
-
-    if (sets.length > 0) {
-      this.db
-        .prepare(`UPDATE invoices SET ${sets.join(", ")} WHERE id = @id`)
-        .run(params);
+    // Persist the escrow binding blob. Without this the durable store keeps the
+    // quote-time escrow (escrowStatus='quoted', scid=null) forever: the deploy
+    // result, deploy_failed transitions, requotes, and lifecycle mappings would
+    // all be discarded, so a restart forgets a live on-chain escrow and the
+    // deploy_failed/'quoted' status invariant (which blocks re-claim) is false.
+    if (updates.escrow !== undefined) {
+      sets.push("escrow = @escrow");
+      params.escrow = updates.escrow ? JSON.stringify(updates.escrow) : null;
     }
+    if (updates.metadata !== undefined) {
+      sets.push("metadata = @metadata");
+      params.metadata = JSON.stringify(updates.metadata);
+    }
+
+    if (sets.length === 0) return true;
+
+    // O10 — compare-and-set: apply the write ONLY if the row's current escrow
+    // blob still matches what the caller read. The UPDATE ... WHERE is a single
+    // atomic statement in SQLite (the read and the conditional write are one
+    // operation, not a separate SELECT-then-UPDATE), so no concurrent whole-blob
+    // writer can slip a lost update between them. `changes === 0` means the
+    // precondition failed (someone else transitioned the escrow first) — report
+    // it so the caller aborts instead of silently clobbering.
+    let where = "id = @id";
+    if (opts?.expectedEscrow) {
+      const { escrowId, escrowStatus } = opts.expectedEscrow;
+      if (escrowId === null) {
+        where += " AND (escrow IS NULL OR json_extract(escrow, '$.escrowId') IS NULL)";
+      } else {
+        where += " AND json_extract(escrow, '$.escrowId') = @expectedEscrowId";
+        params.expectedEscrowId = escrowId;
+      }
+      where += " AND json_extract(escrow, '$.escrowStatus') = @expectedEscrowStatus";
+      params.expectedEscrowStatus = escrowStatus;
+    }
+
+    const info = this.db
+      .prepare(`UPDATE invoices SET ${sets.join(", ")} WHERE ${where}`)
+      .run(params);
+    return info.changes > 0;
   }
 
   async addPayment(invoiceId: string, payment: Payment): Promise<void> {

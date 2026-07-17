@@ -11,6 +11,7 @@ import type {
   OutboxRecord,
   OutboxStatus,
 } from "../webhook/outbox-types.js";
+import type { EscrowClaimGuard } from "../escrow/manager.js";
 
 /** Filter options for querying invoices */
 export type InvoiceFilter = {
@@ -24,6 +25,21 @@ export type InvoiceFilter = {
   limit?: number;
   /** Offset for pagination */
   offset?: number;
+};
+
+/**
+ * O10 — optional compare-and-set precondition for {@link InvoiceStore.updateInvoice}.
+ * When present the escrow write applies atomically ONLY if the row's current
+ * escrow blob still matches these fields, guarding the arbiter blob against a
+ * concurrent whole-blob lost update.
+ */
+export type UpdateInvoiceOpts = {
+  expectedEscrow?: {
+    /** The escrowId the caller read before mutating. `null` matches an absent escrow. */
+    escrowId: string | null;
+    /** The escrowStatus the caller read before mutating. */
+    escrowStatus: string;
+  };
 };
 
 /** Invoice store summary stats */
@@ -136,12 +152,52 @@ export type InvoiceStore = {
   getInvoiceByPaymentId(paymentId: bigint): Promise<Invoice | null>;
 
   /**
+   * O20 — get the invoice whose escrow binding currently references `escrowId`.
+   *
+   * The crash reconciler heals a BOUNDED set of held guard rows; it must map each
+   * row's escrowId to its invoice WITHOUT a full-table `listInvoices()` scan. The
+   * scan is both an unbounded startup cost (O(N) rows + N payment round-trips) and
+   * a correctness landmine: if a default page limit is ever introduced, a held
+   * row whose invoice falls off the page is misclassified as an ORPHAN and freed,
+   * re-opening a double-deploy. A direct per-escrowId lookup removes that
+   * dependency entirely — the reconciler's completeness rests only on the bounded
+   * escrow_claims table. Optional so third-party stores need not implement it; the
+   * reconciler falls back to a scan only when this is absent.
+   */
+  getInvoiceByEscrowId?(escrowId: string): Promise<Invoice | null>;
+
+  /**
+   * O20 — get the invoice whose escrow binding currently references `scid`. Same
+   * motivation as getInvoiceByEscrowId: the escrow lifecycle handlers
+   * (requoteCancelledEscrow, handleEscrowFundingMismatch) fire per on-chain event
+   * and previously did a full-table scan + `.find()` per event. A targeted lookup
+   * removes that O(N)-per-event cost. Optional; callers fall back to a scan.
+   */
+  getInvoiceByScid?(scid: string): Promise<Invoice | null>;
+
+  /**
    * Update an invoice's status and related fields.
+   *
+   * O10 — the escrow blob is a whole-column read-modify-write, so two concurrent
+   * writers (claim-success vs a lifecycle/requote handler) can clobber each
+   * other's escrow transition. For writes where the invoice blob is the ARBITER
+   * of the claim outcome, pass `opts.expectedEscrow` to make the escrow write a
+   * compare-and-set: the store applies it atomically ONLY if the row's current
+   * escrow blob still matches the expected `escrowId`/`escrowStatus`, and returns
+   * `false` on a precondition miss so the caller can abort/re-read instead of
+   * silently winning a lost-update race. Without `opts` the call is an
+   * unconditional write (backward compatible; return value is `true`).
    */
   updateInvoice(
     id: string,
-    updates: Partial<Pick<Invoice, "status" | "amountReceived" | "completedAt" | "payments">>
-  ): Promise<void>;
+    updates: Partial<
+      Pick<
+        Invoice,
+        "status" | "amountReceived" | "completedAt" | "payments" | "escrow" | "metadata"
+      >
+    >,
+    opts?: UpdateInvoiceOpts
+  ): Promise<boolean>;
 
   /**
    * Add a payment to an invoice.
@@ -243,6 +299,13 @@ export type InvoiceStore = {
   pruneDeliveredOutbox?(olderThan: number): Promise<number>;
   countOutboxByStatus?(): Promise<Record<OutboxStatus, number>>;
   getOutboxRecord?(id: string): Promise<OutboxRecord | null>;
+
+  /**
+   * Create a durable claim guard for the escrow quote->claim transition, if the
+   * backend supports one. The engine injects it into the EscrowManager so a
+   * multi-process server cannot double-claim (and double-deploy) a quote.
+   */
+  createClaimGuard?(): EscrowClaimGuard;
 
   /**
    * Close the store and release any resources.

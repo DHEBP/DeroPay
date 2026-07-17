@@ -34,8 +34,12 @@ export function createMockWalletRpc(
     installSc: vi.fn().mockResolvedValue("sc-deploy-txid-001"),
     invokeSc: vi.fn().mockResolvedValue("tx-invoke-001"),
     scinvokeRaw: vi.fn().mockResolvedValue("tx-invoke-raw-001"),
+    // O15 — the engine asserts escrowClaimLeaseMs >= 2x this value at start().
+    // A tiny mock timeout keeps the deploy-lease floor small (2ms) so tests can
+    // model an "aged past lease" crashed row with a short sleep, not a 240s wait.
+    requestTimeoutMs: 1,
     ...overrides,
-  } as MockWalletRpc;
+  } as unknown as MockWalletRpc;
 }
 
 export function createMockDaemonRpc(

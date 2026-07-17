@@ -455,4 +455,52 @@ export class EscrowContract {
       return false;
     }
   }
+
+  /**
+   * O16 — verify a mined contract at `scid` actually BINDS the parties/amount we
+   * expect before trusting it. exists() only proves *some* escrow-shaped contract
+   * mined at a txid; the crash reconciler must not adopt a broadcast txid as an
+   * invoice's authoritative scid on that alone. A confirmed-but-WRONG contract
+   * (reorg replacement, shared/multi-tenant wallet collision, or any tx that mined
+   * at the predicted txid with different init args) would otherwise be bound to
+   * the invoice with a buyer/seller/arbitrator/amount the platform never checked,
+   * and the on-chain SIGNER()==buyer safety net does not help because a scid whose
+   * buyer was never validated was adopted.
+   *
+   * Returns true ONLY if the on-chain seller, arbitrator, feeBasisPoints,
+   * blockExpiration and expectedAmount all match the expected (frozen quote-time)
+   * values. Note the buyer is NOT compared here: in the crash window the deploy
+   * was broadcast but the invoice blob may not yet record which buyer was bound,
+   * and buyer is stored on-chain as a RAW point (opaque hex) not the bech32 the
+   * SDK holds. The seller/arbitrator/amount/fee/expiry tuple is what pins the
+   * contract to THIS invoice's economic terms; a re-claim still can't rebind a
+   * different buyer because the honest re-claim path is closed once scid is set.
+   */
+  async verifyBinding(
+    scid: string,
+    expected: {
+      sellerAddress: string;
+      arbitratorAddress: string;
+      feeBasisPoints: number;
+      blockExpiration: number;
+      expectedAmount: bigint;
+    }
+  ): Promise<boolean> {
+    let state: EscrowOnChainState;
+    try {
+      state = await this.getState(scid);
+    } catch {
+      return false;
+    }
+    // getState maps an absent contract to a default status; require the real
+    // string-key surface to have populated the binding fields.
+    if (!state.seller || !state.arbitrator) return false;
+    return (
+      state.seller === expected.sellerAddress &&
+      state.arbitrator === expected.arbitratorAddress &&
+      state.feeBasisPoints === expected.feeBasisPoints &&
+      state.blockExpiration === expected.blockExpiration &&
+      BigInt(state.expectedAmount) === expected.expectedAmount
+    );
+  }
 }

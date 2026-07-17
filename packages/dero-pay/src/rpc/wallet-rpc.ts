@@ -112,6 +112,15 @@ export class WalletRpcClient {
   }
 
   /**
+   * The configured per-request timeout in ms. Exposed so the escrow engine can
+   * assert its deploy-lease is provably larger than the worst-case broadcast
+   * latency (O15) instead of relying on an unchecked prose invariant.
+   */
+  get requestTimeoutMs(): number {
+    return this.timeoutMs;
+  }
+
+  /**
    * Send a JSON-RPC request to the wallet.
    */
   private async rpcCall<T>(method: string, params?: unknown): Promise<T> {

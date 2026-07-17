@@ -75,6 +75,8 @@ export const GET = statusHandler;
 
 ### x402-Style Protected Route (DERO Native)
 
+See [X402-RECEIPTS-SPEC.md](./X402-RECEIPTS-SPEC.md) for the receipts + threat model.
+
 ```ts
 // lib/deropay.ts
 import { createPaymentHandlers, createX402RouteGuard } from "dero-pay/next";

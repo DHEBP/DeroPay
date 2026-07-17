@@ -1,3 +1,4 @@
+/** x402 payment rail. Security model + receipts: see ../../X402-RECEIPTS-SPEC.md */
 export * from "./types";
 export * from "./server";
 export * from "./client";

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { InvoiceEngine } from "dero-pay/server";
 import { RouterManager } from "dero-pay/router";
@@ -146,6 +147,31 @@ const CLAIM_RL_CAPACITY = 5; // burst
 const CLAIM_RL_REFILL_PER_SEC = 0.2; // ~1 token / 5s sustained
 const claimBuckets = new Map<string, Bucket>();
 
+/**
+ * Derive the client IP used to key the per-IP claim rate limit.
+ *
+ * X-Forwarded-For is CLIENT-SUPPLIED and trivially spoofable, so a caller could
+ * forge a fresh IP per request and defeat the per-IP limiter entirely. Only honor
+ * it when the operator asserts (DEROPAY_TRUST_PROXY=true) that a trusted proxy/LB
+ * OVERWRITES the header. Otherwise use the real socket peer address, which the
+ * caller cannot forge. Falls back to a single shared "unknown" bucket if the
+ * runtime does not expose conninfo (fail closed: everyone shares one limit).
+ */
+function getClientIp(c: any): string {
+  if (config.trustProxy) {
+    return (
+      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+      c.req.header("x-real-ip") ||
+      "unknown"
+    );
+  }
+  try {
+    return getConnInfo(c).remote.address ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 function rateLimitOk(key: string): boolean {
   const now = Date.now();
   const bucket = claimBuckets.get(key) ?? { tokens: CLAIM_RL_CAPACITY, last: now };
@@ -176,6 +202,19 @@ export const app = new Hono();
 // tighten DEROPAY_CORS_ORIGIN to the exact checkout origin(s) in production so a
 // hostile page cannot drive claims on the buyer's behalf.
 app.use("*", cors({ origin: config.corsOrigin }));
+
+// Loud config warning: a wildcard CORS origin on a build that also serves the
+// public escrow claim WRITE means any web page can drive buyer claims. The claim
+// route itself fails closed on this (see POST /checkout/claim) unless the
+// operator explicitly opts in via DEROPAY_ALLOW_WILDCARD_CORS=true.
+if (config.enableEscrow && config.corsOrigin === "*") {
+  console.warn(
+    "[deropay] DEROPAY_CORS_ORIGIN is '*' while escrow (public claim write) is " +
+      "enabled. Set DEROPAY_CORS_ORIGIN to your exact checkout origin(s) for " +
+      "production. The claim write fails closed until you do (override with " +
+      "DEROPAY_ALLOW_WILDCARD_CORS=true for an intentionally open deployment)."
+  );
+}
 
 // API key auth for protected routes
 app.use("/invoices/*", apiKeyAuth);
@@ -430,12 +469,25 @@ app.get("/status", async (c) => {
 //   { invoiceId, buyerAddress, claimToken }
 app.post("/checkout/claim", async (c) => {
   try {
+    // Fail closed on a wildcard CORS write surface. With origin '*' any page can
+    // drive claims on a buyer's behalf; refuse the write rather than serve it
+    // insecurely, unless the operator has explicitly opted into an open deployment.
+    if (config.corsOrigin === "*" && !config.allowWildcardCorsWrites) {
+      return c.json(
+        {
+          error:
+            "Claim endpoint disabled: server has wildcard CORS (DEROPAY_CORS_ORIGIN='*'). " +
+            "Set DEROPAY_CORS_ORIGIN to the exact checkout origin(s), or set " +
+            "DEROPAY_ALLOW_WILDCARD_CORS=true to allow an open deployment.",
+          code: "cors_misconfigured",
+        },
+        503
+      );
+    }
+
     // Rate limit BEFORE any work — this route triggers a platform-funded deploy.
     // Throttle per-IP and per-invoiceId (see rateLimitOk notes).
-    const ip =
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-      c.req.header("x-real-ip") ||
-      "unknown";
+    const ip = getClientIp(c);
 
     let body: { invoiceId?: string; buyerAddress?: string; claimToken?: string };
     try {

@@ -18,6 +18,17 @@ export type GatewayConfig = {
   defaultRequiredConfirmations: number;
   pollIntervalMs: number;
   corsOrigin: string;
+  // Trust the X-Forwarded-For header for client-IP derivation. MUST stay false
+  // unless the gateway sits behind a proxy/LB that OVERWRITES the header, because
+  // the per-IP claim rate limiter keys on it — a spoofable header lets one host
+  // forge unlimited distinct IPs and bypass the limit. Default false: use the
+  // real socket peer address instead.
+  trustProxy: boolean;
+  // Allow the public claim WRITE to run while corsOrigin is the "*" wildcard.
+  // Default false so a production write surface fails closed rather than letting
+  // any origin drive buyer claims. Set true only for a deliberately open
+  // single-tenant/dev deployment where the wildcard read surface is acceptable.
+  allowWildcardCorsWrites: boolean;
 };
 
 export function loadConfig(): GatewayConfig {
@@ -51,5 +62,7 @@ export function loadConfig(): GatewayConfig {
     defaultRequiredConfirmations: parseInt(env.DEROPAY_DEFAULT_CONFIRMATIONS ?? "3", 10),
     pollIntervalMs: parseInt(env.DEROPAY_POLL_INTERVAL_MS ?? "5000", 10),
     corsOrigin: env.DEROPAY_CORS_ORIGIN ?? "*",
+    trustProxy: env.DEROPAY_TRUST_PROXY === "true",
+    allowWildcardCorsWrites: env.DEROPAY_ALLOW_WILDCARD_CORS === "true",
   };
 }

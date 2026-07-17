@@ -49,8 +49,11 @@ refunds and dispute payouts would otherwise route to that other wallet.
 
 The buyer claim is a **browser POST** to the gateway, so the gateway must allow the
 checkout origin via CORS. `DEROPAY_CORS_ORIGIN` defaults to `*` (fine for the
-read-only `/status`), but once escrow claims are live in production, tighten it to
-the exact checkout origin(s) so a hostile page cannot drive claims on a buyer's behalf.
+read-only `/status`). Because a wildcard origin lets a hostile page drive claims,
+the claim write **fails closed** while `DEROPAY_CORS_ORIGIN` is `*`: `POST
+/checkout/claim` returns `503 cors_misconfigured` until you set the exact checkout
+origin(s) (or explicitly opt into an open deployment with
+`DEROPAY_ALLOW_WILDCARD_CORS=true`).
 
 ### Security note (honest)
 
@@ -72,9 +75,12 @@ the exact checkout origin(s) so a hostile page cannot drive claims on a buyer's 
   claim endpoint.
 - **Production hardening (required before public escrow use):**
   - Set `DEROPAY_CORS_ORIGIN` to the exact checkout origin(s) — never `*` once the
-    claim write is live.
-  - Put the gateway behind a **trusted reverse proxy** that sets the real client IP;
-    the per-IP rate limit reads `x-forwarded-for`, which a direct client can spoof.
+    claim write is live. Enforced: the claim write fails closed under a wildcard
+    origin (see above).
+  - The per-IP rate limit derives the client IP from the **real socket peer** by
+    default and ignores the spoofable `x-forwarded-for`. If you run behind a trusted
+    reverse proxy/LB that **overwrites** that header, set `DEROPAY_TRUST_PROXY=true`
+    so the limiter keys on the forwarded client IP instead of the proxy's.
   - The claim-token store, rate limiter, and escrow claim guard are **in-memory /
     single-process**. A horizontally-scaled gateway needs a **shared store** (e.g.
     Redis, or a durable claim guard with `multiProcess=true`) or tokens/limits/locks

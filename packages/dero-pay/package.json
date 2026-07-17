@@ -45,6 +45,26 @@
     "./next": {
       "types": "./dist/next/index.d.ts",
       "import": "./dist/next/index.js"
+    },
+    "./x402": {
+      "types": "./dist/x402/index.d.ts",
+      "import": "./dist/x402/index.js"
+    },
+    "./x402/types": {
+      "types": "./dist/x402/types.d.ts",
+      "import": "./dist/x402/types.js"
+    },
+    "./x402/server": {
+      "types": "./dist/x402/server.d.ts",
+      "import": "./dist/x402/server.js"
+    },
+    "./x402/client": {
+      "types": "./dist/x402/client.d.ts",
+      "import": "./dist/x402/client.js"
+    },
+    "./x402/next": {
+      "types": "./dist/x402/next.d.ts",
+      "import": "./dist/x402/next.js"
     }
   },
   "bin": {
@@ -88,7 +108,9 @@
   ],
   "author": "DHEBP",
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",

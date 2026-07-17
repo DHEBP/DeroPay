@@ -17,8 +17,11 @@
   /* ---------- Surface ---------- */
   --ink: #0a0c0a;
   --ink-deep: #06070a;
+  --ink-veil: #050605;
   --ink-elev: #11140f;
   --ink-elev-2: #161a14;
+  --ink-elev-3: #1a1e17;
+  --ink-hair-faint: #14170f;
   --ink-hair: #1c2018;
   --ink-hair-strong: #2a2f25;
 
@@ -42,6 +45,16 @@
   --vermilion: #e05d44;
   --vermilion-wash: rgba(224, 93, 68, 0.10);
 
+  /* ---------- Texture & live signals ----------
+     Sage-tinted dot grid sits behind the floating card to give the
+     surface a "technical" feel without competing with content.
+     --live-pulse is the halo for status dots in their "live" tone. */
+  --sage-dot: rgba(94, 196, 134, 0.055);
+  --dot-grid-size: 24px;
+  --live-pulse: rgba(94, 196, 134, 0.55);
+  --glyph-fill: var(--dero);
+  --glyph-fill-mute: var(--bone-quiet);
+
   /* ---------- Type ----------
      Two families. Geist Sans does display + body; JetBrains Mono handles
      tabular numerics in ledger rails, rail slots, and eyebrow labels. */
@@ -60,6 +73,20 @@
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 14px;
+
+  /* ---------- Spacing scale (4px base) ----------
+     Formalizes the existing ad-hoc 4/8/12/16/18/20 usage. Prefer these
+     tokens over raw pixel values when adding new components. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
 }
 
 html {
@@ -79,8 +106,11 @@ html[data-theme="light"] {
 
   --ink: #f6f5ef;
   --ink-deep: #ecebe3;
+  --ink-veil: #dcdbd2;
   --ink-elev: #ffffff;
   --ink-elev-2: #f0efe8;
+  --ink-elev-3: #e8e7df;
+  --ink-hair-faint: #e3e2d9;
   --ink-hair: #d9d8cf;
   --ink-hair-strong: #c2c1b7;
 
@@ -99,6 +129,9 @@ html[data-theme="light"] {
 
   --vermilion: #b34026;
   --vermilion-wash: rgba(179, 64, 38, 0.10);
+
+  --sage-dot: rgba(63, 168, 106, 0.075);
+  --live-pulse: rgba(63, 168, 106, 0.55);
 
   background: var(--ink);
 }
@@ -566,6 +599,19 @@ tbody tr:last-child td {
 }
 .tick-in {
   animation: ticker 0.45s var(--ease-out) both;
+}
+
+/* Hologram live-pulse: halo breath cycle for status dots in "live" tone */
+@keyframes hologram-pulse {
+  0%   { box-shadow: 0 0 0 0   var(--live-pulse); }
+  70%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0   transparent; }
+}
+.hologram-pulse {
+  animation: hologram-pulse 2.4s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hologram-pulse { animation: none; }
 }
 
 /* ---------- Utilities ---------- */

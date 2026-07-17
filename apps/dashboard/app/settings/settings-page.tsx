@@ -8,10 +8,12 @@ import {
   CircleAlert,
   Copy,
   Check,
+  Zap,
 } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/page-header";
 import { InvoiceTemplatesSection } from "@/components/invoice-templates-section";
+import { PanelHeader, EyebrowLabel, StatusDot, FilledGlyph } from "@/components/ui";
 import { formatDero } from "@/lib/format";
 
 type Health = {
@@ -28,6 +30,23 @@ export function SettingsPage() {
   const [health, setHealth] = useState<Health>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [x402RailOn, setX402RailOn] = useState(false);
+
+  useEffect(() => {
+    const stored = typeof window === "undefined" ? null : localStorage.getItem("deropay.x402.advertise");
+    if (stored === "1") setX402RailOn(true);
+  }, []);
+
+  const toggleX402Rail = useCallback(() => {
+    setX402RailOn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("deropay.x402.advertise", next ? "1" : "0");
+      } catch {
+      }
+      return next;
+    });
+  }, []);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -123,7 +142,8 @@ export function SettingsPage() {
             marginBottom: 18,
           }}
         >
-          <span className="eyebrow">
+          <span className="eyebrow" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <FilledGlyph name="ring" size={11} color="var(--dero)" />
             <span style={{ color: "var(--bone-quiet)" }}>a</span>
             <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
             Connection
@@ -274,7 +294,8 @@ export function SettingsPage() {
             marginBottom: 16,
           }}
         >
-          <span className="eyebrow">
+          <span className="eyebrow" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <FilledGlyph name="hex" size={11} color="var(--dero)" />
             <span style={{ color: "var(--bone-quiet)" }}>b</span>
             <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
             Environment
@@ -365,7 +386,8 @@ export function SettingsPage() {
             marginBottom: 14,
           }}
         >
-          <span className="eyebrow">
+          <span className="eyebrow" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <FilledGlyph name="grid" size={11} color="var(--dero)" />
             <span style={{ color: "var(--bone-quiet)" }}>c</span>
             <span style={{ margin: "0 6px", color: "var(--bone-quiet)" }}>·</span>
             API Surface
@@ -433,6 +455,129 @@ export function SettingsPage() {
               </span>
             </div>
           ))}
+        </div>
+      </motion.section>
+
+      {/* Agent Payments (x402) */}
+      <motion.section
+        id="agent-payments"
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.12 }}
+        className="surface"
+        style={{ marginTop: 20, padding: 0, overflow: "hidden", scrollMarginTop: 24 }}
+      >
+        <PanelHeader
+          glyph="bolt"
+          title="Agent Payments (x402)"
+          description="Accept HTTP-native payments from AI agents over the Dero rail. Privacy-preserving by default — no off-chain identity required."
+          meta={<EyebrowLabel tone="accent">beta</EyebrowLabel>}
+          actions={
+            <StatusDot
+              tone={x402RailOn ? "live" : "idle"}
+              pulse={x402RailOn}
+              ariaLabel={x402RailOn ? "Rail status: live" : "Rail status: idle"}
+            />
+          }
+        />
+        <div style={{ padding: "20px 24px 22px", display: "grid", gap: 18 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              padding: "14px 16px",
+              border: "1px solid var(--ink-hair)",
+              borderRadius: "var(--radius)",
+              background: "var(--ink-elev)",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "var(--bone)", fontSize: 13.5, fontWeight: 500, marginBottom: 4 }}>
+                Advertise the x402 rail
+              </div>
+              <div style={{ color: "var(--bone-mute)", fontSize: 12, lineHeight: 1.5 }}>
+                Your 402 responses will include a <code className="mono">dero-exact</code> entry pointing at your facilitator.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={toggleX402Rail}
+              aria-pressed={x402RailOn}
+              style={{
+                position: "relative",
+                width: 38,
+                height: 22,
+                borderRadius: 999,
+                border: `1px solid ${x402RailOn ? "var(--dero-hair)" : "var(--ink-hair)"}`,
+                background: x402RailOn ? "var(--dero-wash)" : "var(--ink-deep)",
+                cursor: "pointer",
+                flexShrink: 0,
+                transition: "background 180ms var(--ease-out), border-color 180ms var(--ease-out)",
+              }}
+              aria-label={x402RailOn ? "Disable x402 rail advertising" : "Enable x402 rail advertising"}
+            >
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  left: 2,
+                  width: 16,
+                  height: 16,
+                  borderRadius: "50%",
+                  background: x402RailOn ? "var(--dero)" : "var(--bone-quiet)",
+                  transform: x402RailOn ? "translateX(16px)" : "translateX(0)",
+                  transition:
+                    "transform 180ms var(--ease-out), background 180ms var(--ease-out)",
+                }}
+              />
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <EyebrowLabel tone="dim">Embed snippet</EyebrowLabel>
+            <pre
+              className="mono"
+              style={{
+                margin: 0,
+                padding: "14px 16px",
+                background: "var(--ink-deep)",
+                border: "1px solid var(--ink-hair)",
+                borderRadius: "var(--radius)",
+                color: "var(--bone-dim)",
+                fontSize: 12,
+                lineHeight: 1.6,
+                overflowX: "auto",
+              }}
+            >
+{`{
+  "x402Version": 1,
+  "accepts": [{
+    "scheme": "dero-exact",
+    "network": "dero-mainnet",
+    "asset": "DERO",
+    "payTo": "<your-receipt-scid>",
+    "maxAmountRequired": "1000",
+    "extra": { "merchantId": "your-shop", "orderId": "<uuid>" }
+  }]
+}`}
+            </pre>
+            <div style={{ color: "var(--bone-quiet)", fontSize: 11.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Zap size={12} /> Paste this into your 402 response. Agents will discover the rail and pay via your facilitator.
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <a href="/payments/agent" className="btn-link" style={{ textDecoration: "none" }}>
+              View settlement log →
+            </a>
+            <span aria-hidden style={{ color: "var(--bone-quiet)" }}>·</span>
+            <a href="https://x402.org" className="btn-link" style={{ textDecoration: "none" }}>
+              x402 protocol docs ↗
+            </a>
+          </div>
         </div>
       </motion.section>
     </DashboardShell>

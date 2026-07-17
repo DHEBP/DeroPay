@@ -8,7 +8,7 @@ import { EscrowTable } from "@/components/escrow-table";
 import { CreateEscrowForm } from "@/components/create-escrow-form";
 import { KpiTile } from "@/components/kpi-tile";
 import { walkData } from "@/components/sparkline";
-import { Button, ListShell } from "@/components/ui";
+import { Button, ListShell, EyebrowLabel } from "@/components/ui";
 import { EscrowDetailDrawer } from "@/components/escrow/EscrowDetailDrawer";
 import {
   EscrowKanban,
@@ -253,11 +253,8 @@ export function EscrowPage() {
         drawer={
           showCreateForm && (
             <div className="surface corner-ticks" style={{ padding: "22px 22px 18px" }}>
-              <div
-                className="eyebrow"
-                style={{ marginBottom: 14, color: "var(--dero)" }}
-              >
-                Deploy Escrow Contract
+              <div style={{ marginBottom: 14 }}>
+                <EyebrowLabel tone="accent">Deploy Escrow Contract</EyebrowLabel>
               </div>
               <CreateEscrowForm
                 onCreated={() => {

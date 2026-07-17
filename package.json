@@ -4,6 +4,7 @@
   "workspaces": [
     "apps/checkout",
     "apps/dashboard",
+    "apps/facilitator",
     "apps/demo",
     "apps/gateway",
     "apps/web",
@@ -26,6 +27,9 @@
     "build:demo": "bun run --cwd apps/demo build",
     "dev:x402-example": "bun run build:sdk && bun run --cwd apps/x402-example dev",
     "build:x402-example": "bun run build:sdk && bun run --cwd apps/x402-example build",
+    "dev:facilitator": "bun run --cwd apps/facilitator dev",
+    "build:facilitator": "bun run --cwd apps/facilitator build",
+    "start:facilitator": "bun run --cwd apps/facilitator start",
     "build:dashboard": "NEXT_PUBLIC_DEMO_MODE=true bun run --cwd apps/dashboard build",
     "build:medusa": "bun run --cwd plugins/medusa-payment-deropay build",
     "build:woocommerce": "cd plugins/woocommerce && zip -r ../../deropay-for-woocommerce.zip . -x '*.git*' -x '*node_modules*'",

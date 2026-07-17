@@ -52,10 +52,10 @@ export function ChartCard({
 }: ChartCardProps) {
   const stroke = tone === "positive" ? "var(--dero)" : "var(--bone-dim)";
   // useId is stable across SSR and client, unlike Math.random() which caused
-  // a hydration mismatch on the gradient id. Strip colons so the value is a
-  // valid SVG id / url(#…) reference.
+  // a hydration mismatch on the gradient id. Strip non-alphanumerics so the
+  // value is a valid SVG id / url(#…) reference.
   const reactId = useId();
-  const gradientId = `chart-grad-${reactId.replace(/:/g, "")}`;
+  const gradientId = `chart-grad-${reactId.replace(/[^a-zA-Z0-9]/g, "")}`;
 
   const hasData = data && data.length > 1;
   const svgRef = useRef<SVGSVGElement>(null);

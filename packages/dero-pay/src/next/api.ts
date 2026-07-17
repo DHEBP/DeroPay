@@ -428,6 +428,123 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
   }
 
   /**
+   * POST /api/pay/escrow/claim
+   * Body: { invoiceId, buyerAddress }
+   * Returns: the serialized updated Invoice (escrow now "awaiting_deposit")
+   *
+   * Gate 2 — binds a PROVEN buyer to a QUOTED escrow and deploys the contract.
+   * `buyerAddress` MUST come from a self-proving wallet-connect (or a
+   * format-checked manual entry the buyer explicitly confirmed): the address it
+   * carries becomes the on-chain refund/dispute-payout target, so an unproven or
+   * wrong address silently misroutes funds. This handler is the server backstop
+   * for the SDK-level assertDeroAddress guard — it re-rejects deto1… (integrated)
+   * addresses BEFORE any deploy gas, mirroring escrow/contract.ts.
+   */
+  async function claimEscrowInvoiceHandler(request: Request): Promise<Response> {
+    try {
+      const engine = await getEngine(config);
+
+      let body: { invoiceId?: string; buyerAddress?: string };
+      try {
+        body = (await request.json()) as typeof body;
+      } catch {
+        return Response.json(
+          { error: "Invalid JSON body" },
+          { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+
+      if (!body.invoiceId) {
+        return Response.json(
+          { error: "Missing invoiceId" },
+          { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+      if (!body.buyerAddress) {
+        return Response.json(
+          { error: "Missing buyerAddress" },
+          { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+      // Mirror escrow/contract.ts assertDeroAddress: base dero1… ONLY. Rejecting
+      // deto1… (integrated) here means the deploy path never binds a payment-ID
+      // address that SIGNER() can never match on-chain (would brick Deposit()).
+      if (!/^dero1[0-9a-z]{40,}$/i.test(body.buyerAddress)) {
+        const isIntegrated = /^deto1[0-9a-z]{40,}$/i.test(body.buyerAddress);
+        return Response.json(
+          {
+            error: isIntegrated
+              ? "buyerAddress is an integrated (deto1…) address; escrow parties must be base (dero1…) addresses."
+              : "buyerAddress is not a valid DERO base address",
+          },
+          { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+
+      // Idempotency pre-check — if the escrow is in a state that is genuinely
+      // terminal or in-flight for THIS handler, another tab/worker has already
+      // claimed it (or it advanced past claim). Return 409 with the current invoice
+      // so the client can adopt the live state instead of hard-failing.
+      //
+      // Critically, 'quoted' AND 'deploy_failed' fall THROUGH to the engine: a
+      // deploy_failed escrow is RECOVERABLE — engine.claimEscrowInvoice re-quotes it
+      // inline (the O19 path) so a proven buyer whose deploy merely blipped can
+      // retry. Short-circuiting deploy_failed here with a 409 would kill that
+      // recovery and trap the buyer in a retry<->poll loop (the client's 409 branch
+      // starts polling, the poll re-reads deploy_failed, the Retry re-POSTs → 409
+      // again, forever). The engine's durable claim guard is the authoritative race
+      // resolver; this pre-check only early-outs states the engine itself would
+      // reject as "not claimable".
+      const CLAIM_BLOCKED_STATUSES = new Set([
+        "deploying",
+        "awaiting_deposit",
+        "funded",
+        "disputed",
+        "released",
+        "refunded",
+        "expired_claimed",
+        "arbitrated",
+        "cancelled",
+      ]);
+      const existing = await engine.getInvoice(body.invoiceId);
+      if (
+        existing?.escrow &&
+        CLAIM_BLOCKED_STATUSES.has(existing.escrow.escrowStatus)
+      ) {
+        return Response.json(
+          {
+            error: `Escrow already claimed (status: ${existing.escrow.escrowStatus})`,
+            code: "already_claimed",
+            invoice: serializeInvoice(existing),
+          },
+          { status: 409, headers: { "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+
+      const invoice = await engine.claimEscrowInvoice(
+        body.invoiceId,
+        body.buyerAddress
+      );
+
+      return Response.json(serializeInvoice(invoice), {
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Internal error";
+      // Also surface a stable machine code so the client is not forced to
+      // substring-match the human message across the engine→HTTP→client boundary
+      // (the raw engine message is still forwarded for display/back-compat).
+      return Response.json(
+        { error: message, code: classifyClaimError(message) },
+        {
+          status: mapClaimErrorToStatus(message),
+          headers: { "Access-Control-Allow-Origin": "*" },
+        }
+      );
+    }
+  }
+
+  /**
    * GET /api/pay/escrows?status=funded&limit=50
    * Returns: Invoice[] (only invoices with escrow data)
    */
@@ -616,6 +733,7 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
     webhookHandler,
     healthHandler,
     escrowActionHandler,
+    claimEscrowInvoiceHandler,
     listEscrowsHandler,
     issueReceiptHandler,
     verifyReceiptHandler,
@@ -625,7 +743,71 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
 }
 
 /**
+ * Map a claimEscrowInvoice engine error message to an HTTP status.
+ *
+ * The engine throws plain Error strings; this centralizes the message→status
+ * mapping for the Gate-2 claim handler. Ordering matters: 'not claimable' and
+ * the drift guards are 409 (state conflict, not a server fault); deploy/budget
+ * failures are 502 (a downstream — the daemon/gas wallet — failed); a disabled
+ * escrow engine is 503; a missing invoice is 404; anything else is a 500.
+ */
+function mapClaimErrorToStatus(message: string): number {
+  const m = message.toLowerCase();
+  if (m.includes("not found")) return 404;
+  if (m.includes("escrow manager not available")) return 503;
+  if (
+    m.includes("not claimable (status:") ||
+    m.includes("amount drift") ||
+    m.includes("refusing to deploy") ||
+    m.includes("has no escrow") ||
+    m.includes("no escrowid")
+  ) {
+    return 409;
+  }
+  if (
+    m.includes("deploy failed") ||
+    m.includes("deploy has failed") ||
+    m.includes("budget exhausted")
+  ) {
+    return 502;
+  }
+  return 500;
+}
+
+/**
+ * Classify a claim error into a STABLE machine code for the client.
+ *
+ * The engine throws human-readable strings; the client should branch on this
+ * code rather than substring-matching the message (fragile string-coupling
+ * across engine→HTTP→client). The raw message is still forwarded for display.
+ */
+function classifyClaimError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("budget exhausted") || m.includes("has failed too many times")) {
+    return "budget_exhausted";
+  }
+  if (m.includes("deploy failed") || m.includes("deploy has failed")) {
+    return "deploy_failed";
+  }
+  if (m.includes("not claimable (status:")) return "not_claimable";
+  if (m.includes("amount drift") || m.includes("refusing to deploy")) {
+    return "amount_drift";
+  }
+  if (m.includes("not found")) return "not_found";
+  if (m.includes("escrow manager not available")) return "escrow_disabled";
+  return "internal_error";
+}
+
+/**
  * Serialize an Invoice for JSON response (BigInt → string).
+ *
+ * NOTE on escrow: `invoice.escrow` (InvoiceEscrow) carries NO bigint fields — the
+ * quote-time principal is persisted as the decimal STRING `escrowAmount` (see
+ * core/types.ts), and depositAmount/expectedAmount live only on the internal
+ * EscrowRecord, never on the invoice blob. So the escrow object round-trips
+ * through JSON unchanged and needs no coercion here; it is passed through as-is
+ * via the `...invoice` spread. Only the top-level and per-payment bigints require
+ * stringification.
  */
 function serializeInvoice(invoice: import("../core/types.js").Invoice): Record<string, unknown> {
   return {

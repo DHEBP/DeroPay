@@ -30,3 +30,8 @@ export {
   EscrowInvoiceView,
   type EscrowInvoiceViewProps,
 } from "./escrow-invoice-view.js";
+
+export {
+  EscrowClaimStep,
+  type EscrowClaimStepProps,
+} from "./escrow-claim-step.js";

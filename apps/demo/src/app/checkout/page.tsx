@@ -118,6 +118,16 @@ export default function CheckoutPage() {
     }
   }, [requestedWasm, wasmDiagnostics.mode]);
 
+  // ?escrow=claim → force escrow ON in "quoted" mode so the buyer flow renders
+  // the Gate-2 EscrowClaimStep (claim → deploying → awaiting_deposit → deposit).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const flag = new URLSearchParams(window.location.search).get("escrow");
+    if (flag === "claim") {
+      setUseEscrow(true);
+    }
+  }, []);
+
   const cartDraft = useMemo(
     () => (items.length > 0 ? createCartCheckoutDraft(items) : null),
     [items]
@@ -129,6 +139,15 @@ export default function CheckoutPage() {
   const sessionItems = useMemo(() => toDisplayItems(liveSessionOrder), [liveSessionOrder]);
   const activeInvoice =
     currentInvoice && currentInvoice.id === invoiceId ? currentInvoice : null;
+  // Live-invoice headline: a "quoted" escrow is awaiting the buyer's CLAIM, not a
+  // wallet payment, so don't mislabel it "Awaiting wallet payment".
+  const liveHeadline = !useEscrow
+    ? "Awaiting wallet payment"
+    : activeInvoice?.escrow?.escrowStatus === "quoted"
+      ? "Claim your escrow"
+      : activeInvoice?.escrow?.escrowStatus === "awaiting_deposit"
+        ? "Deposit into escrow"
+        : "Escrow checkout";
   const stagedTotal = stagedOrder ? BigInt(stagedOrder.totalAtomic) : 0n;
   const sessionAmount = activeInvoice
     ? activeInvoice.amount
@@ -224,9 +243,14 @@ export default function CheckoutPage() {
                   sellerAddress:
                     "dero1qyr8yjnu6cl2c5yqkls0hmxe6rry77kn24nmc5fje6hm9jltyvdd5qq4hn5pn",
                   arbitratorAddress:
-                    "dero1qyr8yjnu6cl2c5yqkls0hmxe6rry77kn24nmc5fje6hm9jltyvdd5qq4hn5pn",
+                    "dero1qy2nxgts7wdn28ckc4l2tewphjcppqjfj69ddkxjn0ay8hlsjx73jqgpyhv40",
                   feeBasisPoints: 250,
                   blockExpiration: 1000,
+                  // Two-phase model: every escrow invoice starts "quoted" — the
+                  // buyer must CLAIM (bind their address + deploy) before deposit.
+                  // So escrow mode always lands on EscrowClaimStep, no URL flag
+                  // needed (the ?escrow=claim flag just auto-enables escrow).
+                  stage: "quoted",
                 },
               }
             : {}),
@@ -481,7 +505,7 @@ export default function CheckoutPage() {
                   <div>
                     <p className="section-kicker mb-2">Live invoice</p>
                     <h2 className="font-display text-3xl font-semibold text-white">
-                      Awaiting wallet payment
+                      {liveHeadline}
                     </h2>
                   </div>
                   {activeInvoice ? (
@@ -495,7 +519,11 @@ export default function CheckoutPage() {
                 </div>
 
                 {useEscrow ? (
-                  <EscrowInvoiceView invoiceId={invoiceId} role="buyer" />
+                  <EscrowInvoiceView
+                    invoiceId={invoiceId}
+                    role="buyer"
+                    claimEndpoint="/api/pay/escrow/claim"
+                  />
                 ) : (
                   <InvoiceView invoiceId={invoiceId} />
                 )}

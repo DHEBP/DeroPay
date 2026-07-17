@@ -100,7 +100,16 @@ export function createMockInvoice(input: {
   const now = Date.now();
   const expiresAtMs = now + DEFAULT_TTL_SECONDS * 1000;
   const useEscrow = Boolean(input.escrow);
-  const escrow = useEscrow ? buildEscrow(input.escrow) : null;
+  const escrow = useEscrow
+    ? buildEscrow(input.escrow, order.amountAtomic)
+    : null;
+  // A "quoted" escrow (Gate 2 buyer-claim demo) has NOT deployed a contract yet,
+  // so there is no deploy timer to run down; it advances only when the buyer
+  // CLAIMs. A legacy "deploying" escrow keeps its short deploy timer.
+  const escrowDeployReadyAtMs =
+    escrow && escrow.escrowStatus === "deploying"
+      ? now + ESCROW_DEPLOY_MS
+      : null;
 
   const invoice: StoredInvoice = {
     id: buildInvoiceId(),
@@ -125,7 +134,7 @@ export function createMockInvoice(input: {
     expiresAtMs,
     lastTouchedAtMs: now,
     pendingCompleteAtMs: null,
-    escrowDeployReadyAtMs: escrow ? now + ESCROW_DEPLOY_MS : null,
+    escrowDeployReadyAtMs,
   };
 
   invoices.set(invoice.id, invoice);
@@ -258,6 +267,66 @@ export function performEscrowActionForSession(input: {
   };
 }
 
+const DERO_BASE_ADDRESS = /^dero1[0-9a-z]{40,}$/i;
+const DERO_INTEGRATED_ADDRESS = /^deto1[0-9a-z]{40,}$/i;
+
+/**
+ * Gate 2 (buyer claim) — mock counterpart of engine.claimEscrowInvoice.
+ *
+ * Binds a proven buyer to a "quoted" escrow and mints a fake scid/deployTxid,
+ * moving it to "awaiting_deposit" so the EscrowClaimStep poll settles and the
+ * checkout flips to the deposit UI. No contract is deployed — this is a VISUAL
+ * demo of the claim flow only. Mirrors the SDK handler's dero1-only guard.
+ */
+export function claimEscrowInvoiceForSession(input: {
+  invoiceId: string;
+  sessionId: string;
+  buyerAddress: string;
+}): SerializableInvoice {
+  const buyerAddress = input.buyerAddress.trim();
+  if (DERO_INTEGRATED_ADDRESS.test(buyerAddress)) {
+    throw new MockStoreError(
+      400,
+      "INVALID_BUYER_ADDRESS",
+      "buyerAddress is an integrated (deto1…) address; escrow parties must be base (dero1…) addresses."
+    );
+  }
+  if (!DERO_BASE_ADDRESS.test(buyerAddress)) {
+    throw new MockStoreError(
+      400,
+      "INVALID_BUYER_ADDRESS",
+      "buyerAddress is not a valid DERO base address"
+    );
+  }
+
+  const invoice = requireInvoiceForSession(input.invoiceId, input.sessionId);
+  refreshInvoice(invoice);
+
+  if (!invoice.escrow) {
+    throw new MockStoreError(400, "ESCROW_REQUIRED", "Invoice is not an escrow invoice.");
+  }
+
+  // Idempotency / already-claimed: if the escrow already left "quoted", surface a
+  // 409 with the current invoice so the client can adopt the live state (mirrors
+  // the SDK claimEscrowInvoiceHandler pre-check).
+  if (invoice.escrow.escrowStatus !== "quoted") {
+    throw new MockStoreError(
+      409,
+      "ALREADY_CLAIMED",
+      `Escrow already claimed (status: ${invoice.escrow.escrowStatus})`
+    );
+  }
+
+  invoice.escrow.buyerAddress = buyerAddress;
+  invoice.escrow.scid = buildScid();
+  invoice.escrow.deployTxid = buildTxid();
+  invoice.escrow.escrowStatus = "awaiting_deposit";
+  invoice.escrowDeployReadyAtMs = null;
+  invoice.lastTouchedAtMs = Date.now();
+
+  return clonePublicInvoice(invoice);
+}
+
 function requireInvoiceForSession(id: string, sessionId: string): StoredInvoice {
   const invoice = invoices.get(id);
   if (!invoice || invoice.sessionId !== sessionId) {
@@ -359,7 +428,7 @@ function buildOrderDetails(lines: DerivedCartLine[]) {
   };
 }
 
-function buildEscrow(raw: unknown): InvoiceEscrow {
+function buildEscrow(raw: unknown, amountAtomic: string): InvoiceEscrow {
   const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const feeBasisPoints = clampInteger(record.feeBasisPoints, 250, 0, MAX_ESCROW_FEE_BPS);
   const blockExpiration = clampInteger(
@@ -369,10 +438,19 @@ function buildEscrow(raw: unknown): InvoiceEscrow {
     MAX_ESCROW_BLOCK_EXPIRATION
   );
 
+  // Gate 2 opt-in: when the create request asks for stage "quoted", mint an
+  // UN-deployed quote (no scid, no buyer bound) so the buyer checkout renders
+  // EscrowClaimStep. Any other value keeps the legacy "deploying" demo escrow
+  // that auto-advances straight to awaiting_deposit.
+  const quoted = typeof record.stage === "string" && record.stage === "quoted";
+
   return {
-    scid: buildScid(),
-    deployTxid: buildTxid(),
-    escrowStatus: "deploying",
+    escrowId: quoted ? `esc_demo_${randomBytes(9).toString("hex")}` : null,
+    scid: quoted ? null : buildScid(),
+    deployTxid: quoted ? null : buildTxid(),
+    escrowStatus: quoted ? "quoted" : "deploying",
+    // Frozen quote-time principal the claim step displays (decimal atomic string).
+    escrowAmount: amountAtomic,
     sellerAddress: DEMO_SELLER_ADDRESS,
     arbitratorAddress: DEMO_ARBITRATOR_ADDRESS,
     feeBasisPoints,

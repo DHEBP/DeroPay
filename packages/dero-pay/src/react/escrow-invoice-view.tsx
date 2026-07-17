@@ -14,8 +14,17 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDeroPayContext } from "./provider.js";
+import { EscrowClaimStep } from "./escrow-claim-step.js";
 import { atomicToDero } from "../core/pricing.js";
 import type { Invoice, InvoiceEscrow, EscrowInvoiceStatus } from "../core/types.js";
+
+/**
+ * Shared escrow-flow accent. This view and EscrowClaimStep are two halves of the
+ * SAME buyer flow (claim → deposit), so they share ONE dark-HUD palette: the
+ * handoff from the claim card to this card must not jump themes/colors.
+ */
+const ACCENT = "#31df90";
+const ACCENT_INK = "#04120b";
 
 /** Props for the EscrowInvoiceView component */
 export type EscrowInvoiceViewProps = {
@@ -27,6 +36,8 @@ export type EscrowInvoiceViewProps = {
   statusEndpoint?: string;
   /** Server endpoint for escrow actions (POST) */
   escrowActionEndpoint?: string;
+  /** Server endpoint for the Gate-2 buyer claim (POST, default: /api/pay/escrow/claim) */
+  claimEndpoint?: string;
   /** Polling interval in ms (default: 5000) */
   pollIntervalMs?: number;
   /** Additional CSS class names */
@@ -67,6 +78,7 @@ export function EscrowInvoiceView({
   role = "viewer",
   statusEndpoint,
   escrowActionEndpoint,
+  claimEndpoint,
   pollIntervalMs = 5000,
   className,
   style,
@@ -163,7 +175,7 @@ export function EscrowInvoiceView({
   if (isLoading) {
     return (
       <div className={className} style={{ textAlign: "center", padding: "2rem", ...style }}>
-        <p style={{ color: "#6b7280" }}>Loading escrow invoice...</p>
+        <p style={{ color: "#8a94a6" }}>Loading escrow invoice...</p>
       </div>
     );
   }
@@ -171,7 +183,7 @@ export function EscrowInvoiceView({
   if (error && !invoice) {
     return (
       <div className={className} style={{ textAlign: "center", padding: "2rem", ...style }}>
-        <p style={{ color: "#ef4444" }}>{error}</p>
+        <p style={{ color: "#f5a623" }}>{error}</p>
       </div>
     );
   }
@@ -179,8 +191,28 @@ export function EscrowInvoiceView({
   if (!invoice || !invoice.escrow) {
     return (
       <div className={className} style={{ textAlign: "center", padding: "2rem", ...style }}>
-        <p style={{ color: "#6b7280" }}>No escrow data for this invoice.</p>
+        <p style={{ color: "#8a94a6" }}>No escrow data for this invoice.</p>
       </div>
+    );
+  }
+
+  // Gate 2 — a "quoted" escrow has no deployed contract and no bound buyer yet.
+  // The buyer must CLAIM (bind their address + deploy) before any deposit UI is
+  // meaningful. Delegate that entire step to EscrowClaimStep; on success it hands
+  // back the fresh invoice, which we adopt so this view flips to the deposit-onward
+  // lifecycle below without a full reload. Only the buyer drives the claim; other
+  // roles just see the monitoring/lifecycle view (which will show "quoted" state).
+  if (invoice.escrow.escrowStatus === "quoted" && role === "buyer") {
+    return (
+      <EscrowClaimStep
+        invoice={invoice}
+        claimEndpoint={claimEndpoint}
+        statusEndpoint={endpoint}
+        className={className}
+        style={style}
+        onClaimed={(updated) => setInvoice(updated)}
+        onError={onError}
+      />
     );
   }
 
@@ -203,10 +235,10 @@ export function EscrowInvoiceView({
         maxWidth: "480px",
         margin: "0 auto",
         padding: "1.5rem",
-        borderRadius: "12px",
-        border: "1px solid #e5e7eb",
-        backgroundColor: "#ffffff",
-        color: "#111827",
+        borderRadius: "16px",
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(12,16,20,0.9)",
+        color: "#e7ebf2",
         fontFamily: "system-ui, -apple-system, sans-serif",
         ...style,
       }}
@@ -218,12 +250,12 @@ export function EscrowInvoiceView({
             display: "inline-block",
             padding: "0.25rem 0.75rem",
             borderRadius: "999px",
-            backgroundColor: "#f0f9ff",
-            color: "#0369a1",
-            fontSize: "0.75rem",
+            background: "rgba(49,223,144,0.12)",
+            color: ACCENT,
+            fontSize: "0.7rem",
             fontWeight: 600,
             marginBottom: "0.5rem",
-            letterSpacing: "0.05em",
+            letterSpacing: "0.08em",
             textTransform: "uppercase",
           }}
         >
@@ -233,7 +265,7 @@ export function EscrowInvoiceView({
           {invoice.name}
         </h3>
         {invoice.description && (
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>
+          <p style={{ margin: 0, color: "#8a94a6", fontSize: "0.875rem" }}>
             {invoice.description}
           </p>
         )}
@@ -244,18 +276,18 @@ export function EscrowInvoiceView({
         style={{
           textAlign: "center",
           padding: "1rem",
-          backgroundColor: "#f9fafb",
-          borderRadius: "8px",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "12px",
           marginBottom: "1rem",
         }}
       >
         <span style={{ fontSize: "1.75rem", fontWeight: 700 }}>
           {atomicToDero(invoice.amount)}
         </span>
-        <span style={{ fontSize: "1rem", color: "#6b7280", marginLeft: "0.5rem" }}>
+        <span style={{ fontSize: "1rem", color: "#8a94a6", marginLeft: "0.5rem" }}>
           DERO
         </span>
-        <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+        <div style={{ fontSize: "0.72rem", color: "#8a94a6", marginTop: "0.25rem" }}>
           Fee: {escrow.feeBasisPoints / 100}%
         </div>
       </div>
@@ -287,7 +319,7 @@ export function EscrowInvoiceView({
               left: "20px",
               right: "20px",
               height: "2px",
-              backgroundColor: "#e5e7eb",
+              backgroundColor: "rgba(255,255,255,0.1)",
               zIndex: 0,
             }}
           />
@@ -315,12 +347,12 @@ export function EscrowInvoiceView({
                   fontWeight: 700,
                   backgroundColor:
                     step.status === "completed"
-                      ? "#10b981"
+                      ? ACCENT
                       : step.status === "active"
-                        ? "#3b82f6"
-                        : "#e5e7eb",
+                        ? ACCENT
+                        : "rgba(255,255,255,0.1)",
                   color:
-                    step.status === "pending" ? "#9ca3af" : "#ffffff",
+                    step.status === "pending" ? "#8a94a6" : ACCENT_INK,
                   marginBottom: "0.25rem",
                 }}
               >
@@ -329,7 +361,7 @@ export function EscrowInvoiceView({
               <span
                 style={{
                   fontSize: "0.65rem",
-                  color: step.status === "pending" ? "#9ca3af" : "#374151",
+                  color: step.status === "pending" ? "#8a94a6" : "#c9cfda",
                   textAlign: "center",
                   maxWidth: "70px",
                   lineHeight: 1.2,
@@ -346,8 +378,8 @@ export function EscrowInvoiceView({
       <div
         style={{
           padding: "0.75rem",
-          backgroundColor: "#f9fafb",
-          borderRadius: "8px",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "10px",
           fontSize: "0.75rem",
           marginBottom: "1rem",
         }}
@@ -366,9 +398,10 @@ export function EscrowInvoiceView({
         <div
           style={{
             padding: "0.5rem 0.75rem",
-            backgroundColor: "#fef2f2",
-            color: "#dc2626",
-            borderRadius: "6px",
+            background: "rgba(245,166,35,0.1)",
+            color: "#f5a623",
+            border: "1px solid rgba(245,166,35,0.25)",
+            borderRadius: "8px",
             fontSize: "0.8rem",
             marginBottom: "1rem",
           }}
@@ -382,12 +415,14 @@ export function EscrowInvoiceView({
         <div
           style={{
             padding: "0.5rem 0.75rem",
-            backgroundColor: "#ecfdf5",
-            color: "#059669",
-            borderRadius: "6px",
+            background: "rgba(49,223,144,0.08)",
+            color: ACCENT,
+            border: "1px solid rgba(49,223,144,0.2)",
+            borderRadius: "8px",
             fontSize: "0.75rem",
             marginBottom: "1rem",
             wordBreak: "break-all",
+            fontFamily: "ui-monospace, monospace",
           }}
         >
           TX: {lastTxid}
@@ -401,7 +436,7 @@ export function EscrowInvoiceView({
           {role === "buyer" && escrowStatus === "awaiting_deposit" && (
             <ActionButton
               label="Deposit into Escrow"
-              color="#3b82f6"
+              color={ACCENT}
               loading={actionLoading === "deposit"}
               disabled={!!actionLoading}
               onClick={() => performAction("deposit")}
@@ -413,7 +448,7 @@ export function EscrowInvoiceView({
             <>
               <ActionButton
                 label="Confirm Delivery"
-                color="#10b981"
+                color={ACCENT}
                 loading={actionLoading === "confirmDelivery"}
                 disabled={!!actionLoading}
                 onClick={() => performAction("confirmDelivery")}
@@ -453,7 +488,7 @@ export function EscrowInvoiceView({
             <>
               <ActionButton
                 label="Release to Seller"
-                color="#10b981"
+                color={ACCENT}
                 loading={actionLoading === "arbitrateRelease"}
                 disabled={!!actionLoading}
                 onClick={() => performAction("arbitrateRelease")}
@@ -473,7 +508,7 @@ export function EscrowInvoiceView({
             <p
               style={{
                 textAlign: "center",
-                color: "#6b7280",
+                color: "#8a94a6",
                 fontSize: "0.8rem",
                 margin: 0,
               }}
@@ -507,7 +542,7 @@ export function EscrowInvoiceView({
             {statusInfo.label}
           </p>
           {escrow.resolution && (
-            <p style={{ color: "#6b7280", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+            <p style={{ color: "#8a94a6", fontSize: "0.75rem", marginTop: "0.25rem" }}>
               Resolution: {formatResolution(escrow.resolution)}
             </p>
           )}
@@ -534,19 +569,22 @@ function ActionButton({
   disabled: boolean;
   onClick: () => void;
 }) {
+  // On the shared accent, use dark ink for contrast (matches EscrowClaimStep's
+  // primary button); other semantic colors keep white text.
+  const textColor = color === ACCENT ? ACCENT_INK : "#ffffff";
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       style={{
-        padding: "0.625rem 1rem",
+        padding: "0.7rem 1rem",
         fontSize: "0.875rem",
         fontWeight: 600,
         border: "none",
-        borderRadius: "8px",
+        borderRadius: "10px",
         cursor: disabled ? "default" : "pointer",
         backgroundColor: color,
-        color: "#ffffff",
+        color: textColor,
         opacity: disabled ? 0.6 : 1,
         transition: "opacity 0.2s",
         width: "100%",
@@ -572,13 +610,13 @@ function DetailRow({
         display: "flex",
         justifyContent: "space-between",
         padding: "0.25rem 0",
-        borderBottom: "1px solid #f3f4f6",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      <span style={{ color: "#6b7280" }}>{label}</span>
+      <span style={{ color: "#8a94a6" }}>{label}</span>
       <span
         style={{
-          color: "#111827",
+          color: "#e7ebf2",
           fontWeight: 500,
           fontFamily: mono ? "ui-monospace, monospace" : "inherit",
           fontSize: mono ? "0.7rem" : "0.75rem",
@@ -634,76 +672,79 @@ function getEscrowStatusInfo(status: EscrowInvoiceStatus): {
   bgColor: string;
   textColor: string;
 } {
+  // Dark-HUD tints (translucent on the rgba(12,16,20,0.9) card) so the status
+  // badge shares the palette with EscrowClaimStep. Red is reserved for TRUE
+  // alarms (dispute/deploy-failed); normal progress is accent/cyan, caution amber.
   switch (status) {
     case "deploying":
       return {
         label: "Deploying Contract...",
         icon: "\u23F3",
-        bgColor: "#f3f4f6",
-        textColor: "#6b7280",
+        bgColor: "rgba(255,255,255,0.06)",
+        textColor: "#8a94a6",
       };
     case "awaiting_deposit":
       return {
         label: "Awaiting Deposit",
         icon: "\u23F3",
-        bgColor: "#eff6ff",
-        textColor: "#2563eb",
+        bgColor: "rgba(49,223,144,0.1)",
+        textColor: ACCENT,
       };
     case "funded":
       return {
         label: "Funds in Escrow",
         icon: "\uD83D\uDD12",
-        bgColor: "#ecfdf5",
-        textColor: "#059669",
+        bgColor: "rgba(49,223,144,0.12)",
+        textColor: ACCENT,
       };
     case "released":
       return {
         label: "Released to Seller",
         icon: "\u2713",
-        bgColor: "#ecfdf5",
-        textColor: "#059669",
+        bgColor: "rgba(49,223,144,0.12)",
+        textColor: ACCENT,
       };
     case "refunded":
       return {
         label: "Refunded to Buyer",
         icon: "\u21A9",
-        bgColor: "#eff6ff",
-        textColor: "#2563eb",
+        bgColor: "rgba(96,165,250,0.12)",
+        textColor: "#93c5fd",
       };
     case "expired_claimed":
       return {
         label: "Claimed After Expiry",
         icon: "\u23F0",
-        bgColor: "#fffbeb",
-        textColor: "#d97706",
+        bgColor: "rgba(245,166,35,0.12)",
+        textColor: "#f5a623",
       };
     case "disputed":
       return {
         label: "Dispute Raised",
         icon: "\u26A0",
-        bgColor: "#fef2f2",
-        textColor: "#dc2626",
+        bgColor: "rgba(239,68,68,0.12)",
+        textColor: "#ef4444",
       };
     case "arbitrated":
       return {
         label: "Resolved by Arbitrator",
         icon: "\u2696",
-        bgColor: "#f5f3ff",
-        textColor: "#7c3aed",
+        bgColor: "rgba(167,139,250,0.14)",
+        textColor: "#c4b5fd",
       };
     case "deploy_failed":
       return {
         label: "Deployment Failed",
         icon: "\u2717",
-        bgColor: "#fef2f2",
-        textColor: "#dc2626",
+        bgColor: "rgba(239,68,68,0.12)",
+        textColor: "#ef4444",
       };
     default:
       return {
         label: "Unknown",
         icon: "?",
-        bgColor: "#f3f4f6",
-        textColor: "#6b7280",
+        bgColor: "rgba(255,255,255,0.06)",
+        textColor: "#8a94a6",
       };
   }
 }

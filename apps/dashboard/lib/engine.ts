@@ -21,6 +21,7 @@ type Handlers = {
   statsHandler: (req: Request) => Promise<Response> | Response;
   healthHandler: (req: Request) => Promise<Response> | Response;
   escrowActionHandler: (req: Request) => Promise<Response> | Response;
+  claimEscrowInvoiceHandler: (req: Request) => Promise<Response> | Response;
   listEscrowsHandler: (req: Request) => Promise<Response> | Response;
   webhookHandler: (req: Request) => Promise<Response> | Response;
   listWebhookDeliveriesHandler: (req: Request) => Promise<Response> | Response;
@@ -129,6 +130,33 @@ function getMockHandlers(): Promise<Handlers> {
       },
       healthHandler: async () => NextResponse.json(getMockHealth()),
       escrowActionHandler: async () => NextResponse.json({ ok: true }),
+      // Gate 2 buyer claim. The dashboard is a MERCHANT surface; its demo fixtures
+      // have no quoted buyer-checkout escrow to bind, so the claim is not
+      // exercisable here in test mode. Validate the address shape (the one
+      // deterministic check) so a malformed request still 400s like real mode,
+      // then report it as unavailable in demo.
+      claimEscrowInvoiceHandler: async (req: Request) => {
+        const body = (await req.json().catch(() => ({}))) as {
+          invoiceId?: string;
+          buyerAddress?: string;
+        };
+        if (!body.invoiceId || !body.buyerAddress) {
+          return NextResponse.json(
+            { error: "Missing invoiceId or buyerAddress" },
+            { status: 400 }
+          );
+        }
+        if (!/^dero1[0-9a-z]{40,}$/i.test(body.buyerAddress)) {
+          return NextResponse.json(
+            { error: "buyerAddress is not a valid DERO base address" },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { error: "Escrow claim is not available in demo mode" },
+          { status: 503 }
+        );
+      },
       listEscrowsHandler: async () => NextResponse.json(getMockEscrows()),
       webhookHandler: async () => NextResponse.json({ ok: true }),
       // Webhook console endpoints: demo-mode returns empty lists so the UI
@@ -306,6 +334,7 @@ function getRealHandlers(): Promise<Handlers> {
       statsHandler: base.statsHandler,
       healthHandler: base.healthHandler,
       escrowActionHandler: base.escrowActionHandler,
+      claimEscrowInvoiceHandler: base.claimEscrowInvoiceHandler,
       listEscrowsHandler: base.listEscrowsHandler,
       webhookHandler: base.webhookHandler,
       listWebhookDeliveriesHandler: notImplemented,
@@ -361,6 +390,12 @@ export const healthHandler = async (req: Request): Promise<Response> => {
 export const escrowActionHandler = async (req: Request): Promise<Response> => {
   const h = await getHandlers();
   return h.escrowActionHandler(req);
+};
+export const claimEscrowInvoiceHandler = async (
+  req: Request
+): Promise<Response> => {
+  const h = await getHandlers();
+  return h.claimEscrowInvoiceHandler(req);
 };
 export const listEscrowsHandler = async (req: Request): Promise<Response> => {
   const h = await getHandlers();

@@ -26,6 +26,12 @@ export const ALLOWED_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
   partial: ["expired"],
   completed: [], // terminal — no manual transitions
   expired: [], // terminal
+  // Escrow-lifecycle statuses are engine/on-chain driven — the merchant UI
+  // offers no manual override for any of them.
+  misrouted_to_base: [], // alert/reconciliation state, not merchant-forcible
+  escrow_funded: [], // funded via Deposit(); proceeds through escrow lifecycle
+  disputed: [], // resolved by the arbitrator, not the merchant
+  refunded: [], // terminal
 };
 
 export function allowedNextStatuses(current: InvoiceStatus): InvoiceStatus[] {
@@ -46,6 +52,10 @@ export const STATUS_LABELS: Record<InvoiceStatus, string> = {
   partial: "Partial",
   completed: "Completed",
   expired: "Expired",
+  misrouted_to_base: "Misrouted",
+  escrow_funded: "In Escrow",
+  disputed: "Disputed",
+  refunded: "Refunded",
 };
 
 /** Verb used in menu items: "Mark expired", etc. Keep lowercase. */
@@ -56,4 +66,8 @@ export const STATUS_VERBS: Record<InvoiceStatus, string> = {
   partial: "mark partial",
   completed: "mark completed",
   expired: "mark expired",
+  misrouted_to_base: "mark misrouted",
+  escrow_funded: "mark in escrow",
+  disputed: "mark disputed",
+  refunded: "mark refunded",
 };

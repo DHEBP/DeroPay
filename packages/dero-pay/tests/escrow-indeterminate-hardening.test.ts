@@ -416,12 +416,20 @@ describe("O15c FIX 6 — forceResolveIndeterminate operator surface", () => {
     const store = new MemoryInvoiceStore();
     const invoice = await quarantine(store);
 
-    const { engine, mockWallet } = makeEngine(store, { escrowClaimLeaseMs: 2 });
+    // Large lease (like the 'downgrade' sibling): the automatic reconcile at start()
+    // and on the timer will NOT touch the row (not lease-expired), so it stays
+    // deploy_indeterminate deterministically and ONLY the operator retry resolves it.
+    // The forced retry deliberately bypasses the lease, so no wall-clock aging needed.
+    const { engine, mockWallet } = makeEngine(store, { escrowClaimLeaseMs: 120_000 });
     await engine.start();
     mockWallet.listOwnScDeploys.mockResolvedValue(["sc-retry-heal"]);
     mockContract.verifyBinding.mockResolvedValue(true);
 
-    await new Promise((r) => setTimeout(r, 5));
+    // Still deploy_indeterminate — the lease kept the auto-sweep off it.
+    expect((await store.getInvoice(invoice.id))?.escrow?.escrowStatus).toBe(
+      "deploy_indeterminate"
+    );
+
     const resolved = await engine.forceResolveIndeterminate(invoice.id, "retry");
     expect(resolved.escrow?.escrowStatus).toBe("awaiting_deposit");
     expect(resolved.escrow?.scid).toBe("sc-retry-heal");

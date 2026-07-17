@@ -1761,7 +1761,7 @@ export class InvoiceEngine {
     return true;
   }
 
-  private async reconcileOrphanedClaims(): Promise<void> {
+  private async reconcileOrphanedClaims(forceEscrowId?: string): Promise<void> {
     if (!this.escrowManager) return;
     const guard = this.escrowManager.getClaimGuard();
     if (!guard?.listClaims) return; // process-local guard: nothing durable to heal.
@@ -1789,6 +1789,23 @@ export class InvoiceEngine {
     } catch {
       return; // best-effort; a failed scan must not block startup.
     }
+
+    // Operator-forced retry (forceResolveIndeterminate('retry')): include the
+    // explicitly targeted row EVEN IF it is not yet lease-expired. The lease exists
+    // only to keep the PERIODIC reconciler from touching a peer worker's still-in-
+    // flight deploy; an operator naming a specific stuck invoice is asserting intent
+    // on THAT row, so make the manual retry act now instead of waiting out the lease
+    // timer. Fund-safety is unaffected — every adopt/downgrade below is CAS-gated on
+    // the durable blob, so a concurrent live path is never clobbered.
+    if (forceEscrowId && !held.some((r) => r.id === forceEscrowId)) {
+      try {
+        const forced = (await guard.listClaims!()).find((r) => r.id === forceEscrowId);
+        if (forced) held = [...held, forced];
+      } catch {
+        /* best-effort; fall through with the lease-expired set only */
+      }
+    }
+
     if (held.length === 0) return;
 
     // O20 — resolve each held row's invoice by a DIRECT per-escrowId lookup, NOT a
@@ -2149,9 +2166,10 @@ export class InvoiceEngine {
    * resolve a park that the periodic reconcile cannot clear on its own — e.g. a
    * permanently wallet-down enumeration park, or an ambiguous multi-match — WITHOUT
    * a process restart:
-   *   - 'retry'     -> run one reconcile pass now (same idempotent entrypoint as the
-   *                    periodic loop). Use once the wallet is reachable again so the
-   *                    quarantine adopts/downgrades instead of waiting for the timer.
+   *   - 'retry'     -> run one reconcile pass now, targeting THIS invoice's row so it
+   *                    is processed regardless of the lease timer. Use once the wallet
+   *                    is reachable again so the quarantine adopts/downgrades instead
+   *                    of waiting for the periodic sweep.
    *   - 'downgrade' -> manually force the quarantine to deploy_failed and RELEASE the
    *                    held row, so an honest re-claim can re-quote. ONLY safe once the
    *                    operator has confirmed OUT OF BAND that no live contract exists
@@ -2175,9 +2193,14 @@ export class InvoiceEngine {
     }
 
     if (action === "retry") {
-      // Reuse the SAME reconcile entrypoint (idempotent, CAS-gated) so a manual
-      // retry cannot double-adopt against a concurrent periodic pass.
-      await this.periodicReconcile();
+      // Reuse the SAME reconcile logic (idempotent, CAS-gated) so a manual retry
+      // cannot double-adopt against a concurrent periodic pass — but pass the
+      // targeted escrowId so the recovery acts NOW regardless of the lease timer.
+      // An operator forcing a retry on a specific stuck invoice should not have to
+      // wait out the lease (the lease only shields peer in-flight deploys from the
+      // PERIODIC sweep). Called directly rather than via periodicReconcile so the
+      // overlap flag cannot silently drop the forced pass; concurrency is safe.
+      await this.reconcileOrphanedClaims(invoice.escrow.escrowId!);
       return (await this.store.getInvoice(invoiceId)) ?? invoice;
     }
 

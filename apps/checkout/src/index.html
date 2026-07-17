@@ -60,6 +60,80 @@
         <button id="simulate-btn" class="simulate-btn hidden">Simulate Payment</button>
       </div>
 
+      <!-- Escrow: claim step (buyer binds their address before deposit) -->
+      <div id="escrow-claim-state" class="state hidden">
+        <div class="escrow-badge">Escrow · Claim</div>
+        <div class="invoice-name" id="escrow-claim-name"></div>
+        <p class="escrow-subtitle">Bind your DERO address, then deposit into escrow.</p>
+
+        <div class="amount-display">
+          <span class="amount-value" id="escrow-claim-amount"></span>
+          <span class="amount-label">DERO</span>
+        </div>
+        <div class="escrow-fee" id="escrow-claim-fee"></div>
+
+        <div class="address-container">
+          <label for="escrow-buyer-input">Your DERO base address (dero1…)</label>
+          <input
+            id="escrow-buyer-input"
+            class="escrow-input"
+            type="text"
+            placeholder="dero1qy…"
+            spellcheck="false"
+            autocapitalize="none"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="escrow-warn" id="escrow-claim-warn">
+          Refunds and dispute payouts go to <strong>this address</strong>. If it is wrong,
+          a payout could go to someone else and be unrecoverable. Confirm it matches your
+          wallet exactly.
+        </div>
+
+        <div class="escrow-error hidden" id="escrow-claim-error"></div>
+
+        <button id="escrow-claim-btn" class="claim-btn">Claim &amp; Deploy Escrow</button>
+      </div>
+
+      <!-- Escrow: deposit view (contract deployed, awaiting buyer deposit) -->
+      <div id="escrow-deposit-state" class="state hidden">
+        <div class="escrow-badge">Escrow · Deposit</div>
+        <div class="invoice-name" id="escrow-deposit-name"></div>
+        <p class="escrow-subtitle">Send the exact amount from your OWN wallet to the contract below.</p>
+
+        <div class="qr-container">
+          <div id="escrow-qr-code"></div>
+        </div>
+
+        <div class="amount-display">
+          <span class="amount-value" id="escrow-deposit-amount"></span>
+          <span class="amount-label">DERO</span>
+        </div>
+
+        <div class="address-container">
+          <label>Escrow contract (SCID):</label>
+          <div class="address-box">
+            <code id="escrow-scid"></code>
+            <button id="escrow-copy-btn" class="copy-btn" title="Copy contract SCID">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="escrow-warn" id="escrow-deposit-note">
+          Call <strong>Deposit</strong> on this contract from the SAME wallet you bound
+          (<span id="escrow-bound-addr"></span>). A deposit from any other wallet is rejected on-chain.
+        </div>
+
+        <div class="status-bar">
+          <div class="status-icon" id="escrow-status-icon">
+            <svg class="status-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
+          </div>
+          <div class="status-text" id="escrow-status-text">Waiting for your deposit...</div>
+        </div>
+      </div>
+
       <div id="success-state" class="state hidden">
         <div class="success-icon">✓</div>
         <h2>Payment Confirmed</h2>
@@ -79,7 +153,7 @@
       </div>
 
       <div class="checkout-footer">
-        Powered by <a href="https://deropay.com" target="_blank" rel="noopener">DeroPay</a> — Private payments on DERO
+        Powered by <a href="https://deropay.com" target="_blank" rel="noopener noreferrer">DeroPay</a> — Private payments on DERO
       </div>
     </div>
   </div>

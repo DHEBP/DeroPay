@@ -336,3 +336,106 @@ body {
 .hidden {
   display: none !important;
 }
+
+/* --- Escrow (claim + deposit) ------------------------------------------- */
+
+.escrow-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.escrow-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.escrow-fee {
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
+  margin-top: -8px;
+  margin-bottom: 16px;
+}
+
+.escrow-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.escrow-input:focus {
+  border-color: var(--accent);
+}
+
+.escrow-warn {
+  margin: 14px 0;
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 10px;
+  color: #f5cd8b;
+  font-size: 12.5px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.escrow-warn strong {
+  color: var(--warning);
+}
+
+.escrow-error {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  color: #fca5a5;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.claim-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 13px 24px;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  color: #04120b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.claim-btn:hover {
+  opacity: 0.9;
+}
+
+.claim-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#escrow-bound-addr {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  word-break: break-all;
+  color: var(--text-primary);
+}

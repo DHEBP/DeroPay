@@ -12,6 +12,7 @@ import type {
   OutboxStatus,
 } from "../webhook/outbox-types.js";
 import type { EscrowClaimGuard } from "../escrow/manager.js";
+import type { EscrowInventoryStore } from "../escrow/inventory-store.js";
 
 /** Filter options for querying invoices */
 export type InvoiceFilter = {
@@ -150,21 +151,6 @@ export type InvoiceStore = {
    * @returns The invoice or null if not found
    */
   getInvoiceByPaymentId(paymentId: bigint): Promise<Invoice | null>;
-
-  /**
-   * O20 — get the invoice whose escrow binding currently references `escrowId`.
-   *
-   * The crash reconciler heals a BOUNDED set of held guard rows; it must map each
-   * row's escrowId to its invoice WITHOUT a full-table `listInvoices()` scan. The
-   * scan is both an unbounded startup cost (O(N) rows + N payment round-trips) and
-   * a correctness landmine: if a default page limit is ever introduced, a held
-   * row whose invoice falls off the page is misclassified as an ORPHAN and freed,
-   * re-opening a double-deploy. A direct per-escrowId lookup removes that
-   * dependency entirely — the reconciler's completeness rests only on the bounded
-   * escrow_claims table. Optional so third-party stores need not implement it; the
-   * reconciler falls back to a scan only when this is absent.
-   */
-  getInvoiceByEscrowId?(escrowId: string): Promise<Invoice | null>;
 
   /**
    * O20 — get the invoice whose escrow binding currently references `scid`. Same
@@ -306,6 +292,15 @@ export type InvoiceStore = {
    * multi-process server cannot double-claim (and double-deploy) a quote.
    */
   createClaimGuard?(): EscrowClaimGuard;
+
+  /**
+   * Create a durable inventory store for the PREMINT keeper pool, if the backend
+   * supports one. The engine injects it into the EscrowManager so pre-minted empty
+   * boxes survive restarts and a multi-process server cannot hand the same pooled
+   * box to two checkouts. Must share the same storage (db file) as createClaimGuard
+   * so pool pops are atomic across workers.
+   */
+  createInventoryStore?(): EscrowInventoryStore;
 
   /**
    * Close the store and release any resources.

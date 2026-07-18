@@ -33,6 +33,8 @@ import type {
 } from "../webhook/outbox-types.js";
 import type { EscrowClaimGuard } from "../escrow/manager.js";
 import { SqliteEscrowClaimGuard } from "../escrow/claim-guard.js";
+import type { EscrowInventoryStore } from "../escrow/inventory-store.js";
+import { SqliteEscrowInventoryStore } from "../escrow/inventory-store.js";
 
 /** SQLite row for invoices table */
 type InvoiceRow = {
@@ -167,6 +169,7 @@ export class SqliteInvoiceStore implements InvoiceStore {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private db: any;
   private claimGuard?: EscrowClaimGuard;
+  private inventoryStore?: EscrowInventoryStore;
 
   /**
    * Durable, multi-process claim guard sharing this store's database. Memoized
@@ -174,6 +177,15 @@ export class SqliteInvoiceStore implements InvoiceStore {
    */
   createClaimGuard(): EscrowClaimGuard {
     return (this.claimGuard ??= new SqliteEscrowClaimGuard(this.db));
+  }
+
+  /**
+   * Durable, multi-process keeper inventory sharing this store's database (same
+   * file as the claim guard, so pool pops are atomic across workers). Memoized so
+   * the escrow_inventory table is created once.
+   */
+  createInventoryStore(): EscrowInventoryStore {
+    return (this.inventoryStore ??= new SqliteEscrowInventoryStore(this.db));
   }
 
   constructor(config: SqliteStoreConfig) {
@@ -428,26 +440,6 @@ export class SqliteInvoiceStore implements InvoiceStore {
     const row = this.db
       .prepare("SELECT * FROM invoices WHERE payment_id = ?")
       .get(paymentId.toString()) as InvoiceRow | undefined;
-
-    if (!row) return null;
-
-    const payments = this.db
-      .prepare("SELECT * FROM payments WHERE invoice_id = ? ORDER BY detected_at")
-      .all(row.id) as PaymentRow[];
-
-    return this.rowToInvoice(row, payments);
-  }
-
-  async getInvoiceByEscrowId(escrowId: string): Promise<Invoice | null> {
-    // O20 — direct indexed-ish lookup by the escrow blob's escrowId. json_extract
-    // matches the same field the O10 CAS uses. Bounded single-row read (plus its
-    // payments) instead of a full-table scan; the reconciler calls this once per
-    // held guard row. There is at most one invoice per escrowId binding.
-    const row = this.db
-      .prepare(
-        "SELECT * FROM invoices WHERE json_extract(escrow, '$.escrowId') = ? LIMIT 1"
-      )
-      .get(escrowId) as InvoiceRow | undefined;
 
     if (!row) return null;
 

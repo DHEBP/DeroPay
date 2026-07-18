@@ -35,6 +35,8 @@ import { randomUUID } from "node:crypto";
 import { WalletRpcClient } from "../rpc/wallet-rpc.js";
 import { DaemonRpcClient } from "../rpc/daemon-rpc.js";
 import { EscrowContract } from "./contract.js";
+import { EscrowKeeper, type EscrowKeeperOptions } from "./keeper.js";
+import type { EscrowInventoryStore } from "./inventory-store.js";
 import {
   statusCodeToString,
   type CreateEscrowParams,
@@ -123,6 +125,7 @@ export class EscrowManager {
   private daemonRpc: DaemonRpcClient;
   private contract: EscrowContract;
   private claimGuard: EscrowClaimGuard | null;
+  private keeper: EscrowKeeper | null;
   private escrows: Map<string, EscrowRecord> = new Map();
   private scidToId: Map<string, string> = new Map();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -149,6 +152,19 @@ export class EscrowManager {
        * process / tests).
        */
       claimGuard?: EscrowClaimGuard;
+      /**
+       * PREMINT keeper inventory. When provided, the manager builds a background
+       * {@link EscrowKeeper} that pre-mints empty boxes into this store; claimEscrow
+       * then binds a pooled box instead of minting inline (the ~1-block mint-confirm
+       * latency moves off the checkout path). The keeper mints through the manager's
+       * OWN contract/wallet, so the minter and the binder are the same owner — the
+       * hard requirement for the owner-gated Bind (THE TRAP). Omit to keep the
+       * original mint-on-demand behavior.
+       */
+      escrowInventory?: EscrowInventoryStore;
+      /** Tuning for the keeper pool (targetReady / refillBelow / pollMs). Ignored
+       *  unless escrowInventory is set. */
+      keeperOptions?: Partial<EscrowKeeperOptions>;
     }
   ) {
     this.walletRpc =
@@ -167,6 +183,15 @@ export class EscrowManager {
 
     this.contract = new EscrowContract(this.walletRpc, this.daemonRpc);
     this.claimGuard = config?.claimGuard ?? null;
+    // THE TRAP: the keeper mints with `this.contract` — the SAME wallet that binds
+    // in claimEscrow — so every pooled box is bindable by us (Bind is owner-gated).
+    this.keeper = config?.escrowInventory
+      ? new EscrowKeeper(
+          this.contract,
+          config.escrowInventory,
+          config.keeperOptions
+        )
+      : null;
 
     this.pollIntervalMs = config?.pollIntervalMs ?? 10_000;
     this.defaultFeeBasisPoints = config?.defaultFeeBasisPoints ?? 250;
@@ -232,6 +257,8 @@ export class EscrowManager {
 
     // Start polling
     this.pollTimer = setInterval(() => this.pollEscrows(), this.pollIntervalMs);
+    // Start the PREMINT keeper loop (no-op if no inventory store was injected).
+    this.keeper?.start();
     this.isStarted = true;
   }
 
@@ -243,6 +270,7 @@ export class EscrowManager {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+    this.keeper?.stop();
     this.isStarted = false;
   }
 
@@ -373,10 +401,23 @@ export class EscrowManager {
     record.status = "deploying";
     record.buyerAddress = buyerAddress;
 
+    // Hoisted so the catch can return a POOLED box to the keeper on a bind
+    // failure (otherwise it leaks in the 'claimed' state). Null when the box was
+    // minted inline (no pool release needed — the orphan is CancelUnfunded-able).
+    let pooledScid: string | null = null;
     try {
-      // PREMINT MINT — deploy an EMPTY box (Initialize takes no args, no DERO).
-      // The mint is fungible: a failed mint is retried, an unbound box reclaimed.
-      const scid = await this.contract.deploy();
+      // PREMINT MINT — obtain an EMPTY box (Initialize takes no args, no DERO).
+      // Prefer a pre-minted, GetSC-confirmed box from the keeper pool: it is
+      // already on-chain, so we skip the ~1-block mint-confirm wait on the checkout
+      // path. When the pool is empty, fall back to inline mint-on-demand (the
+      // original behavior) so checkout never hard-blocks on low inventory — and
+      // surface the miss so the operator can size the pool. The mint is fungible
+      // either way: a failed mint is retried, an unbound box reclaimed.
+      pooledScid = this.keeper ? await this.keeper.take() : null;
+      if (this.keeper && pooledScid === null) {
+        this.emit("escrowInventoryEmpty", { ...record });
+      }
+      const scid = pooledScid ?? (await this.contract.deploy());
 
       // The TXID of the mint transaction is the SCID.
       record.deployTxid = scid;
@@ -417,6 +458,20 @@ export class EscrowManager {
       // gone); if the mint succeeded but Bind failed, the orphaned unbound box is
       // reclaimable via CancelUnfunded and the SCID breadcrumb was recorded.
       record.status = "deploy_failed";
+      // Return a POOLED box to the keeper so a failed bind does not strand it in
+      // the 'claimed' state (leaked inventory). The keeper re-verifies it via GetSC
+      // next tick: if the bind never landed it re-pools (reclaiming the mint gas);
+      // if it did land (bound!=0) the confirmation gate retires it. Inline-minted
+      // orphans are NOT released here — they carry no pool row and stay
+      // CancelUnfunded-reclaimable as before. Best-effort: a failed release just
+      // leaves the pre-existing 'claimed' leak, never worse.
+      if (pooledScid && this.keeper) {
+        try {
+          await this.keeper.release(pooledScid);
+        } catch {
+          // best-effort inventory hygiene; the deploy already failed regardless.
+        }
+      }
       // O6 — do NOT release the durable claim here. Releasing before the caller
       // has persisted escrowStatus='deploy_failed' would open a window where the
       // row is free AND the durable invoice still reads 'quoted', letting a second
@@ -670,6 +725,15 @@ export class EscrowManager {
    */
   getContract(): EscrowContract {
     return this.contract;
+  }
+
+  /**
+   * The PREMINT keeper, or null if no inventory store was injected. Exposed so the
+   * app can read pool depth (readyCount) for a low-inventory alert or drive a tick
+   * on demand.
+   */
+  getKeeper(): EscrowKeeper | null {
+    return this.keeper;
   }
 
   /**

@@ -32,6 +32,7 @@ import { WebhookDispatcher } from "../webhook/dispatcher.js";
 import { MemoryInvoiceStore } from "../store/memory.js";
 import { generatePaymentId } from "../core/payment-id.js";
 import { EscrowManager } from "../escrow/manager.js";
+import type { EscrowKeeperOptions } from "../escrow/keeper.js";
 import type { EscrowClaimGuard } from "../escrow/manager.js";
 import type { EscrowRecord, EscrowStatus } from "../escrow/types.js";
 import type {
@@ -129,6 +130,18 @@ export class InvoiceEngine {
       escrowBlockExpiration?: number;
       /** Enable escrow support (default: false — must be explicitly opted into) */
       enableEscrow?: boolean;
+      /**
+       * Enable the PREMINT keeper (default: false). When true (and escrow is
+       * enabled and the store provides createInventoryStore), a background loop
+       * pre-mints a small pool of empty escrow boxes so checkout only has to Bind,
+       * moving the ~1-block mint-confirm latency off the payment path. Opt-in
+       * because pre-minting spends deploy gas ahead of demand; checkout still works
+       * without it (mint-on-demand fallback).
+       */
+      enableEscrowKeeper?: boolean;
+      /** Keeper pool tuning: how many confirmed boxes to keep ready, the low-water
+       *  refill trigger, and the poll interval. Defaults: 5 / 2 / 10000ms. */
+      escrowKeeperOptions?: Partial<EscrowKeeperOptions>;
       /**
        * O4 — declare that this engine runs in a MULTI-PROCESS deployment
        * (cluster / PM2 / multiple pods sharing one store). When true and escrow
@@ -228,6 +241,14 @@ export class InvoiceEngine {
         // Durable claim guard from the store (if it provides one) so a
         // multi-process server cannot double-claim a quote at the claim window.
         claimGuard: this.store.createClaimGuard?.(),
+        // PREMINT keeper (opt-in): pull a durable inventory store from the backend
+        // so pre-minted boxes survive restarts and pops are atomic across workers.
+        // Omitting escrowInventory keeps mint-on-demand behavior unchanged.
+        escrowInventory:
+          options.enableEscrowKeeper === true
+            ? this.store.createInventoryStore?.()
+            : undefined,
+        keeperOptions: options.escrowKeeperOptions,
       });
       this.setupEscrowEvents();
     }
@@ -333,6 +354,29 @@ export class InvoiceEngine {
             "[dero-pay] escrow claim guard is process-local (durable=false). " +
               "Safe for a SINGLE process only — a clustered/multi-worker deployment " +
               "will double-deploy escrows. For clusters use a durable store " +
+              "(e.g. SqliteInvoiceStore) and set multiProcess=true."
+          );
+        }
+      }
+      // The PREMINT keeper pool needs the SAME cross-process safety as the claim
+      // guard: two workers must never pop the same confirmed box (the loser's Bind
+      // would revert on bound!=0, stranding a checkout). Fail loud in a declared
+      // cluster; warn otherwise.
+      const keeper = this.escrowManager.getKeeper();
+      if (keeper) {
+        if (this.multiProcess && !keeper.durable) {
+          throw new Error(
+            "multiProcess=true but the escrow keeper inventory is process-local " +
+              "(durable=false, e.g. the in-memory store). Each worker would hold an " +
+              "independent pool and two checkouts could bind the same box. Use a " +
+              "durable store (e.g. SqliteInvoiceStore) or run single-process."
+          );
+        }
+        if (!this.multiProcess && !keeper.durable) {
+          console.warn(
+            "[dero-pay] escrow keeper inventory is process-local (durable=false). " +
+              "Safe for a SINGLE process only — a clustered deployment could hand the " +
+              "same pooled box to two checkouts. For clusters use a durable store " +
               "(e.g. SqliteInvoiceStore) and set multiProcess=true."
           );
         }

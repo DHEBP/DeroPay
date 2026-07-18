@@ -17,6 +17,8 @@ import type {
 } from "./types.js";
 import type { EscrowClaimGuard } from "../escrow/manager.js";
 import { MemoryEscrowClaimGuard } from "../escrow/claim-guard.js";
+import type { EscrowInventoryStore } from "../escrow/inventory-store.js";
+import { MemoryEscrowInventoryStore } from "../escrow/inventory-store.js";
 
 /**
  * In-memory implementation of InvoiceStore.
@@ -24,10 +26,16 @@ import { MemoryEscrowClaimGuard } from "../escrow/claim-guard.js";
 export class MemoryInvoiceStore implements InvoiceStore {
   private invoices = new Map<string, Invoice>();
   private claimGuard?: EscrowClaimGuard;
+  private inventoryStore?: EscrowInventoryStore;
 
   /** Per-process claim guard (in-memory). Memoized for the store's lifetime. */
   createClaimGuard(): EscrowClaimGuard {
     return (this.claimGuard ??= new MemoryEscrowClaimGuard());
+  }
+
+  /** Per-process keeper inventory (in-memory). Memoized for the store's lifetime. */
+  createInventoryStore(): EscrowInventoryStore {
+    return (this.inventoryStore ??= new MemoryEscrowInventoryStore());
   }
 
   private paymentIdIndex = new Map<bigint, string>();
@@ -74,16 +82,6 @@ export class MemoryInvoiceStore implements InvoiceStore {
     const id = this.paymentIdIndex.get(paymentId);
     if (!id) return null;
     return this.getInvoice(id);
-  }
-
-  async getInvoiceByEscrowId(escrowId: string): Promise<Invoice | null> {
-    // O20 — mirror the SQLite direct lookup so the reconciler takes the same
-    // no-full-scan path on both stores. Single-process, so a linear find over the
-    // in-memory map is fine and stays a detached snapshot via getInvoice.
-    for (const inv of this.invoices.values()) {
-      if (inv.escrow?.escrowId === escrowId) return this.getInvoice(inv.id);
-    }
-    return null;
   }
 
   async getInvoiceByScid(scid: string): Promise<Invoice | null> {

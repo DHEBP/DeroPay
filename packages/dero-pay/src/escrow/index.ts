@@ -23,6 +23,25 @@ export {
 } from "./claim-guard.js";
 
 export {
+  EscrowKeeper,
+} from "./keeper.js";
+
+export type {
+  EscrowKeeperOptions,
+  EscrowKeeperEvents,
+} from "./keeper.js";
+
+export {
+  MemoryEscrowInventoryStore,
+  SqliteEscrowInventoryStore,
+} from "./inventory-store.js";
+
+export type {
+  EscrowInventoryStore,
+  EscrowInventoryState,
+} from "./inventory-store.js";
+
+export {
   EscrowStatusCode,
   statusCodeToString,
 } from "./types.js";

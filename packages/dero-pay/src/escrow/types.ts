@@ -103,6 +103,10 @@ export type EscrowOnChainState = {
   status: EscrowStatus;
   /** Owner (deployer) address */
   owner: string;
+  /** Bind flag written on-chain: 0 = minted but no terms yet (empty box),
+   *  1 = order terms assigned. The keeper's pool-ready gate requires bound === 0
+   *  (an empty, still-bindable box) alongside owner set and status 0. */
+  bound: number;
   /** Seller address */
   seller: string;
   /** Buyer address (set after deposit) */
@@ -237,6 +241,11 @@ export type EscrowManagerEvents = {
   escrowArbitrated: (escrow: EscrowRecord) => void;
   /** Status changed (generic) */
   escrowStatusChanged: (escrow: EscrowRecord, previousStatus: EscrowStatus) => void;
+  /** The PREMINT keeper pool was empty when this escrow claimed, so it fell back
+   *  to inline mint-on-demand (checkout still succeeds, just slower by ~1 block).
+   *  A recurring signal means the pool is undersized — raise targetReady/refillBelow
+   *  or investigate a stalled keeper. Only emitted when a keeper is configured. */
+  escrowInventoryEmpty: (escrow: EscrowRecord) => void;
   /** Error */
   error: (error: Error) => void;
 };

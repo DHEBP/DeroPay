@@ -596,6 +596,10 @@ export class EscrowContract {
       statusCode,
       status,
       owner: String(vars["owner"] ?? ""),
+      // Bind flag: Initialize() stores bound=0, Bind() flips it to 1. The keeper
+      // reads this to confirm a minted box is still empty (pool-ready) before
+      // handing it out. Absent key (unexpected) reads as 0 = unbound.
+      bound: Number(vars["bound"]) || 0,
       // O15e — the party keys hold ADDRESS_RAW hex compared byte-for-byte against
       // the codec's decode of the SDK's bech32 (verifyBinding). GetSC emits lowercase
       // (Go `%x`), but normalize defensively so any daemon/serialization variance in

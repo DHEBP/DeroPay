@@ -36,20 +36,15 @@ export type EscrowStatus =
   | "arbitrated"
   | "cancelled"
   | "deploying"
-  | "deploy_failed"
   /**
-   * O15b — the deploy broadcast was BROADCAST-AMBIGUOUS (installSc timed out /
-   * network-failed AFTER the daemon may have accepted it). A live, fundable
-   * contract MAY exist on-chain but its SCID is unknown. This state is
-   * QUARANTINED, NOT terminal in the auto-cleanup sense:
-   *   - NON-pollable  — no scid to query (excluded from pollEscrows/rehydrate).
-   *   - NOT claimable/quotable — must NOT auto-requote (would double-deploy).
-   *   - HELD, never released — the guard row is the only breadcrumb to the
-   *     possibly-live contract until the wallet-side recovery sweep reconciles it.
-   * Distinct from `deploy_failed`, which is a DETERMINISTIC refusal (nothing
-   * broadcast) and IS safely releasable + re-quotable.
+   * PREMINT: the mint (empty Initialize) or the Bind failed. Both are deterministic,
+   * fungible failures — the empty box is retried and any orphaned unbound box is
+   * reclaimable via CancelUnfunded, so this state is safely releasable + re-quotable.
+   * (There is no broadcast-ambiguous quarantine: mint is off the terms path and Bind
+   * is a normal invoke, so a failure never leaves a live, terms-bound contract with an
+   * unknown SCID.)
    */
-  | "deploy_indeterminate";
+  | "deploy_failed";
 
 /** Map on-chain status code to SDK status string */
 export const statusCodeToString: Record<EscrowStatusCodeValue, EscrowStatus> = {
@@ -124,6 +119,9 @@ export type EscrowOnChainState = {
   escrowBalance: number;
   /** Block height of the deposit (set after deposit) */
   depositHeight: number | null;
+  /** Block height of the dispute (set after Dispute()); null until disputed. The
+   *  buyer's RefundAfterDisputeTimeout unlocks at disputeHeight + 14400 (~3 days). */
+  disputeHeight: number | null;
   /** Arbitration direction, written on-chain by Arbitrate() (1 = released to
    *  seller, 0 = refunded to buyer). Null until the dispute is arbitrated.
    *  Both arbitrate branches zero escrowBalance, so this flag — not the
@@ -203,18 +201,9 @@ export type EscrowResolution =
 export type EscrowManagerEvents = {
   /** Escrow deployed successfully */
   escrowDeployed: (escrow: EscrowRecord) => void;
-  /** Escrow deployment failed DETERMINISTICALLY (daemon refused; nothing
-   *  broadcast). Safe to release + re-quote. */
+  /** Escrow mint or Bind failed DETERMINISTICALLY. Safe to release + re-quote
+   *  (the empty box is fungible; any orphaned unbound box is CancelUnfunded-able). */
   escrowDeployFailed: (escrow: EscrowRecord, error: Error) => void;
-  /**
-   * O15b — the escrow deploy broadcast was AMBIGUOUS (installSc timed out /
-   * network-failed after the daemon may have accepted it). A live contract MAY
-   * exist on-chain with an unknown SCID; the escrow is QUARANTINED
-   * ('deploy_indeterminate'), held (not released) and NOT auto-requoted. Operators
-   * must reconcile via the wallet-side recovery sweep. Requires out-of-band
-   * awareness — this is a fund-safety hold, not a clean failure.
-   */
-  escrowDeployIndeterminate: (escrow: EscrowRecord, error: Error) => void;
   /** Buyer deposited into escrow */
   escrowFunded: (escrow: EscrowRecord) => void;
   /**

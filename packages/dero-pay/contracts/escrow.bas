@@ -1,121 +1,89 @@
-// =============================================================================
-//
-//  #####  #####  #####   ###   #####    ##   #    #
-//  #    # #      #    # #    # #    #  #  #   #  #
-//  #    # #####  #####  #    # #####  ######   ##
-//  #    # #      #   #  #    # #      #    #   ##
-//  #####  #####  #    #  ###   #      #    #   ##
-//
-//  DeroPay Escrow * DVM-BASIC smart contract for DERO
-//
-// -----------------------------------------------------------------------------
-//  Four-party DERO escrow: platform owner, seller, buyer, optional arbitrator.
-//  Atomic settlement, fee-on-release (basis points), timed seller claim path,
-//  buyer dispute with arbitrator resolution.
-//
-//  SPDX-License-Identifier: MIT
-//  Copyright (c) 2026 DHEBP
-//  https://deropay.com
-// -----------------------------------------------------------------------------
-//
-//  Roles:  Owner (deploys, fee recipient) / Seller / Buyer / Arbitrator
-//
-//  Deploy: Initialize(seller, buyer, arbitrator, feeBps, blockExpiration, expectedAmount)
-//          -- no DERO. Buyer is bound at deploy; only that address may fund via
-//          Deposit(), and the deposit must be >= expectedAmount (blocks dust locks
-//          and underpayment). blockExpiration must be within [4000, 10000000] blocks
-//          (~20 hours to ~5.7 years at ~18s/block). The 4000-block floor exists so
-//          a hostile seller cannot quote a sub-hour window and drain via
-//          ClaimAfterExpiry before a human buyer can realistically dispute. The
-//          window is disclosed to the buyer BEFORE deposit at the app layer.
-//
-//  Status codes
-//    0  awaiting deposit
-//    1  funded
-//    2  released - buyer confirmed delivery
-//    3  buyer fully refunded
-//    4  released - seller claimed after expiry window
-//    5  disputed - arbitrator action pending
-//    6  closed - arbitrator decided outcome
-//    7  cancelled - never funded, closed by seller/owner
-//
-//  Fee cap: feeBasisPoints must be < 5000 (< 50%). A 100% (or near-100%) fee
-//  would let the platform route the entire balance to itself on release; the
-//  seller must never be structurally payable zero. Basis-point ceiling is
-//  enforced BOTH here (deploy JS guard) and on-chain (Initialize line 25).
-//
-//  Overpayment: Deposit() only credits exactly expectedAmount to escrowBalance
-//  and refunds any excess to the buyer in-call, so a quoted-low expectedAmount
-//  or a rounded-up send never traps buyer overage in the contract.
-//
-//  Dispute vs claim race: ClaimAfterExpiry() is blocked once status is
-//  disputed (5); Dispute() and ClaimAfterExpiry() cannot both settle. The
-//  buyer's dispute always wins the boundary block because a disputed escrow is
-//  no longer in status 1, which ClaimAfterExpiry requires.
-//
-// =============================================================================
+// PREMINT escrow — empty-box template (deploy-ahead, bind-at-assign, fund-at-checkout)
+//  MINT   Initialize()  -- no args, no DERO: creates an EMPTY isolated box
+//  ASSIGN Bind(...)     -- owner-gated, zero-DERO, one-shot: writes order terms
+//  FUND   Deposit()     -- buyer's ONE standard scinvoke: funds + captures buyer
+//  SETTLE ConfirmDelivery / RefundBuyer / ClaimAfterExpiry / Dispute->Arbitrate / CancelUnfunded
+//         + RefundAfterDisputeTimeout -- buyer self-refund if the arbitrator never resolves
+//  Status: 0 await-deposit 1 funded 2 confirmed 3 refunded 4 expiry-claim 5 disputed 6 arbitrated 7 cancelled
 
-Function Initialize(sellerAddress String, buyerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64, expectedAmount Uint64) Uint64
+// RINGSIZE NOTE: any function that PERSISTS SIGNER() as an identity (Initialize->owner,
+// Deposit->buyer) rejects an unidentifiable signer. A DERO SC call made at ringsize > 2
+// yields a zero SIGNER() (the daemon cannot single out the sender); storing that zero
+// address would brick the box (refunds route to a null address) and let any other
+// ringsize>2 caller pass a '!= buyer' gate. IS_ADDRESS_VALID(SIGNER()) is 0 for the zero
+// address, so line 5 forces a real, ringsize-2 signer before any identity is captured.
+
+Function Initialize() Uint64
+5 IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF EXISTS("owner") THEN GOTO 200
-25 IF feeBasisPoints >= 5000 THEN GOTO 200
-26 IF blockExpiration < 4000 THEN GOTO 200
-27 IF blockExpiration > 10000000 THEN GOTO 200
-28 IF expectedAmount == 0 THEN GOTO 200
-29 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(sellerAddress) THEN GOTO 200
-30 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(buyerAddress) THEN GOTO 200
-31 IF ADDRESS_RAW(sellerAddress) == ADDRESS_RAW(buyerAddress) THEN GOTO 200
-32 STORE("owner", SIGNER())
-40 STORE("seller", ADDRESS_RAW(sellerAddress))
-45 STORE("buyer", ADDRESS_RAW(buyerAddress))
-50 STORE("arbitrator", ADDRESS_RAW(arbitratorAddress))
-60 STORE("feeBasisPoints", feeBasisPoints)
-70 STORE("blockExpiration", blockExpiration)
-75 STORE("expectedAmount", expectedAmount)
-80 STORE("escrowBalance", 0)
-90 STORE("status", 0)
-100 RETURN 0
-200 RETURN 1
-End Function
-
-// Buyer deposits DERO into escrow. Only the bound buyer may fund, and the
-// deposit must cover expectedAmount (blocks dust locks and underpayment).
-// Exactly expectedAmount is escrowed; any overpayment is refunded in-call so
-// buyer overage never gets absorbed and paid out to the seller/owner.
-Function Deposit() Uint64
-10 IF LOAD("status") != 0 THEN GOTO 200
-20 IF DEROVALUE() == 0 THEN GOTO 200
-30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
-35 IF DEROVALUE() < LOAD("expectedAmount") THEN GOTO 200
-40 STORE("escrowBalance", LOAD("expectedAmount"))
-50 STORE("status", 1)
-60 STORE("depositHeight", BLOCK_HEIGHT())
-65 IF DEROVALUE() > LOAD("expectedAmount") THEN GOTO 80 ELSE GOTO 70
+30 STORE("owner", SIGNER())
+40 STORE("status", 0)
+50 STORE("bound", 0)
+60 STORE("paused", 0)
 70 RETURN 0
-80 SEND_DERO_TO_ADDRESS(SIGNER(), DEROVALUE() - LOAD("expectedAmount"))
-90 RETURN 0
 200 RETURN 1
 End Function
 
-// Cancel a never-funded escrow (status 0). Seller or owner may close it so a
-// mis-bound buyer address (buyer proved wallet A at claim but can only, or
-// will only, deposit from wallet B) cannot leave a dangling contract that
-// blocks quote reconciliation. No funds are ever at risk here: status 0 means
-// Deposit() never succeeded, so escrowBalance is 0 and nothing is sent.
-Function CancelUnfunded() Uint64
+// Owner writes the order terms into an empty box. Zero DERO, one-shot (bound guard).
+// buyer is NOT set here -- it does not exist until the buyer funds.
+Function Bind(sellerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64, expectedAmount Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
-20 IF LOAD("status") != 0 THEN GOTO 200
-30 IF SIGNER() == LOAD("seller") THEN GOTO 60
-40 IF SIGNER() == LOAD("owner") THEN GOTO 60
-50 GOTO 200
-60 STORE("status", 7)
-70 RETURN 0
+20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+30 IF LOAD("bound") != 0 THEN GOTO 200
+40 IF feeBasisPoints >= 5000 THEN GOTO 200
+50 IF blockExpiration < 4000 THEN GOTO 200
+60 IF blockExpiration > 10000000 THEN GOTO 200
+70 IF expectedAmount == 0 THEN GOTO 200
+80 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(sellerAddress) THEN GOTO 200
+90 STORE("seller", ADDRESS_RAW(sellerAddress))
+100 STORE("arbitrator", ADDRESS_RAW(arbitratorAddress))
+110 STORE("feeBasisPoints", feeBasisPoints)
+120 STORE("blockExpiration", blockExpiration)
+130 STORE("expectedAmount", expectedAmount)
+140 STORE("escrowBalance", 0)
+150 STORE("bound", 1)
+160 RETURN 0
 200 RETURN 1
 End Function
 
-// Buyer confirms delivery. Funds release to seller minus platform fee.
+// The ONLY fund entry. Captures buyer = SIGNER() at first funding and enforces the
+// two distinctness checks that in escrow.bas lived only in Initialize.
+//
+// LINE 5 (ringsize guard) rejects an unidentifiable signer BEFORE any state change, so
+// buyer is always a real ringsize-2 address (never the zero address).
+//
+// GUARD ORDER IS LOAD-BEARING (do not reorder): lines 10/15/20/30 LOAD only keys that
+// ALWAYS exist (set in Initialize), so they are safe on an unbound box. Lines 40/45
+// LOAD "seller"/"arbitrator" -- keys that DO NOT EXIST until Bind. They are reached
+// only because line 15 (bound != 1) already bailed on any unbound box. Moving a
+// terms-LOAD above line 15 reintroduces a panic AND lets the self-dealing check be
+// skipped. Line 50 (underpayment) MUST precede line 120 (overage subtraction) so the
+// Uint64 subtraction cannot underflow.
+Function Deposit() Uint64
+5 IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
+10 IF LOAD("paused") != 0 THEN GOTO 200
+15 IF LOAD("bound")  != 1 THEN GOTO 200
+20 IF LOAD("status") != 0 THEN GOTO 200
+30 IF DEROVALUE() == 0 THEN GOTO 200
+40 IF SIGNER() == LOAD("seller")     THEN GOTO 200
+45 IF SIGNER() == LOAD("arbitrator") THEN GOTO 200
+50 IF DEROVALUE() < LOAD("expectedAmount") THEN GOTO 200
+60 STORE("buyer", SIGNER())
+70 STORE("escrowBalance", LOAD("expectedAmount"))
+80 STORE("status", 1)
+90 STORE("depositHeight", BLOCK_HEIGHT())
+100 IF DEROVALUE() > LOAD("expectedAmount") THEN GOTO 120
+110 RETURN 0
+120 SEND_DERO_TO_ADDRESS(SIGNER(), DEROVALUE() - LOAD("expectedAmount"))
+130 RETURN 0
+200 RETURN 1
+End Function
+
+// Buyer confirms delivery -> seller paid minus fee.
 Function ConfirmDelivery() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
 40 DIM balance, fee, payout AS Uint64
@@ -132,9 +100,10 @@ Function ConfirmDelivery() Uint64
 200 RETURN 1
 End Function
 
-// Seller or owner refunds the buyer.
+// Seller or owner refunds the buyer in full (no fee).
 Function RefundBuyer() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() == LOAD("seller") THEN GOTO 60
 40 IF SIGNER() == LOAD("owner") THEN GOTO 60
@@ -146,9 +115,10 @@ Function RefundBuyer() Uint64
 200 RETURN 1
 End Function
 
-// Seller claims funds after expiration (buyer had time to dispute).
+// Seller claims after the expiry window (buyer had time to dispute).
 Function ClaimAfterExpiry() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() != LOAD("seller") THEN GOTO 200
 40 IF BLOCK_HEIGHT() < LOAD("depositHeight") + LOAD("blockExpiration") THEN GOTO 200
@@ -166,20 +136,24 @@ Function ClaimAfterExpiry() Uint64
 200 RETURN 1
 End Function
 
-// Buyer raises a dispute. Locks funds until arbitrator resolves.
+// Buyer raises a dispute -> locks funds for the arbitrator. Records disputeHeight so
+// the buyer has a timeout escape hatch if the arbitrator never resolves (see
+// RefundAfterDisputeTimeout).
 Function Dispute() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
 40 STORE("status", 5)
-50 RETURN 0
+50 STORE("disputeHeight", BLOCK_HEIGHT())
+60 RETURN 0
 200 RETURN 1
 End Function
 
-// Arbitrator resolves the dispute.
-// releaseToSeller: 1 = pay seller, 0 = refund buyer
+// Arbitrator resolves. releaseToSeller: 1 = pay seller (minus fee), 0 = full refund buyer.
 Function Arbitrate(releaseToSeller Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 5 THEN GOTO 200
 30 IF SIGNER() != LOAD("arbitrator") THEN GOTO 200
 40 DIM balance, fee, payout AS Uint64
@@ -203,19 +177,72 @@ Function Arbitrate(releaseToSeller Uint64) Uint64
 200 RETURN 1
 End Function
 
-// Read the current escrow status (convenience function).
-Function GetStatus() Uint64
+// Buyer's escape hatch against a lost/offline/malicious arbitrator. After the dispute
+// window (14400 blocks ~= 3 days at ~18s/block) has passed since Dispute(), the buyer
+// may reclaim their FULL deposit (no fee). Refund-to-buyer is the safe default for an
+// absent arbitrator -- NEVER auto-release to the seller.
+//
+// DELIBERATELY NOT PAUSE-GATED: this is the box's guaranteed liveness escape, so it must
+// work even on a frozen box -- otherwise a freeze left on (or a lost owner key) would
+// trap the funds forever, re-creating the very lock this timeout removes. Safe to exempt
+// because it can ONLY return the buyer's own deposit to the (guard-verified, real) buyer;
+// it can never move funds to any other party, so it does not weaken Pause's anti-exploit
+// purpose. Pause still freezes Deposit and every discretionary settlement path.
+//
+// GUARD ORDER: line 20 (status != 5) bails on every box that has not been disputed, so
+// the terms-LOADs at 30/40/50 (buyer/disputeHeight/escrowBalance) are never reached on
+// an unfunded/undisputed box (all three exist by the time status == 5).
+Function RefundAfterDisputeTimeout() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
-20 RETURN LOAD("status")
+20 IF LOAD("status") != 5 THEN GOTO 200
+30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
+40 IF BLOCK_HEIGHT() < LOAD("disputeHeight") + 14400 THEN GOTO 200
+50 SEND_DERO_TO_ADDRESS(LOAD("buyer"), LOAD("escrowBalance"))
+60 STORE("escrowBalance", 0)
+70 STORE("status", 3)
+80 RETURN 0
 200 RETURN 1
 End Function
 
-// Two-step ownership transfer. Lets the platform move owner authority (fee
-// recipient + RefundBuyer + CancelUnfunded) off the hot deploy key onto a cold
-// key WITHOUT ever exposing the cold key at deploy time. The current owner
-// nominates a successor here; the successor must actively ClaimOwnership() to
-// take over, so a fat-fingered address can never brick control. This bounds a
-// hot-key compromise: rotate every live escrow's owner to a fresh cold key.
+// Cancel a never-funded box (status 0). Owner may cancel ANY status-0 box (incl. an
+// unbound idle box -- reclaim path); seller may cancel only a bound box. Owner is
+// checked FIRST and the seller LOAD is EXISTS-guarded so an unbound box never panics.
+Function CancelUnfunded() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF LOAD("status") != 0 THEN GOTO 200
+30 IF SIGNER() == LOAD("owner") THEN GOTO 70
+40 IF EXISTS("seller") == 0 THEN GOTO 200
+50 IF SIGNER() == LOAD("seller") THEN GOTO 70
+60 GOTO 200
+70 STORE("status", 7)
+80 RETURN 0
+200 RETURN 1
+End Function
+
+// Owner circuit-breaker: freeze a box discovered mid-flight to be buggy. Blocks the
+// fund-movers (Deposit + discretionary settlement); cannot claw back an in-tx exploit
+// (honest limit), and cannot block the buyer's RefundAfterDisputeTimeout escape.
+Function Pause() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+30 STORE("paused", 1)
+40 RETURN 0
+200 RETURN 1
+End Function
+
+Function Unpause() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+30 STORE("paused", 0)
+40 RETURN 0
+200 RETURN 1
+End Function
+
+// NOTE: no UpdateCode / UPDATE_SC_CODE by design — the code that holds escrowed funds
+// is immutable once deployed. The platform can freeze a suspect box (Pause) but can
+// never rewrite or drain a funded box.
+
+// Two-step ownership transfer (cold-key rotation without exposing the cold key at deploy).
 Function TransferOwnership(newOwner String) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF SIGNER() != LOAD("owner") THEN GOTO 200
@@ -224,15 +251,23 @@ Function TransferOwnership(newOwner String) Uint64
 200 RETURN 1
 End Function
 
-// The nominated successor accepts ownership. Only the address stored as
-// pendingOwner may claim; on success it becomes owner and the pending slot is
-// cleared so it cannot be replayed.
+// Line 5 (ringsize guard) is redundant today — line 30 (SIGNER()==pendingOwner, a real
+// stored address) already implies a valid non-zero signer — but it is kept so ALL three
+// identity-capturing functions (Initialize/Deposit/ClaimOwnership -> owner/buyer/owner)
+// carry the same guard and the invariant survives future edits to how pendingOwner is set.
 Function ClaimOwnership() Uint64
+5 IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF EXISTS("pendingOwner") == 0 THEN GOTO 200
 30 IF SIGNER() != LOAD("pendingOwner") THEN GOTO 200
 40 STORE("owner", SIGNER())
 50 DELETE("pendingOwner")
 60 RETURN 0
+200 RETURN 1
+End Function
+
+Function GetStatus() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 RETURN LOAD("status")
 200 RETURN 1
 End Function

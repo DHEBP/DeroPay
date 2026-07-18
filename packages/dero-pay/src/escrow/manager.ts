@@ -32,7 +32,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { WalletRpcClient, isBroadcastAmbiguous } from "../rpc/wallet-rpc.js";
+import { WalletRpcClient } from "../rpc/wallet-rpc.js";
 import { DaemonRpcClient } from "../rpc/daemon-rpc.js";
 import { EscrowContract } from "./contract.js";
 import {
@@ -374,68 +374,57 @@ export class EscrowManager {
     record.buyerAddress = buyerAddress;
 
     try {
-      const txid = await this.contract.deploy({
+      // PREMINT MINT — deploy an EMPTY box (Initialize takes no args, no DERO).
+      // The mint is fungible: a failed mint is retried, an unbound box reclaimed.
+      const scid = await this.contract.deploy();
+
+      // The TXID of the mint transaction is the SCID.
+      record.deployTxid = scid;
+      record.scid = scid;
+      // Index by SCID for fast lookups
+      this.scidToId.set(scid, id);
+
+      // O5 — stamp the SCID onto the held guard row FIRST (breadcrumb), before the
+      // Bind and before the caller's separate invoice-blob persist. If the process
+      // dies in the mint->bind window, the held row carries the SCID so the startup
+      // reconciler can find the orphaned (unbound) box and reclaim it.
+      if (this.claimGuard?.recordDeployTxid) {
+        try {
+          await this.claimGuard.recordDeployTxid(id, scid);
+        } catch {
+          // best-effort breadcrumb; mint already succeeded either way.
+        }
+      }
+
+      // PREMINT ASSIGN — write the order terms into the empty box. Owner-gated
+      // and one-shot on-chain. The buyer is NOT bound here; the contract captures
+      // it at deposit() from SIGNER() (ring 2).
+      await this.contract.bind(scid, {
         sellerAddress: record.sellerAddress,
-        buyerAddress,
         arbitratorAddress: record.arbitratorAddress,
         feeBasisPoints: record.feeBasisPoints,
         blockExpiration: record.blockExpiration,
         expectedAmount: record.expectedAmount,
       });
 
-      // O5 — the on-chain contract now EXISTS (the deploy TX is broadcast).
-      // Stamp the deployTxid onto the held guard row FIRST, before the caller's
-      // separate invoice-blob persist. If the process dies in the window between
-      // here and that persist, the held row carries the txid so the startup
-      // reconciler can find the orphaned live contract and heal the invoice
-      // instead of stranding a fundable escrow forever.
-      if (this.claimGuard?.recordDeployTxid) {
-        try {
-          await this.claimGuard.recordDeployTxid(id, txid);
-        } catch {
-          // best-effort breadcrumb; deploy already succeeded either way.
-        }
-      }
-
-      // The TXID of the deploy transaction is the SCID
-      record.deployTxid = txid;
-      record.scid = txid;
       record.status = "awaiting_deposit";
-
-      // Index by SCID for fast lookups
-      this.scidToId.set(txid, id);
-
       this.emit("escrowDeployed", { ...record });
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      // O15b — classify the deploy failure. A BROADCAST-AMBIGUOUS error (installSc
-      // timed out / network-failed after the daemon may have accepted it) means a
-      // live, fundable contract MAY exist on-chain with an SCID we never learned;
-      // recordDeployTxid never ran, so the held row still reads deployTxid=null.
-      // We must QUARANTINE this (deploy_indeterminate) — NOT deploy_failed — so the
-      // engine neither releases the row nor auto-requotes it, and the wallet-side
-      // recovery sweep can reconcile the possibly-live contract. A DETERMINISTIC
-      // failure (daemon definitively refused; nothing broadcast) stays
-      // deploy_failed and remains safely releasable + re-quotable.
-      if (isBroadcastAmbiguous(err)) {
-        record.status = "deploy_indeterminate";
-        // O6/O15b — do NOT release the durable claim here (mirrors deploy_failed):
-        // releasing before the engine persists the quarantine status would let a
-        // second worker win the row and deploy a SECOND contract. For an
-        // indeterminate deploy the hold is PERMANENT until recovery — the engine's
-        // deploy_indeterminate branch persists the status and holds the row.
-        this.emit("escrowDeployIndeterminate", { ...record }, error);
-      } else {
-        record.status = "deploy_failed";
-        // O6 — do NOT release the durable claim here. Releasing before the caller
-        // has persisted escrowStatus='deploy_failed' would open a window where the
-        // row is free AND the durable invoice still reads 'quoted', letting a
-        // second worker win the row and deploy a SECOND contract. The engine
-        // releases the row only AFTER persisting deploy_failed, so the invoice-
-        // level 'must be quoted' gate is closed before the row can be re-won. See
-        // claimEscrowInvoice's deploy_failed branch.
-        this.emit("escrowDeployFailed", { ...record }, error);
-      }
+      // PREMINT: a mint or Bind failure is DETERMINISTIC and fungible. The empty
+      // box carries no terms, so a failure never strands a live terms-bound
+      // contract with an unknown SCID (the old broadcast-ambiguous quarantine is
+      // gone); if the mint succeeded but Bind failed, the orphaned unbound box is
+      // reclaimable via CancelUnfunded and the SCID breadcrumb was recorded.
+      record.status = "deploy_failed";
+      // O6 — do NOT release the durable claim here. Releasing before the caller
+      // has persisted escrowStatus='deploy_failed' would open a window where the
+      // row is free AND the durable invoice still reads 'quoted', letting a second
+      // worker win the row and mint a SECOND box. The engine releases the row only
+      // AFTER persisting deploy_failed, so the invoice-level 'must be quoted' gate
+      // is closed before the row can be re-won. See claimEscrowInvoice's
+      // deploy_failed branch.
+      this.emit("escrowDeployFailed", { ...record }, error);
     }
 
     return { ...record };
@@ -532,24 +521,10 @@ export class EscrowManager {
         "refunded",
         "expired_claimed",
         "arbitrated",
-        // O15b — listed for completeness of the scid-bearing clobber guard. A
-        // 'deploy_indeterminate' normally has NO scid (handled by the dedicated
-        // guard below), but if a recovery ever adopts a scid onto it before the
-        // status flips, this keeps a stale scid-less rebuild from clobbering it.
-        "deploy_indeterminate",
       ];
       // Existing record already advanced with a real scid: refuse to clobber it
       // with a stale scid-less rebuild. Preserve the live binding.
       if (existing.scid && liveStatuses.includes(existing.status) && !record.scid) {
-        return;
-      }
-      // O15b — a held 'deploy_indeterminate' quarantine has NO scid (that is the
-      // whole failure), so the scid guard above cannot protect it. Refuse to let a
-      // rebuild demote it back to a scid-less 'quoted'/'deploying' placeholder: the
-      // demotion would drop the fund-safety hold and let the invoice re-quote a
-      // SECOND contract past the ambiguous first one. Only the recovery sweep may
-      // transition it (to awaiting_deposit on adopt, or deploy_failed on downgrade).
-      if (existing.status === "deploy_indeterminate" && !record.scid) {
         return;
       }
     }
@@ -656,6 +631,33 @@ export class EscrowManager {
   }
 
   /**
+   * Buyer's timeout escape hatch (buyer action). Reclaims the full deposit if a
+   * dispute went unresolved past the on-chain window (14400 blocks ~= 3 days).
+   * Works even on a paused box (the contract exempts it from the freeze).
+   */
+  async refundAfterDisputeTimeout(scidOrId: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.refundAfterDisputeTimeout(scid);
+  }
+
+  /**
+   * Freeze a box (owner circuit-breaker). Blocks deposit + discretionary
+   * settlement, but not the buyer's refundAfterDisputeTimeout escape.
+   */
+  async pause(scidOrId: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.pause(scid);
+  }
+
+  /**
+   * Lift a pause() freeze (owner action).
+   */
+  async unpause(scidOrId: string): Promise<string> {
+    const scid = this.resolveScid(scidOrId);
+    return this.contract.unpause(scid);
+  }
+
+  /**
    * Query the live on-chain state of an escrow contract.
    */
   async getOnChainState(scidOrId: string): Promise<EscrowOnChainState> {
@@ -692,10 +694,6 @@ export class EscrowManager {
       "funded",
       "disputed",
       "deploying",
-      // O15b — 'deploy_indeterminate' is intentionally EXCLUDED: it has no scid to
-      // poll (its SCID is exactly what was lost). The `!record.scid` guard below
-      // would skip it regardless, but keeping it out of this set makes the
-      // not-pollable invariant explicit.
     ];
 
     for (const record of this.escrows.values()) {

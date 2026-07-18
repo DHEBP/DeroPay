@@ -8,7 +8,6 @@
 import { readFileSync } from "node:fs";
 import { WalletRpcClient } from "../rpc/wallet-rpc.js";
 import { DaemonRpcClient } from "../rpc/daemon-rpc.js";
-import { tryDeroAddressToRawHex } from "../rpc/dero-address.js";
 import type { ScRpcArg } from "../rpc/types.js";
 import {
   EscrowStatusCode,
@@ -23,57 +22,92 @@ import {
 // ---------------------------------------------------------------------------
 
 /** The escrow smart contract source code */
-const ESCROW_CONTRACT_SOURCE = `Function Initialize(sellerAddress String, buyerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64, expectedAmount Uint64) Uint64
+const ESCROW_CONTRACT_SOURCE = `// PREMINT escrow — empty-box template (deploy-ahead, bind-at-assign, fund-at-checkout)
+//  MINT   Initialize()  -- no args, no DERO: creates an EMPTY isolated box
+//  ASSIGN Bind(...)     -- owner-gated, zero-DERO, one-shot: writes order terms
+//  FUND   Deposit()     -- buyer's ONE standard scinvoke: funds + captures buyer
+//  SETTLE ConfirmDelivery / RefundBuyer / ClaimAfterExpiry / Dispute->Arbitrate / CancelUnfunded
+//         + RefundAfterDisputeTimeout -- buyer self-refund if the arbitrator never resolves
+//  Status: 0 await-deposit 1 funded 2 confirmed 3 refunded 4 expiry-claim 5 disputed 6 arbitrated 7 cancelled
+
+// RINGSIZE NOTE: any function that PERSISTS SIGNER() as an identity (Initialize->owner,
+// Deposit->buyer) rejects an unidentifiable signer. A DERO SC call made at ringsize > 2
+// yields a zero SIGNER() (the daemon cannot single out the sender); storing that zero
+// address would brick the box (refunds route to a null address) and let any other
+// ringsize>2 caller pass a '!= buyer' gate. IS_ADDRESS_VALID(SIGNER()) is 0 for the zero
+// address, so line 5 forces a real, ringsize-2 signer before any identity is captured.
+
+Function Initialize() Uint64
+5 IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF EXISTS("owner") THEN GOTO 200
-25 IF feeBasisPoints >= 5000 THEN GOTO 200
-26 IF blockExpiration < 4000 THEN GOTO 200
-27 IF blockExpiration > 10000000 THEN GOTO 200
-28 IF expectedAmount == 0 THEN GOTO 200
-29 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(sellerAddress) THEN GOTO 200
-30 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(buyerAddress) THEN GOTO 200
-31 IF ADDRESS_RAW(sellerAddress) == ADDRESS_RAW(buyerAddress) THEN GOTO 200
-32 STORE("owner", SIGNER())
-40 STORE("seller", ADDRESS_RAW(sellerAddress))
-45 STORE("buyer", ADDRESS_RAW(buyerAddress))
-50 STORE("arbitrator", ADDRESS_RAW(arbitratorAddress))
-60 STORE("feeBasisPoints", feeBasisPoints)
-70 STORE("blockExpiration", blockExpiration)
-75 STORE("expectedAmount", expectedAmount)
-80 STORE("escrowBalance", 0)
-90 STORE("status", 0)
-100 RETURN 0
-200 RETURN 1
-End Function
-
-Function Deposit() Uint64
-10 IF LOAD("status") != 0 THEN GOTO 200
-20 IF DEROVALUE() == 0 THEN GOTO 200
-30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
-35 IF DEROVALUE() < LOAD("expectedAmount") THEN GOTO 200
-40 STORE("escrowBalance", LOAD("expectedAmount"))
-50 STORE("status", 1)
-60 STORE("depositHeight", BLOCK_HEIGHT())
-65 IF DEROVALUE() > LOAD("expectedAmount") THEN GOTO 80 ELSE GOTO 70
+30 STORE("owner", SIGNER())
+40 STORE("status", 0)
+50 STORE("bound", 0)
+60 STORE("paused", 0)
 70 RETURN 0
-80 SEND_DERO_TO_ADDRESS(SIGNER(), DEROVALUE() - LOAD("expectedAmount"))
-90 RETURN 0
 200 RETURN 1
 End Function
 
-Function CancelUnfunded() Uint64
+// Owner writes the order terms into an empty box. Zero DERO, one-shot (bound guard).
+// buyer is NOT set here -- it does not exist until the buyer funds.
+Function Bind(sellerAddress String, arbitratorAddress String, feeBasisPoints Uint64, blockExpiration Uint64, expectedAmount Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
-20 IF LOAD("status") != 0 THEN GOTO 200
-30 IF SIGNER() == LOAD("seller") THEN GOTO 60
-40 IF SIGNER() == LOAD("owner") THEN GOTO 60
-50 GOTO 200
-60 STORE("status", 7)
-70 RETURN 0
+20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+30 IF LOAD("bound") != 0 THEN GOTO 200
+40 IF feeBasisPoints >= 5000 THEN GOTO 200
+50 IF blockExpiration < 4000 THEN GOTO 200
+60 IF blockExpiration > 10000000 THEN GOTO 200
+70 IF expectedAmount == 0 THEN GOTO 200
+80 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(sellerAddress) THEN GOTO 200
+90 STORE("seller", ADDRESS_RAW(sellerAddress))
+100 STORE("arbitrator", ADDRESS_RAW(arbitratorAddress))
+110 STORE("feeBasisPoints", feeBasisPoints)
+120 STORE("blockExpiration", blockExpiration)
+130 STORE("expectedAmount", expectedAmount)
+140 STORE("escrowBalance", 0)
+150 STORE("bound", 1)
+160 RETURN 0
 200 RETURN 1
 End Function
 
+// The ONLY fund entry. Captures buyer = SIGNER() at first funding and enforces the
+// two distinctness checks that in escrow.bas lived only in Initialize.
+//
+// LINE 5 (ringsize guard) rejects an unidentifiable signer BEFORE any state change, so
+// buyer is always a real ringsize-2 address (never the zero address).
+//
+// GUARD ORDER IS LOAD-BEARING (do not reorder): lines 10/15/20/30 LOAD only keys that
+// ALWAYS exist (set in Initialize), so they are safe on an unbound box. Lines 40/45
+// LOAD "seller"/"arbitrator" -- keys that DO NOT EXIST until Bind. They are reached
+// only because line 15 (bound != 1) already bailed on any unbound box. Moving a
+// terms-LOAD above line 15 reintroduces a panic AND lets the self-dealing check be
+// skipped. Line 50 (underpayment) MUST precede line 120 (overage subtraction) so the
+// Uint64 subtraction cannot underflow.
+Function Deposit() Uint64
+5 IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
+10 IF LOAD("paused") != 0 THEN GOTO 200
+15 IF LOAD("bound")  != 1 THEN GOTO 200
+20 IF LOAD("status") != 0 THEN GOTO 200
+30 IF DEROVALUE() == 0 THEN GOTO 200
+40 IF SIGNER() == LOAD("seller")     THEN GOTO 200
+45 IF SIGNER() == LOAD("arbitrator") THEN GOTO 200
+50 IF DEROVALUE() < LOAD("expectedAmount") THEN GOTO 200
+60 STORE("buyer", SIGNER())
+70 STORE("escrowBalance", LOAD("expectedAmount"))
+80 STORE("status", 1)
+90 STORE("depositHeight", BLOCK_HEIGHT())
+100 IF DEROVALUE() > LOAD("expectedAmount") THEN GOTO 120
+110 RETURN 0
+120 SEND_DERO_TO_ADDRESS(SIGNER(), DEROVALUE() - LOAD("expectedAmount"))
+130 RETURN 0
+200 RETURN 1
+End Function
+
+// Buyer confirms delivery -> seller paid minus fee.
 Function ConfirmDelivery() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
 40 DIM balance, fee, payout AS Uint64
@@ -90,8 +124,10 @@ Function ConfirmDelivery() Uint64
 200 RETURN 1
 End Function
 
+// Seller or owner refunds the buyer in full (no fee).
 Function RefundBuyer() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() == LOAD("seller") THEN GOTO 60
 40 IF SIGNER() == LOAD("owner") THEN GOTO 60
@@ -103,8 +139,10 @@ Function RefundBuyer() Uint64
 200 RETURN 1
 End Function
 
+// Seller claims after the expiry window (buyer had time to dispute).
 Function ClaimAfterExpiry() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() != LOAD("seller") THEN GOTO 200
 40 IF BLOCK_HEIGHT() < LOAD("depositHeight") + LOAD("blockExpiration") THEN GOTO 200
@@ -122,17 +160,24 @@ Function ClaimAfterExpiry() Uint64
 200 RETURN 1
 End Function
 
+// Buyer raises a dispute -> locks funds for the arbitrator. Records disputeHeight so
+// the buyer has a timeout escape hatch if the arbitrator never resolves (see
+// RefundAfterDisputeTimeout).
 Function Dispute() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
 40 STORE("status", 5)
-50 RETURN 0
+50 STORE("disputeHeight", BLOCK_HEIGHT())
+60 RETURN 0
 200 RETURN 1
 End Function
 
+// Arbitrator resolves. releaseToSeller: 1 = pay seller (minus fee), 0 = full refund buyer.
 Function Arbitrate(releaseToSeller Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
+15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 5 THEN GOTO 200
 30 IF SIGNER() != LOAD("arbitrator") THEN GOTO 200
 40 DIM balance, fee, payout AS Uint64
@@ -156,12 +201,72 @@ Function Arbitrate(releaseToSeller Uint64) Uint64
 200 RETURN 1
 End Function
 
-Function GetStatus() Uint64
+// Buyer's escape hatch against a lost/offline/malicious arbitrator. After the dispute
+// window (14400 blocks ~= 3 days at ~18s/block) has passed since Dispute(), the buyer
+// may reclaim their FULL deposit (no fee). Refund-to-buyer is the safe default for an
+// absent arbitrator -- NEVER auto-release to the seller.
+//
+// DELIBERATELY NOT PAUSE-GATED: this is the box's guaranteed liveness escape, so it must
+// work even on a frozen box -- otherwise a freeze left on (or a lost owner key) would
+// trap the funds forever, re-creating the very lock this timeout removes. Safe to exempt
+// because it can ONLY return the buyer's own deposit to the (guard-verified, real) buyer;
+// it can never move funds to any other party, so it does not weaken Pause's anti-exploit
+// purpose. Pause still freezes Deposit and every discretionary settlement path.
+//
+// GUARD ORDER: line 20 (status != 5) bails on every box that has not been disputed, so
+// the terms-LOADs at 30/40/50 (buyer/disputeHeight/escrowBalance) are never reached on
+// an unfunded/undisputed box (all three exist by the time status == 5).
+Function RefundAfterDisputeTimeout() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
-20 RETURN LOAD("status")
+20 IF LOAD("status") != 5 THEN GOTO 200
+30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
+40 IF BLOCK_HEIGHT() < LOAD("disputeHeight") + 14400 THEN GOTO 200
+50 SEND_DERO_TO_ADDRESS(LOAD("buyer"), LOAD("escrowBalance"))
+60 STORE("escrowBalance", 0)
+70 STORE("status", 3)
+80 RETURN 0
 200 RETURN 1
 End Function
 
+// Cancel a never-funded box (status 0). Owner may cancel ANY status-0 box (incl. an
+// unbound idle box -- reclaim path); seller may cancel only a bound box. Owner is
+// checked FIRST and the seller LOAD is EXISTS-guarded so an unbound box never panics.
+Function CancelUnfunded() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF LOAD("status") != 0 THEN GOTO 200
+30 IF SIGNER() == LOAD("owner") THEN GOTO 70
+40 IF EXISTS("seller") == 0 THEN GOTO 200
+50 IF SIGNER() == LOAD("seller") THEN GOTO 70
+60 GOTO 200
+70 STORE("status", 7)
+80 RETURN 0
+200 RETURN 1
+End Function
+
+// Owner circuit-breaker: freeze a box discovered mid-flight to be buggy. Blocks the
+// fund-movers (Deposit + discretionary settlement); cannot claw back an in-tx exploit
+// (honest limit), and cannot block the buyer's RefundAfterDisputeTimeout escape.
+Function Pause() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+30 STORE("paused", 1)
+40 RETURN 0
+200 RETURN 1
+End Function
+
+Function Unpause() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+30 STORE("paused", 0)
+40 RETURN 0
+200 RETURN 1
+End Function
+
+// NOTE: no UpdateCode / UPDATE_SC_CODE by design — the code that holds escrowed funds
+// is immutable once deployed. The platform can freeze a suspect box (Pause) but can
+// never rewrite or drain a funded box.
+
+// Two-step ownership transfer (cold-key rotation without exposing the cold key at deploy).
 Function TransferOwnership(newOwner String) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF SIGNER() != LOAD("owner") THEN GOTO 200
@@ -170,13 +275,24 @@ Function TransferOwnership(newOwner String) Uint64
 200 RETURN 1
 End Function
 
+// Line 5 (ringsize guard) is redundant today — line 30 (SIGNER()==pendingOwner, a real
+// stored address) already implies a valid non-zero signer — but it is kept so ALL three
+// identity-capturing functions (Initialize/Deposit/ClaimOwnership -> owner/buyer/owner)
+// carry the same guard and the invariant survives future edits to how pendingOwner is set.
 Function ClaimOwnership() Uint64
+5 IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF EXISTS("pendingOwner") == 0 THEN GOTO 200
 30 IF SIGNER() != LOAD("pendingOwner") THEN GOTO 200
 40 STORE("owner", SIGNER())
 50 DELETE("pendingOwner")
 60 RETURN 0
+200 RETURN 1
+End Function
+
+Function GetStatus() Uint64
+10 IF DEROVALUE() > 0 THEN GOTO 200
+20 RETURN LOAD("status")
 200 RETURN 1
 End Function`;
 
@@ -229,30 +345,49 @@ export class EscrowContract {
   }
 
   /**
-   * Deploy a new escrow smart contract.
+   * Mint a NEW empty escrow box (PREMINT — MINT phase).
    *
-   * The deployer (signer) becomes the "owner" (platform).
+   * Initialize() takes ZERO args and no DERO: it stores only owner=SIGNER and
+   * status=0/bound=0. The deployer (signer) becomes the "owner" (platform). Order
+   * terms are written later via bind(); the buyer is captured on-chain at
+   * deposit() from SIGNER() (ring 2). An empty box is fungible — a failed mint is
+   * trivially retried, and an unbound box can be reclaimed with cancelUnfunded().
    *
-   * @returns Deployment TXID (= the SCID)
+   * @returns Deployment TXID (= the SCID of the empty box)
    */
-  async deploy(params: {
-    sellerAddress: string;
-    buyerAddress: string;
-    arbitratorAddress: string;
-    feeBasisPoints: number;
-    blockExpiration: number;
-    expectedAmount: bigint;
-  }): Promise<string> {
-    // Validate addresses up front so a typo fails here with a clear message
-    // instead of as an opaque ADDRESS_RAW() revert during on-chain deploy.
+  async deploy(): Promise<string> {
+    return this.walletRpc.installSc(ESCROW_CONTRACT_SOURCE, []);
+  }
+
+  /**
+   * Bind order terms into a minted empty box (PREMINT — ASSIGN phase).
+   *
+   * Owner-gated and one-shot on-chain: a box with bound!=0 rejects a re-bind, and
+   * only the deployer (owner) may bind. The buyer is NOT set here — the contract
+   * captures it at deposit() from SIGNER(). Party addresses and numeric ranges are
+   * validated here so a bad value fails with a clear message before any bind gas is
+   * spent (the contract enforces the same ranges on-chain: Bind lines 40–80).
+   *
+   * @param scid - the minted (empty) escrow box to bind
+   * @returns Bind transaction ID
+   */
+  async bind(
+    scid: string,
+    params: {
+      sellerAddress: string;
+      arbitratorAddress: string;
+      feeBasisPoints: number;
+      blockExpiration: number;
+      expectedAmount: bigint;
+    }
+  ): Promise<string> {
+    // Validate up front so a typo fails here with a clear message instead of as
+    // an opaque ADDRESS_RAW() revert during the on-chain Bind.
     assertDeroAddress("sellerAddress", params.sellerAddress);
-    assertDeroAddress("buyerAddress", params.buyerAddress);
     assertDeroAddress("arbitratorAddress", params.arbitratorAddress);
 
     // Fee ceiling: a fee >= 50% would let the platform starve the seller of the
-    // release payout (at 100% the seller receives 0 and the owner takes all).
-    // Enforced on-chain too (Initialize line 25); mirrored here so a bad fee
-    // fails with a clear message before any deploy gas is spent.
+    // release payout. Enforced on-chain too (Bind line 40); mirrored here.
     if (
       !Number.isInteger(params.feeBasisPoints) ||
       params.feeBasisPoints < 0 ||
@@ -263,8 +398,8 @@ export class EscrowContract {
       );
     }
 
-    // Defense in depth: the contract also enforces this range on-chain
-    // (an out-of-range blockExpiration otherwise inverts the dispute window).
+    // Defense in depth: the contract also enforces this range on-chain (Bind
+    // lines 50–60); an out-of-range blockExpiration otherwise inverts the window.
     if (
       !Number.isInteger(params.blockExpiration) ||
       params.blockExpiration < 4000 ||
@@ -286,16 +421,15 @@ export class EscrowContract {
       );
     }
 
-    const initArgs: ScRpcArg[] = [
+    const bindArgs: ScRpcArg[] = [
       { name: "sellerAddress", datatype: "S", value: params.sellerAddress },
-      { name: "buyerAddress", datatype: "S", value: params.buyerAddress },
       { name: "arbitratorAddress", datatype: "S", value: params.arbitratorAddress },
       { name: "feeBasisPoints", datatype: "U", value: params.feeBasisPoints },
       { name: "blockExpiration", datatype: "U", value: params.blockExpiration },
       { name: "expectedAmount", datatype: "U", value: Number(params.expectedAmount) },
     ];
 
-    return this.walletRpc.installSc(ESCROW_CONTRACT_SOURCE, initArgs);
+    return this.walletRpc.invokeSc(scid, "Bind", bindArgs);
   }
 
   /**
@@ -377,6 +511,42 @@ export class EscrowContract {
   }
 
   /**
+   * Buyer's timeout escape hatch (buyer action). After the on-chain dispute
+   * window (14400 blocks ~= 3 days) has passed since dispute(), the buyer may
+   * reclaim their full deposit if the arbitrator never resolved. Deliberately
+   * NOT blocked by pause() on-chain, so a frozen box can never permanently trap
+   * the buyer's funds; it can only ever return the deposit to the bound buyer.
+   *
+   * @param scid - Smart Contract ID
+   * @returns Transaction ID
+   */
+  async refundAfterDisputeTimeout(scid: string): Promise<string> {
+    return this.walletRpc.invokeSc(scid, "RefundAfterDisputeTimeout");
+  }
+
+  /**
+   * Owner circuit-breaker: freeze a box discovered mid-flight to be buggy.
+   * Blocks deposit() and every discretionary settlement path on-chain, but NOT
+   * the buyer's refundAfterDisputeTimeout() escape. Cannot claw back or drain.
+   *
+   * @param scid - Smart Contract ID
+   * @returns Transaction ID
+   */
+  async pause(scid: string): Promise<string> {
+    return this.walletRpc.invokeSc(scid, "Pause");
+  }
+
+  /**
+   * Owner lifts a pause() freeze.
+   *
+   * @param scid - Smart Contract ID
+   * @returns Transaction ID
+   */
+  async unpause(scid: string): Promise<string> {
+    return this.walletRpc.invokeSc(scid, "Unpause");
+  }
+
+  /**
    * Nominate a new owner (current-owner action). Two-step: the successor must
    * ClaimOwnership() to take over. Use this to move owner authority off the hot
    * deploy key onto a cold key, bounding a hot-key compromise.
@@ -439,6 +609,10 @@ export class EscrowContract {
       expectedAmount: Number(vars["expectedAmount"]) || 0,
       escrowBalance: Number(vars["escrowBalance"]) || 0,
       depositHeight: vars["depositHeight"] ? Number(vars["depositHeight"]) : null,
+      // Block height of the Dispute() call, written on-chain by the contract.
+      // Null until disputed; a client computes the timeout window as
+      // disputeHeight + 14400 to know when RefundAfterDisputeTimeout unlocks.
+      disputeHeight: vars["disputeHeight"] ? Number(vars["disputeHeight"]) : null,
       // Direction of an Arbitrate() resolution, written on-chain by the contract
       // (1 = released to seller, 0 = refunded to buyer). Undefined until the
       // dispute is arbitrated. Required because BOTH Arbitrate branches zero
@@ -462,89 +636,4 @@ export class EscrowContract {
     }
   }
 
-  /**
-   * O16 — verify a mined contract at `scid` actually BINDS the parties/amount we
-   * expect before trusting it. exists() only proves *some* escrow-shaped contract
-   * mined at a txid; the crash reconciler must not adopt a broadcast txid as an
-   * invoice's authoritative scid on that alone. A confirmed-but-WRONG contract
-   * (reorg replacement, shared/multi-tenant wallet collision, or any tx that mined
-   * at the predicted txid with different init args) would otherwise be bound to
-   * the invoice with a buyer/seller/arbitrator/amount the platform never checked,
-   * and the on-chain SIGNER()==buyer safety net does not help because a scid whose
-   * buyer was never validated was adopted.
-   *
-   * Returns true ONLY if the on-chain seller, arbitrator, feeBasisPoints,
-   * blockExpiration and expectedAmount all match the expected (frozen quote-time)
-   * values.
-   *
-   * O15c — the buyer comparison is OPT-IN via `expected.buyerAddress`. By DEFAULT
-   * the buyer is NOT compared: in the crash-recovery (Case 2) window the deploy was
-   * broadcast but the invoice blob may not yet record which buyer was bound, so
-   * that path must keep the documented crash-window justification for omitting the
-   * buyer — do NOT pass buyerAddress from Case 2. But the O15b recovery sweep can
-   * match a DIFFERENT invoice's already-deployed contract that happens to share the
-   * identical seller/arbitrator/fee/expiry/amount tuple (only the buyer differs) —
-   * `matched.length===1` would then adopt the WRONG contract, misrouting refunds/
-   * disputes and false-funding (the real buyer can never deposit because the on-
-   * chain SIGNER()==buyer gate binds a different buyer). So when — and only when —
-   * `buyerAddress` is supplied, ALSO require the on-chain buyer to match; the sweep
-   * passes it, dropping any terms-match-but-buyer-mismatch candidate to a non-match.
-   *
-   * O15d — party comparison is done in RAW-HEX form. getState surfaces the on-chain
-   * seller/buyer/arbitrator as the raw 33-byte compressed point (GetSC hex-encodes
-   * the ADDRESS_RAW string a contract stores), while `expected.*` are the "dero1…"
-   * bech32 the SDK holds. Comparing the two forms directly NEVER matches, so the
-   * expected bech32 is decoded to raw here (tryDeroAddressToRawHex) and compared to
-   * the raw state.*. FAIL CLOSED: if an expected address can't be decoded (null) or
-   * a required on-chain party is missing, verifyBinding returns false — never a
-   * spurious match that could adopt the wrong contract and misroute funds.
-   */
-  async verifyBinding(
-    scid: string,
-    expected: {
-      sellerAddress: string;
-      arbitratorAddress: string;
-      feeBasisPoints: number;
-      blockExpiration: number;
-      expectedAmount: bigint;
-      /** O15c — when present, the on-chain buyer MUST also match (opt-in; the
-       *  O15b sweep passes this, Case-2 crash-recovery deliberately does not). */
-      buyerAddress?: string;
-    }
-  ): Promise<boolean> {
-    let state: EscrowOnChainState;
-    try {
-      state = await this.getState(scid);
-    } catch {
-      return false;
-    }
-    // getState maps an absent contract to a default status; require the real
-    // string-key surface to have populated the binding fields.
-    if (!state.seller || !state.arbitrator) return false;
-
-    // O15d — decode the expected bech32 parties to the RAW-HEX form the chain
-    // stores (state.* are raw). A null decode = un-parseable expected address =
-    // FAIL CLOSED (no spurious match).
-    const expectedSellerRaw = tryDeroAddressToRawHex(expected.sellerAddress);
-    const expectedArbitratorRaw = tryDeroAddressToRawHex(expected.arbitratorAddress);
-    if (expectedSellerRaw === null || expectedArbitratorRaw === null) return false;
-
-    const termsMatch =
-      state.seller === expectedSellerRaw &&
-      state.arbitrator === expectedArbitratorRaw &&
-      state.feeBasisPoints === expected.feeBasisPoints &&
-      state.blockExpiration === expected.blockExpiration &&
-      BigInt(state.expectedAmount) === expected.expectedAmount;
-    if (!termsMatch) return false;
-
-    // O15c — opt-in buyer pin. A candidate with matching terms but no on-chain
-    // buyer, or a different buyer, is NOT this invoice's contract.
-    // O15d — buyer is likewise compared in raw-hex; an un-decodable buyer fails closed.
-    if (expected.buyerAddress !== undefined) {
-      const expectedBuyerRaw = tryDeroAddressToRawHex(expected.buyerAddress);
-      if (expectedBuyerRaw === null) return false;
-      if (!state.buyer || state.buyer !== expectedBuyerRaw) return false;
-    }
-    return true;
-  }
 }

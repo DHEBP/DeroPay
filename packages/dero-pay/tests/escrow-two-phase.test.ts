@@ -9,12 +9,16 @@ import type { DaemonRpcClient } from "../src/rpc/daemon-rpc.js";
 const mockContract = {
   getSource: vi.fn().mockReturnValue("Function Initialize..."),
   deploy: vi.fn().mockResolvedValue("sc-deploy-001"),
+  bind: vi.fn().mockResolvedValue("tx-bind-001"),
   deposit: vi.fn().mockResolvedValue("tx-deposit-001"),
   confirmDelivery: vi.fn().mockResolvedValue("tx-confirm-001"),
   refundBuyer: vi.fn().mockResolvedValue("tx-refund-001"),
   claimAfterExpiry: vi.fn().mockResolvedValue("tx-claim-001"),
   dispute: vi.fn().mockResolvedValue("tx-dispute-001"),
   arbitrate: vi.fn().mockResolvedValue("tx-arbitrate-001"),
+  refundAfterDisputeTimeout: vi.fn().mockResolvedValue("tx-timeout-refund-001"),
+  pause: vi.fn().mockResolvedValue("tx-pause-001"),
+  unpause: vi.fn().mockResolvedValue("tx-unpause-001"),
   getState: vi.fn(),
   exists: vi.fn().mockResolvedValue(true),
 };
@@ -114,14 +118,22 @@ describe("EscrowManager — two-phase (quote / claim)", () => {
 
       const claimed = await manager.claimEscrow(quote.id, "dero1qbuyer...");
 
+      // PREMINT: deploy() mints an EMPTY box (no args); terms go to bind(); the
+      // buyer is NOT bound on-chain (captured at deposit from SIGNER).
       expect(mockContract.deploy).toHaveBeenCalledOnce();
-      expect(mockContract.deploy).toHaveBeenCalledWith(
+      expect(mockContract.deploy).toHaveBeenCalledWith();
+      expect(mockContract.bind).toHaveBeenCalledOnce();
+      expect(mockContract.bind).toHaveBeenCalledWith(
+        "sc-deploy-001",
         expect.objectContaining({
           sellerAddress: "dero1qseller...",
-          buyerAddress: "dero1qbuyer...",
           arbitratorAddress: "dero1qarbitrator...",
           expectedAmount: 500_000n,
         })
+      );
+      expect(mockContract.bind).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ buyerAddress: expect.anything() })
       );
 
       expect(claimed.status).toBe("awaiting_deposit");

@@ -19,19 +19,18 @@ import type { DaemonRpcClient } from "../src/rpc/daemon-rpc.js";
 const mockContract = {
   getSource: vi.fn().mockReturnValue("Function Initialize..."),
   deploy: vi.fn().mockResolvedValue("sc-deploy-eng-001"),
+  bind: vi.fn().mockResolvedValue("tx-bind-001"),
   deposit: vi.fn().mockResolvedValue("tx-deposit-001"),
   confirmDelivery: vi.fn().mockResolvedValue("tx-confirm-001"),
   refundBuyer: vi.fn().mockResolvedValue("tx-refund-001"),
   claimAfterExpiry: vi.fn().mockResolvedValue("tx-claim-001"),
   dispute: vi.fn().mockResolvedValue("tx-dispute-001"),
   arbitrate: vi.fn().mockResolvedValue("tx-arbitrate-001"),
+  refundAfterDisputeTimeout: vi.fn().mockResolvedValue("tx-timeout-refund-001"),
+  pause: vi.fn().mockResolvedValue("tx-pause-001"),
+  unpause: vi.fn().mockResolvedValue("tx-unpause-001"),
   getState: vi.fn(),
   exists: vi.fn().mockResolvedValue(true),
-  // O16 — the reconciler now verifies the mined contract BINDS the expected
-  // parties/amount before adopting its txid as the invoice scid, not merely that
-  // an escrow-shaped contract exists. Default: the binding matches (legitimate
-  // heal). Individual tests override to model a wrong/never-mined contract.
-  verifyBinding: vi.fn().mockResolvedValue(true),
 };
 
 vi.mock("../src/escrow/contract.js", () => ({
@@ -159,188 +158,6 @@ describe("O3 — O14 drift guard fires on a rebuilding worker (not a tautology)"
     const guard = engine.getEscrowManager()!.getClaimGuard()!;
     // The invoice blob (awaiting_deposit + scid) is now the arbiter; the row is GC'd.
     expect(await guard.listClaims!()).toEqual([]);
-  });
-});
-
-describe("O5 — crash-recovery reconciler heals an orphaned live contract", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockContract.deploy.mockResolvedValue("sc-live-orphan-001");
-  });
-
-  it("adopts the deployTxid breadcrumb, flips the invoice to awaiting_deposit, and releases the row", async () => {
-    // A single shared store models durable state surviving a crash+restart.
-    const store = new MemoryInvoiceStore();
-    const engine1 = makeEngine(store);
-    await engine1.start();
-    const invoice = await engine1.createInvoice({
-      name: "escrow item",
-      amount: 500_000n,
-      escrow: { sellerAddress: SELLER, arbitratorAddress: ARB },
-    });
-    const escrowId = invoice.escrow!.escrowId!;
-
-    // Simulate the crash window: the deploy WAS broadcast (guard row holds the
-    // txid) but the invoice-blob persist never landed — invoice still 'quoted'.
-    const guard = engine1.getEscrowManager()!.getClaimGuard()!;
-    await guard.tryClaim(escrowId);
-    await guard.recordDeployTxid!(escrowId, "sc-live-orphan-001");
-    // (invoice remains escrowStatus='quoted', scid=null in the store)
-    await engine1.stop();
-
-    // Restart on the SAME store + SAME guard (MemoryInvoiceStore memoizes it).
-    // O12 — a genuinely CRASHED row is aged past the deploy lease; model that
-    // with lease=0 so the reconciler treats this held row as eligible (a fresh
-    // peer-deploying row would NOT be — see the dedicated O12 test below).
-    // O13 — the mocked contract.exists() returns true, so the txid is confirmed
-    // mined and may be adopted as the scid.
-    // Age the held row past the (tiny, mock-derived) 2ms deploy lease so the
-    // reconciler treats it as a crashed orphan, not a live peer (O12/O15).
-    await new Promise((r) => setTimeout(r, 5));
-    const engine2 = makeEngine(store, { escrowClaimLeaseMs: 2 });
-    await engine2.start(); // runs rehydrate + reconcileOrphanedClaims
-
-    const healed = await store.getInvoice(invoice.id);
-    expect(healed?.escrow?.escrowStatus).toBe("awaiting_deposit");
-    expect(healed?.escrow?.scid).toBe("sc-live-orphan-001");
-    // The manager now polls it (imported), and the stale guard row is gone.
-    expect(engine2.getEscrowManager()!.getEscrow(escrowId)).not.toBeNull();
-    expect(await guard.listClaims!()).toEqual([]);
-    await engine2.stop();
-  });
-
-  it("O12 — leaves a FRESH held row (peer worker mid-deploy) untouched to prevent a double-deploy", async () => {
-    const store = new MemoryInvoiceStore();
-    const engine1 = makeEngine(store);
-    await engine1.start();
-    const invoice = await engine1.createInvoice({
-      name: "escrow item",
-      amount: 500_000n,
-      escrow: { sellerAddress: SELLER, arbitratorAddress: ARB },
-    });
-    const escrowId = invoice.escrow!.escrowId!;
-    const guard = engine1.getEscrowManager()!.getClaimGuard()!;
-    // A LIVE peer has won the row and is mid-broadcast: row just claimed (fresh),
-    // no deployTxid yet, invoice still 'quoted'. This is INDISTINGUISHABLE from a
-    // crash orphan except by age — so a booting worker must NOT free it.
-    await guard.tryClaim(escrowId);
-    await engine1.stop();
-
-    // A default-lease worker boots (lease=120s). The row is seconds old -> skip.
-    const engine2 = makeEngine(store); // default escrowClaimLeaseMs
-    await engine2.start();
-
-    // The peer's live row is STILL HELD: no third claim can win it and deploy a
-    // second contract while the peer's deploy is in flight.
-    const held = await guard.listClaims!();
-    expect(held.some((r) => r.id === escrowId)).toBe(true);
-    // And the invoice was NOT speculatively flipped off 'quoted'.
-    const reread = await store.getInvoice(invoice.id);
-    expect(reread?.escrow?.escrowStatus).toBe("quoted");
-    await engine2.stop();
-  });
-
-  it("O13 — does NOT adopt an UNCONFIRMED (never-mined) txid; releases for honest re-claim instead of stranding the buyer", async () => {
-    const store = new MemoryInvoiceStore();
-    const engine1 = makeEngine(store);
-    await engine1.start();
-    const invoice = await engine1.createInvoice({
-      name: "escrow item",
-      amount: 500_000n,
-      escrow: { sellerAddress: SELLER, arbitratorAddress: ARB },
-    });
-    const escrowId = invoice.escrow!.escrowId!;
-    const guard = engine1.getEscrowManager()!.getClaimGuard()!;
-    // Row carries a broadcast txid, but that tx NEVER MINED (fee too low / evicted
-    // / reorg). The reconciler must verify on-chain before adopting it as the scid.
-    await guard.tryClaim(escrowId);
-    await guard.recordDeployTxid!(escrowId, "sc-phantom-never-mined");
-    await engine1.stop();
-
-    // verifyBinding reports the contract is NOT on-chain (never mined) -> must not
-    // adopt the phantom. (O16 folded the never-mined check into verifyBinding.)
-    mockContract.verifyBinding.mockResolvedValueOnce(false);
-    // Age the held row past the (tiny, mock-derived) 2ms deploy lease so the
-    // reconciler treats it as a crashed orphan, not a live peer (O12/O15).
-    await new Promise((r) => setTimeout(r, 5));
-    const engine2 = makeEngine(store, { escrowClaimLeaseMs: 2 });
-    await engine2.start();
-
-    // Invoice stays 'quoted' with scid=null (NOT bound to a phantom scid), the row
-    // is released, and an honest re-claim can proceed and deploy exactly once.
-    const reread = await store.getInvoice(invoice.id);
-    expect(reread?.escrow?.escrowStatus).toBe("quoted");
-    expect(reread?.escrow?.scid).toBeNull();
-    expect(await guard.listClaims!()).toEqual([]);
-    mockContract.deploy.mockResolvedValue("sc-reclaim-001");
-    await engine2.claimEscrowInvoice(invoice.id, BUYER);
-    const after = await store.getInvoice(invoice.id);
-    expect(after?.escrow?.escrowStatus).toBe("awaiting_deposit");
-    await engine2.stop();
-  });
-
-  it("O16 — does NOT adopt a CONFIRMED-but-WRONG contract (binding mismatch); releases for honest re-claim", async () => {
-    const store = new MemoryInvoiceStore();
-    const engine1 = makeEngine(store);
-    await engine1.start();
-    const invoice = await engine1.createInvoice({
-      name: "escrow item",
-      amount: 500_000n,
-      escrow: { sellerAddress: SELLER, arbitratorAddress: ARB },
-    });
-    const escrowId = invoice.escrow!.escrowId!;
-    const guard = engine1.getEscrowManager()!.getClaimGuard()!;
-    // A contract DID mine at the broadcast txid, but it binds different parties /
-    // amount (reorg replacement, shared-wallet txid collision, or any tx that mined
-    // at the predicted txid with different init args). exists() would say true;
-    // verifyBinding says false because seller/arbitrator/amount don't match.
-    await guard.tryClaim(escrowId);
-    await guard.recordDeployTxid!(escrowId, "sc-wrong-binding");
-    await engine1.stop();
-
-    mockContract.verifyBinding.mockResolvedValueOnce(false);
-    // Age the held row past the (tiny, mock-derived) 2ms deploy lease so the
-    // reconciler treats it as a crashed orphan, not a live peer (O12/O15).
-    await new Promise((r) => setTimeout(r, 5));
-    const engine2 = makeEngine(store, { escrowClaimLeaseMs: 2 });
-    await engine2.start();
-
-    // The invoice is NOT bound to the wrong contract's scid; it stays claimable
-    // and the row is released so an honest re-claim deploys the correct contract.
-    const reread = await store.getInvoice(invoice.id);
-    expect(reread?.escrow?.escrowStatus).toBe("quoted");
-    expect(reread?.escrow?.scid).toBeNull();
-    expect(await guard.listClaims!()).toEqual([]);
-    await engine2.stop();
-  });
-
-  it("releases a held row with NO deployTxid so an honest re-claim can proceed", async () => {
-    const store = new MemoryInvoiceStore();
-    const engine1 = makeEngine(store);
-    await engine1.start();
-    const invoice = await engine1.createInvoice({
-      name: "escrow item",
-      amount: 500_000n,
-      escrow: { sellerAddress: SELLER, arbitratorAddress: ARB },
-    });
-    const escrowId = invoice.escrow!.escrowId!;
-    const guard = engine1.getEscrowManager()!.getClaimGuard()!;
-    // Crash BEFORE broadcast: row held, no txid, invoice still 'quoted'.
-    await guard.tryClaim(escrowId);
-    await engine1.stop();
-
-    // Age the held row past the (tiny, mock-derived) 2ms deploy lease so the
-    // reconciler treats it as a crashed orphan, not a live peer (O12/O15).
-    await new Promise((r) => setTimeout(r, 5));
-    const engine2 = makeEngine(store, { escrowClaimLeaseMs: 2 });
-    await engine2.start();
-    // Row released -> a fresh claim can win it and deploy exactly once.
-    expect(await guard.listClaims!()).toEqual([]);
-    const reread = await store.getInvoice(invoice.id);
-    expect(reread?.escrow?.escrowStatus).toBe("quoted");
-    await engine2.claimEscrowInvoice(invoice.id, BUYER);
-    expect(mockContract.deploy).toHaveBeenCalledTimes(1);
-    await engine2.stop();
   });
 });
 

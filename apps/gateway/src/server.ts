@@ -548,11 +548,6 @@ app.post("/checkout/claim", async (c) => {
       "expired_claimed",
       "arbitrated",
       "cancelled",
-      // O15 — a broadcast-ambiguous deploy is HELD pending wallet-side recovery; a
-      // possibly-live contract may exist on-chain. It must NOT be re-claimable from
-      // this public route (the engine also fail-closes it, but block here for a
-      // clean response and defense-in-depth so the deploy path is never entered).
-      "deploy_indeterminate",
     ]);
     if (CLAIM_BLOCKED_STATUSES.has(invoice.escrow.escrowStatus)) {
       return c.json(

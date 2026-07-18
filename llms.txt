@@ -1,0 +1,35 @@
+# DeroPay
+
+> Open-source, self-hosted payment infrastructure for the DERO blockchain — private invoices, on-chain escrow, and x402-style payment gates, with first-class support for autonomous AI agents paying per-request. MIT licensed.
+
+DeroPay lets you accept DERO without a third-party processor: you run the gateway, you hold the keys, and payments settle peer-to-peer on a privacy-preserving chain. Everything is built around one SDK (`dero-pay`, published on npm); the gateway, hosted checkout, embeddable widget, dashboard, WooCommerce/Medusa plugins, and reference storefronts are all consumers of it. For AI agents, DeroPay exposes an x402 rail: a protected route answers `HTTP 402` with a DERO payment challenge, the caller pays on-chain, and a signed short-lived receipt unlocks the resource. The agent side (`dero-pay/agent`) is a fetch wrapper and MCP tool caller that settles those challenges automatically under a deny-by-default spending policy.
+
+## Documentation
+
+- [README](README.md): Project overview, payment modes (invoice / escrow / x402 gate), monorepo layout, and quick start.
+- [Architecture](ARCHITECTURE.md): Components, runtime RPC dependencies (wallet + daemon), pluggable store, and the invoice / escrow / x402 data flows.
+
+## SDK
+
+- [SDK README](packages/dero-pay/README.md): Install, server-side invoice engine, Next.js route handlers, x402 route guards, receipts, React components, and package exports.
+- [Agent payer](packages/dero-pay/AGENT-PAYER.md): The `dero-pay/agent` module — paying fetch, spend policies, attenuable credentials, MCP paid tools, and safety properties.
+- [x402 receipts spec](packages/dero-pay/X402-RECEIPTS-SPEC.md): Draft spec for the receipt token and spending-credential trust primitives (scheme id `dero-exact`, protocol `x402-deropay-draft`).
+
+## Guides
+
+- [Gateway](apps/gateway/README.md): Self-hosted REST + webhook payment gateway — clone, keygen, `.env`, invoice, paid. Fastest path to a first payment.
+- [x402 example](apps/x402-example/README.md): Runnable Next.js x402 + agent-payer walkthrough end to end.
+
+## SDK modules
+
+- [core](packages/dero-pay/src/core): `dero-pay` — core types, payment-id generation, and pricing utilities (`deroToAtomic`).
+- [rpc](packages/dero-pay/src/rpc): `dero-pay/rpc` — wallet and daemon HTTP JSON-RPC clients.
+- [server](packages/dero-pay/src/server): `dero-pay/server` — invoice engine, pluggable stores, payment monitor, webhooks, receipt signing.
+- [escrow](packages/dero-pay/src/escrow): `dero-pay/escrow` — escrow manager, keeper, contract, inventory store.
+- [x402](packages/dero-pay/src/x402): `dero-pay/x402` — x402 payment gating (types, server, client, next subpaths).
+- [agent](packages/dero-pay/src/agent): `dero-pay/agent` — autonomous agent payer: paying fetch, spend/credential policies, MCP paid-tool guards.
+- [bridge](packages/dero-pay/src/bridge): `dero-pay/bridge` — durable outbound-only webhook daemon (also the `deropay-bridge` CLI).
+- [router](packages/dero-pay/src/router): `dero-pay/router` — on-chain payment-router contract helpers.
+- [client](packages/dero-pay/src/client): `dero-pay/client` — XSWD client and payment session for browser wallets.
+- [react](packages/dero-pay/src/react): `dero-pay/react` — components and hooks (`PayWithDero`, `InvoiceView`, `EscrowInvoiceView`).
+- [next](packages/dero-pay/src/next): `dero-pay/next` — Next.js route handlers and middleware.

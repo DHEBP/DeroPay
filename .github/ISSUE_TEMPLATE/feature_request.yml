@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a new capability or improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Please search existing issues and discussions first to avoid duplicates.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what makes it hard or impossible today?
+      placeholder: I want to gate an API per-request for autonomous agents without running my own facilitator.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the change you'd like. Include the API surface or config you imagine, if any.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of DeroPay would this touch?
+      options:
+        - SDK (packages/dero-pay)
+        - Gateway (apps/gateway)
+        - Plugin (WooCommerce / Medusa)
+        - Checkout / Widget
+        - Facilitator / x402 / agent
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you've tried or thought about.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, references, or anything else that helps.
+    validations:
+      required: false

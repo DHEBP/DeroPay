@@ -1,0 +1,47 @@
+# DeroPay
+
+> Open-source, self-hosted payment infrastructure for the DERO blockchain — private invoices, on-chain escrow, and x402-style payment gates, with first-class support for autonomous AI agents paying per-request. MIT licensed.
+
+DeroPay lets you accept DERO without a third-party payment processor: you run the gateway, you hold the keys, and payments settle peer-to-peer on a privacy-preserving chain. It is a monorepo built around one SDK, `dero-pay` (published on npm). Every other component — the self-hostable gateway, the hosted checkout page, the embeddable widget, the merchant dashboard, the WooCommerce and Medusa plugins, and the reference storefronts — is a consumer or a deployment surface for that SDK.
+
+This file gives AI agents and LLMs a grounded map of what DeroPay actually ships. Every capability below is implemented in the SDK; import paths are the package's real `exports`.
+
+## Payment modes
+
+DeroPay offers three payment primitives that can be mixed in one app:
+
+- **Invoice** (`dero-pay/server`) — one-off checkout: create an invoice with a unique integrated address, monitor the chain via wallet/daemon RPC, confirm after N confirmations, fire an HMAC-signed webhook, and fulfill.
+- **Escrow** (`dero-pay/escrow`) — trust-minimized trades: funds are locked on-chain and released on delivery, with a dispute/arbitration path and a buyer self-refund after a dispute-timeout window. A keeper pre-mints empty escrow boxes into a confirmed pool so checkout only has to bind (owner-gated) rather than mint and wait a block.
+- **x402 gate** (`dero-pay/x402`, `dero-pay/agent`) — metered APIs and AI agents paying per-request over HTTP `402`, with verifiable, resource-bound, single-use receipts.
+
+## Runtime dependencies
+
+Every server-side surface talks to a DERO **wallet RPC** and/or **daemon RPC** (`dero-pay/rpc`); these can be local or remote. The wallet RPC creates integrated addresses and signs smart-contract calls; the daemon RPC reads chain state (including `GetSC`) and detects payments. Browser flows (checkout, widget) reach the wallet through XSWD via `dero-pay/client`. Prerequisites: a DERO wallet running with `--rpc-server`, a synced DERO daemon, and Node.js >= 20.
+
+State is a pluggable store (`dero-pay/server`): in-memory (`MemoryInvoiceStore`) for a single process, SQLite (`SqliteInvoiceStore`) for durability. A multi-process deployment must use the durable SQLite store — it backs the escrow claim guard and the keeper's inventory pool with cross-process-atomic operations, and it backs x402 quota reservations.
+
+## The x402 agent rail
+
+AI agents are a target consumer. A route protected by `createX402RouteGuard` (from `dero-pay/next`) answers requests that lack a valid receipt with `HTTP 402 Payment Required` and a machine-readable DERO challenge (invoice id, integrated address, amount, expiry, required confirmations). The caller pays the integrated address on-chain, polls status, redeems a signed short-lived receipt token, and retries carrying either an `X-DeroPay-Receipt` header or `Authorization: X402 proof="<token>"`. Receipt verification is local (signature + policy checks), so protected routes do not need per-request chain-proof verification. Default receipt TTL is 600 seconds. Optional quota controls (`maxReceiptsPerDay`, `maxAtomicPerWindow`) are enforced via store-backed usage reservations.
+
+The agent side, `dero-pay/agent`, provides `createPayingFetch`: a fetch-compatible wrapper that on a `402` reserves spending authority against a deny-by-default policy, pays, waits for settlement, redeems the receipt, and retries the original request. Safety properties (all implemented): deny-by-default (an empty `allowOrigins` authorizes nothing); loopback-only wallet by default (`createWalletRpcPayer` refuses non-loopback wallet URLs unless explicitly allowed); never pays the same demand twice (concurrent identical challenges share one payment; a settling payment resumes rather than re-pays); and loud unpayables (an unhonorable 402 throws by default rather than passing an unpaid body through as paid). `SpendPolicy` enforces origin allowlist plus per-request and rolling-window caps; `CredentialPolicy` mints macaroon-style attenuable spending credentials to hand to sub-agents. `createPaidToolGuard` and `createPayingToolCaller` put the same per-call payment gating on MCP tools, transport-agnostic and with no MCP SDK dependency.
+
+## SDK exports
+
+The `dero-pay` package is modular; import only what you need. Real subpath exports: `dero-pay` (core), `/rpc`, `/server`, `/bridge`, `/escrow`, `/router`, `/client`, `/gateway`, `/react`, `/next`, `/x402` (+ `/x402/types`, `/x402/server`, `/x402/client`, `/x402/next`), and `/agent`. The package also ships a `deropay-bridge` binary for the durable webhook daemon.
+
+## Documentation
+
+- [README](README.md): Project overview, payment modes, monorepo layout, quick start, and SDK exports.
+- [Architecture](ARCHITECTURE.md): Components, runtime RPC dependencies, pluggable store, and invoice / escrow / x402 data flows.
+
+## SDK
+
+- [SDK README](packages/dero-pay/README.md): Install, server invoice engine, Next.js handlers, x402 guards, receipts, React components, wallet connectors, and package exports.
+- [Agent payer](packages/dero-pay/AGENT-PAYER.md): `dero-pay/agent` — paying fetch, spend and credential policies, MCP paid tools, endpoint discovery, settlement timing, and safety properties.
+- [x402 receipts spec](packages/dero-pay/X402-RECEIPTS-SPEC.md): Draft spec (scheme id `dero-exact`, protocol `x402-deropay-draft`) for the receipt token and attenuable spending-credential primitives.
+
+## Guides
+
+- [Gateway](apps/gateway/README.md): Self-hosted REST + webhook gateway walkthrough — the fastest path to a first payment.
+- [x402 example](apps/x402-example/README.md): Runnable Next.js x402 + agent-payer walkthrough end to end.

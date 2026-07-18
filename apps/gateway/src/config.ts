@@ -56,7 +56,7 @@ export function loadConfig(): GatewayConfig {
     sqlitePath: env.DEROPAY_SQLITE_PATH ?? "./data/deropay.db",
     enableEscrow: env.DEROPAY_ENABLE_ESCROW === "true",
     escrowFeeBasisPoints: parseInt(env.DEROPAY_ESCROW_FEE_BPS ?? "250", 10),
-    escrowBlockExpiration: parseInt(env.DEROPAY_ESCROW_BLOCK_EXPIRATION ?? "60", 10),
+    escrowBlockExpiration: parseInt(env.DEROPAY_ESCROW_BLOCK_EXPIRATION ?? "9600", 10),
     enableRouter: env.DEROPAY_ENABLE_ROUTER === "true",
     defaultTtlSeconds: parseInt(env.DEROPAY_DEFAULT_TTL ?? "900", 10),
     defaultRequiredConfirmations: parseInt(env.DEROPAY_DEFAULT_CONFIRMATIONS ?? "3", 10),

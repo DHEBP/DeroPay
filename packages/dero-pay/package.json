@@ -1,74 +1,170 @@
 {
   "name": "dero-pay",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Payment processing SDK for DERO \u2014 Accept DERO payments with invoices, payment monitoring, webhooks, and a merchant dashboard.",
   "type": "module",
-  "main": "./dist/core/index.js",
+  "main": "./dist/core/index.cjs",
   "types": "./dist/core/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.js"
+      "import": {
+        "types": "./dist/core/index.d.ts",
+        "default": "./dist/core/index.js"
+      },
+      "require": {
+        "types": "./dist/core/index.d.cts",
+        "default": "./dist/core/index.cjs"
+      }
     },
     "./rpc": {
-      "types": "./dist/rpc/index.d.ts",
-      "import": "./dist/rpc/index.js"
+      "import": {
+        "types": "./dist/rpc/index.d.ts",
+        "default": "./dist/rpc/index.js"
+      },
+      "require": {
+        "types": "./dist/rpc/index.d.cts",
+        "default": "./dist/rpc/index.cjs"
+      }
     },
     "./server": {
-      "types": "./dist/server/index.d.ts",
-      "import": "./dist/server/index.js"
+      "import": {
+        "types": "./dist/server/index.d.ts",
+        "default": "./dist/server/index.js"
+      },
+      "require": {
+        "types": "./dist/server/index.d.cts",
+        "default": "./dist/server/index.cjs"
+      }
     },
     "./bridge": {
-      "types": "./dist/bridge/index.d.ts",
-      "import": "./dist/bridge/index.js"
+      "import": {
+        "types": "./dist/bridge/index.d.ts",
+        "default": "./dist/bridge/index.js"
+      },
+      "require": {
+        "types": "./dist/bridge/index.d.cts",
+        "default": "./dist/bridge/index.cjs"
+      }
     },
     "./escrow": {
-      "types": "./dist/escrow/index.d.ts",
-      "import": "./dist/escrow/index.js"
+      "import": {
+        "types": "./dist/escrow/index.d.ts",
+        "default": "./dist/escrow/index.js"
+      },
+      "require": {
+        "types": "./dist/escrow/index.d.cts",
+        "default": "./dist/escrow/index.cjs"
+      }
     },
     "./router": {
-      "types": "./dist/router/index.d.ts",
-      "import": "./dist/router/index.js"
+      "import": {
+        "types": "./dist/router/index.d.ts",
+        "default": "./dist/router/index.js"
+      },
+      "require": {
+        "types": "./dist/router/index.d.cts",
+        "default": "./dist/router/index.cjs"
+      }
     },
     "./client": {
-      "types": "./dist/client/index.d.ts",
-      "import": "./dist/client/index.js"
+      "import": {
+        "types": "./dist/client/index.d.ts",
+        "default": "./dist/client/index.js"
+      },
+      "require": {
+        "types": "./dist/client/index.d.cts",
+        "default": "./dist/client/index.cjs"
+      }
     },
     "./gateway": {
-      "types": "./dist/gateway/index.d.ts",
-      "import": "./dist/gateway/index.js"
+      "import": {
+        "types": "./dist/gateway/index.d.ts",
+        "default": "./dist/gateway/index.js"
+      },
+      "require": {
+        "types": "./dist/gateway/index.d.cts",
+        "default": "./dist/gateway/index.cjs"
+      }
     },
     "./react": {
-      "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.js"
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
     },
     "./next": {
-      "types": "./dist/next/index.d.ts",
-      "import": "./dist/next/index.js"
+      "import": {
+        "types": "./dist/next/index.d.ts",
+        "default": "./dist/next/index.js"
+      },
+      "require": {
+        "types": "./dist/next/index.d.cts",
+        "default": "./dist/next/index.cjs"
+      }
     },
     "./x402": {
-      "types": "./dist/x402/index.d.ts",
-      "import": "./dist/x402/index.js"
+      "import": {
+        "types": "./dist/x402/index.d.ts",
+        "default": "./dist/x402/index.js"
+      },
+      "require": {
+        "types": "./dist/x402/index.d.cts",
+        "default": "./dist/x402/index.cjs"
+      }
     },
     "./x402/types": {
-      "types": "./dist/x402/types.d.ts",
-      "import": "./dist/x402/types.js"
+      "import": {
+        "types": "./dist/x402/types.d.ts",
+        "default": "./dist/x402/types.js"
+      },
+      "require": {
+        "types": "./dist/x402/types.d.cts",
+        "default": "./dist/x402/types.cjs"
+      }
     },
     "./x402/server": {
-      "types": "./dist/x402/server.d.ts",
-      "import": "./dist/x402/server.js"
+      "import": {
+        "types": "./dist/x402/server.d.ts",
+        "default": "./dist/x402/server.js"
+      },
+      "require": {
+        "types": "./dist/x402/server.d.cts",
+        "default": "./dist/x402/server.cjs"
+      }
     },
     "./x402/client": {
-      "types": "./dist/x402/client.d.ts",
-      "import": "./dist/x402/client.js"
+      "import": {
+        "types": "./dist/x402/client.d.ts",
+        "default": "./dist/x402/client.js"
+      },
+      "require": {
+        "types": "./dist/x402/client.d.cts",
+        "default": "./dist/x402/client.cjs"
+      }
     },
     "./x402/next": {
-      "types": "./dist/x402/next.d.ts",
-      "import": "./dist/x402/next.js"
+      "import": {
+        "types": "./dist/x402/next.d.ts",
+        "default": "./dist/x402/next.js"
+      },
+      "require": {
+        "types": "./dist/x402/next.d.cts",
+        "default": "./dist/x402/next.cjs"
+      }
     },
     "./agent": {
-      "types": "./dist/agent/index.d.ts",
-      "import": "./dist/agent/index.js"
+      "import": {
+        "types": "./dist/agent/index.d.ts",
+        "default": "./dist/agent/index.js"
+      },
+      "require": {
+        "types": "./dist/agent/index.d.cts",
+        "default": "./dist/agent/index.cjs"
+      }
     }
   },
   "bin": {
@@ -84,6 +180,9 @@
     "directory": "packages/dero-pay"
   },
   "homepage": "https://github.com/DHEBP/DeroPay/tree/main/packages/dero-pay#readme",
+  "bugs": {
+    "url": "https://github.com/DHEBP/DeroPay/issues"
+  },
   "files": [
     "dist",
     "README.md",
@@ -96,6 +195,7 @@
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:exports": "tsup && vitest run --config vitest.exports.config.ts",
+    "test:pack-exports": "node tools/verify-pack-exports.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
@@ -143,5 +243,6 @@
     "next": {
       "optional": true
     }
-  }
+  },
+  "module": "./dist/core/index.js"
 }

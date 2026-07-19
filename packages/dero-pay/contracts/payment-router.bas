@@ -36,6 +36,7 @@
 // =============================================================================
 
 Function Initialize(feeRecipientAddress String, feeBasisPoints Uint64) Uint64
+5 IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF EXISTS("merchant") THEN GOTO 200
 30 IF feeBasisPoints > 10000 THEN GOTO 200

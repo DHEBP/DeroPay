@@ -45,8 +45,10 @@
 */
 
 Function Initialize() Uint64
+5   IF IS_ADDRESS_VALID(SIGNER()) == 0 THEN GOTO 200
 10  STORE("owner", SIGNER())
 20  RETURN 0
+200 RETURN 1
 End Function
 
 Function Pay(merchant_id String, order_id String) Uint64

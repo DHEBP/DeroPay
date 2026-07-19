@@ -20,7 +20,10 @@ export default defineConfig({
     "x402/next": "src/x402/next.ts",
     "agent/index": "src/agent/index.ts",
   },
-  format: ["esm"],
+  // Dual-format: ESM (.js) for modern consumers + CJS (.cjs) so CommonJS Node
+  // backends (e.g. the Medusa plugin, which require()s dero-pay/gateway) can load
+  // the SDK. tsup emits matching .d.ts / .d.cts declarations per format.
+  format: ["esm", "cjs"],
   dts: true,
   sourcemap: true,
   clean: true,

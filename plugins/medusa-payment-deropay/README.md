@@ -6,7 +6,7 @@ DeroPay payment provider for Medusa.js v2 — accept DERO payments in your self-
 
 Before installing the plugin you need two things running:
 
-1. **A DeroPay gateway** pointed at a DERO wallet RPC. See the [gateway setup guide](https://deropay.com/docs/guides/gateway-server) for a step-by-step walkthrough. By default the gateway listens on port `3080`.
+1. **A DeroPay gateway** pointed at a DERO wallet RPC. See the [gateway setup guide](https://github.com/DHEBP/DeroPay/blob/main/apps/gateway/README.md) for a step-by-step walkthrough. By default the gateway listens on port `3080`.
 2. **Medusa.js v2** — this plugin requires Medusa v2 and will not work on v1.
 
 ## Installation

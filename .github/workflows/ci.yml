@@ -34,8 +34,11 @@ jobs:
       - name: Run SDK unit tests
         run: bun run --cwd packages/dero-pay test:unit
 
-      - name: Verify published subpath exports resolve
+      - name: Verify subpath exports resolve (in-workspace smoke)
         run: bun run --cwd packages/dero-pay test:exports
+
+      - name: Verify PUBLISHED exports resolve (pack + install outside workspace)
+        run: npm run --prefix packages/dero-pay test:pack-exports
 
       - name: Build SDK
         run: bun run --cwd packages/dero-pay build

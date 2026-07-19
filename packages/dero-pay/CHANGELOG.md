@@ -2,6 +2,18 @@
 
 All notable changes to `dero-pay` will be documented in this file.
 
+## 0.5.0 - 2026-07-18
+
+### Added
+
+- **PREMINT escrow keeper** (`dero-pay/escrow`) — pre-mints and confirms empty escrow boxes into a durable pool so checkout only has to bind, moving the ~1-block mint-confirm latency off the payment path. Memory + SQLite inventory backends; atomic single-winner pop; opt-in `enableEscrowKeeper` on the engine with a multi-process durability guard.
+- Published the `./x402` (+ `/types`, `/server`, `/client`, `/next`) and `./agent` export subpaths — x402 payment gating and the autonomous agent payer are now installable from the package (previously present in-tree but not shipped).
+
+### Fixed
+
+- A rejected/underpaid escrow deposit refunds the buyer and leaves the contract untouched (verified on mainnet).
+- Package metadata: added `bugs` URL; corrected the published `repository.url` to the case-exact `DHEBP/DeroPay`.
+
 ## 0.4.0 - 2026-06-22
 
 ### Added

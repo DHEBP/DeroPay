@@ -1,10 +1,10 @@
 {
   "name": "medusa-payment-deropay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DeroPay payment provider for Medusa.js v2 — accept DERO payments in your Medusa store.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch"
@@ -12,8 +12,17 @@
   "keywords": ["medusa", "medusa-plugin", "medusa-payment", "dero", "crypto", "deropay"],
   "author": "DHEBP",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DHEBP/DeroPay.git",
+    "directory": "plugins/medusa-payment-deropay"
+  },
+  "homepage": "https://github.com/DHEBP/DeroPay/tree/main/plugins/medusa-payment-deropay#readme",
+  "bugs": {
+    "url": "https://github.com/DHEBP/DeroPay/issues"
+  },
   "dependencies": {
-    "dero-pay": "workspace:*"
+    "dero-pay": "^0.5.0"
   },
   "peerDependencies": {
     "@medusajs/framework": "^2.0.0"

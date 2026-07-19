@@ -2,6 +2,16 @@
 
 All notable changes to `dero-pay` will be documented in this file.
 
+## 0.5.1 - 2026-07-19
+
+### Changed
+
+- Stopped shipping sourcemaps in the published tarball. The `.js.map` files
+  embedded full `sourcesContent`, adding bloat with no benefit — the source is
+  public MIT on GitHub. Clone the repo to debug against source.
+- Added the `./package.json` export subpath so tooling that resolves it (some
+  bundlers, framework config loaders) no longer errors on this package.
+
 ## 0.5.0 - 2026-07-18
 
 ### Added

@@ -25,7 +25,10 @@ export default defineConfig({
   // the SDK. tsup emits matching .d.ts / .d.cts declarations per format.
   format: ["esm", "cjs"],
   dts: true,
-  sourcemap: true,
+  // No sourcemaps in the published tarball: they embed full sourcesContent
+  // (bloat) and the source is public MIT on GitHub, so shipping maps buys
+  // nothing. Consumers who want the source clone the repo.
+  sourcemap: false,
   clean: true,
   external: ["react", "react-dom", "next", "better-sqlite3"],
   splitting: true,

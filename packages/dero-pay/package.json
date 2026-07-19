@@ -1,11 +1,12 @@
 {
   "name": "dero-pay",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Payment processing SDK for DERO \u2014 Accept DERO payments with invoices, payment monitoring, webhooks, and a merchant dashboard.",
   "type": "module",
   "main": "./dist/core/index.cjs",
   "types": "./dist/core/index.d.ts",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
       "import": {
         "types": "./dist/core/index.d.ts",

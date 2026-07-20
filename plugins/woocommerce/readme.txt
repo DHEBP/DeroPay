@@ -2,7 +2,7 @@
 Contributors: dhebp
 Tags: woocommerce, payment gateway, cryptocurrency, dero, crypto payments, privacy
 Requires at least: 6.2
-Tested up to: 6.9
+Tested up to: 7.0
 Stable tag: 0.1.0
 Requires PHP: 8.0
 WC requires at least: 7.0

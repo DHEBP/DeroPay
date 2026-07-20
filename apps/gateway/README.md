@@ -117,6 +117,54 @@ and `dashboard` so they're reachable only through Caddy.
 > reason — the wallet RPC controls your funds. Expose only `gateway` and
 > `dashboard`, exactly as above.
 
+## Docker images
+
+Prebuilt images for the full self-host stack are published to GitHub Container
+Registry on every tagged release — run the stack without a build toolchain:
+
+- `ghcr.io/dhebp/deropay-gateway`
+- `ghcr.io/dhebp/deropay-dashboard`
+- `ghcr.io/dhebp/deropay-daemon`
+- `ghcr.io/dhebp/deropay-wallet`
+
+```bash
+cd apps/gateway
+docker compose up -d --pull always
+```
+
+`--pull always` is what fetches the prebuilt images — a bare `docker compose up`
+builds from source if the image isn't already present locally. Images are tagged
+`latest` and by version (both `v0.5.1` and `0.5.1` resolve). To pin a release,
+set `DEROPAY_TAG` in your `.env`:
+
+```
+DEROPAY_TAG=v0.5.1
+```
+
+**Build from source instead** (local changes, air-gapped, or trust-minimizing):
+
+```bash
+docker compose build   # or: docker compose up -d --build
+```
+
+Every service keeps its `build:` definition, so building locally works exactly
+as before. Images are multi-arch (`linux/amd64` + `linux/arm64`) — Docker pulls
+the one matching your host automatically.
+
+### Publishing (maintainer)
+
+A tagged release (`git tag v0.x.y && git push --tags`) triggers
+[`docker-publish.yml`](../../.github/workflows/docker-publish.yml), which builds
+and pushes all four images. **One-time after the first publish:** ghcr packages
+are created private by default, even under a public repo — flip each public so
+merchants can pull without auth:
+
+```bash
+for c in gateway dashboard daemon wallet; do
+  gh api -X PATCH "/user/packages/container/deropay-$c" -f visibility=public
+done
+```
+
 ## API Reference
 
 All endpoints except `/health`, `/status`, `/price`, and `/convert` require the `X-DeroPay-ApiKey` header.

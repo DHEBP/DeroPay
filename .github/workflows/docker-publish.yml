@@ -1,0 +1,163 @@
+name: deropay-docker-publish
+
+# Builds and publishes the four self-host stack images to GitHub Container
+# Registry so a merchant can `docker compose pull` prebuilt images instead of
+# building locally. Runs independently of deropay-release: a Docker hiccup must
+# never sink the SDK / WooCommerce GitHub Release, and vice-versa.
+#
+# ONE-TIME after the first publish: ghcr packages are created PRIVATE by
+# default, even under a public repo. Flip each package public once (see the
+# README "Docker images" section) or unauthenticated `docker compose pull`
+# will 401.
+#
+# Multi-arch (linux/amd64 + linux/arm64). Each arch is built on its OWN native
+# runner (ubuntu-latest / ubuntu-24.04-arm) and the per-arch digests are merged
+# into one manifest — no QEMU emulation, so the arm64 leg (which compiles
+# better-sqlite3 for the bun images) is fast and reliable on the release path.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag to build/publish (e.g. v0.5.1). Backfills images for an existing release."
+        required: true
+        type: string
+      push:
+        description: "Push images to the registry (false = build-only dry run)."
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  # 1) Build each (image × arch) on its native runner and push BY DIGEST only
+  #    (no tags yet). The merge job stitches the per-arch digests together.
+  build:
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each image carries its own build context: gateway/dashboard build from
+        # the repo root, daemon/wallet from apps/gateway (mirrors compose).
+        component:
+          - { name: gateway, context: ., dockerfile: apps/gateway/Dockerfile }
+          - { name: dashboard, context: ., dockerfile: apps/dashboard/Dockerfile }
+          - { name: daemon, context: apps/gateway, dockerfile: apps/gateway/docker/derod.Dockerfile }
+          - { name: wallet, context: apps/gateway, dockerfile: apps/gateway/docker/wallet.Dockerfile }
+        platform:
+          - { arch: amd64, runner: ubuntu-latest, pair: linux/amd64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, pair: linux/arm64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Image name (lowercased for ghcr)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/deropay-${{ matrix.component.name }}" >> "$GITHUB_ENV"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component.context }}
+          file: ${{ matrix.component.dockerfile }}
+          platforms: ${{ matrix.platform.pair }}
+          # DERO_RELEASE is not passed here on purpose: only derod/wallet consume
+          # it and both default to Release142 in their Dockerfile ARG (single
+          # source of truth). Passing it to gateway/dashboard would warn.
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+          cache-from: type=gha,scope=${{ matrix.component.name }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}-${{ matrix.platform.arch }}
+
+      - name: Export digest
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Upload digest
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component.name }}-${{ matrix.platform.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # 2) Merge each image's per-arch digests into one multi-arch manifest and
+  #    apply the human-facing tags (v0.5.1, 0.5.1, latest).
+  merge:
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [gateway, dashboard, daemon, wallet]
+    steps:
+      - name: Image name (lowercased for ghcr)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/deropay-${{ matrix.component }}" >> "$GITHUB_ENV"
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.component }}-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Publish BOTH the v-prefixed (v0.5.1) and bare (0.5.1) forms on a tag
+          # push so either pin resolves; on a manual backfill, publish the exact
+          # ref the operator typed.
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=raw,value=${{ inputs.ref }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.ref != '' }}
+          flavor: |
+            latest=false
+
+      - name: Create multi-arch manifest and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Inspect
+        run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"

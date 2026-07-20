@@ -1,5 +1,8 @@
 services:
   gateway:
+    # Pull the prebuilt image by default; `docker compose build` still builds
+    # from source. Pin a release with DEROPAY_TAG in .env (default: latest).
+    image: ghcr.io/dhebp/deropay-gateway:${DEROPAY_TAG:-latest}
     build:
       context: ../../
       dockerfile: apps/gateway/Dockerfile
@@ -28,6 +31,7 @@ services:
   # render sample data. Flip to live per-session from the UI, which then hits
   # the wallet/daemon RPC wired below.
   dashboard:
+    image: ghcr.io/dhebp/deropay-dashboard:${DEROPAY_TAG:-latest}
     build:
       context: ../../
       dockerfile: apps/dashboard/Dockerfile
@@ -48,6 +52,7 @@ services:
   # not the multi-week full replay). To use a remote node instead, set
   # DERO_DAEMON_ADDRESS in .env and point the wallet at it.
   daemon:
+    image: ghcr.io/dhebp/deropay-daemon:${DEROPAY_TAG:-latest}
     build:
       context: .
       dockerfile: docker/derod.Dockerfile
@@ -63,6 +68,7 @@ services:
   # Auto-creates a merchant wallet on first run and writes the recovery
   # seed to SEED-BACKUP.txt inside the wallet volume. BACK IT UP.
   wallet:
+    image: ghcr.io/dhebp/deropay-wallet:${DEROPAY_TAG:-latest}
     build:
       context: .
       dockerfile: docker/wallet.Dockerfile

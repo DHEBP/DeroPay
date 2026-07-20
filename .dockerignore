@@ -1,0 +1,26 @@
+# Keep the ~6GB monorepo working tree out of the Docker build context. The
+# gateway build installs deps and builds inside the image, so none of this is
+# needed — excluding it slashes context transfer and prevents stale artifacts
+# from leaking into layers.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/build
+.git
+.github
+
+# Local data / secrets — never ship into the build context or image layers.
+**/.env
+**/.env.*
+**/data
+**/*.db
+**/*.db-*
+**/SEED-BACKUP.txt
+
+# Noise
+**/*.log
+**/coverage
+**/.DS_Store
+**/.vscode
+**/.idea

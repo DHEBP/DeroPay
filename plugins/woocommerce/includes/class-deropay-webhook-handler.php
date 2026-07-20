@@ -18,7 +18,9 @@ class DeroPay_Webhook_Handler {
      */
     public static function handle() {
         $payload   = file_get_contents('php://input');
-        $signature = $_SERVER['HTTP_X_DEROPAY_SIGNATURE'] ?? '';
+        $signature = isset($_SERVER['HTTP_X_DEROPAY_SIGNATURE'])
+            ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_DEROPAY_SIGNATURE']))
+            : '';
 
         if (empty($payload) || empty($signature)) {
             status_header(400);
@@ -81,35 +83,38 @@ class DeroPay_Webhook_Handler {
                 if (!$order->is_paid()) {
                     $order->payment_complete($invoice['payments'][0]['txid'] ?? '');
                     $order->add_order_note(sprintf(
-                        'DeroPay payment confirmed. Invoice: %s, Amount: %s',
+                        /* translators: 1: invoice ID, 2: amount received */
+                        __('DeroPay payment confirmed. Invoice: %1$s, Amount: %2$s', 'deropay-for-woocommerce'),
                         $invoice['id'],
                         $invoice['amountReceived']
                     ));
 
                     $target_status = $gateway->get_option('order_status', 'processing');
                     if ($target_status === 'completed') {
-                        $order->update_status('completed', 'DeroPay payment completed.');
+                        $order->update_status('completed', __('DeroPay payment completed.', 'deropay-for-woocommerce'));
                     }
                 }
                 break;
 
             case 'payment.detected':
                 $order->add_order_note(sprintf(
-                    'DeroPay payment detected — awaiting confirmations. TXID: %s',
+                    /* translators: %s: transaction ID */
+                    __('DeroPay payment detected — awaiting confirmations. TXID: %s', 'deropay-for-woocommerce'),
                     $event['payment']['txid'] ?? 'unknown'
                 ));
-                $order->update_status('on-hold', 'DERO payment detected, awaiting confirmations.');
+                $order->update_status('on-hold', __('DERO payment detected, awaiting confirmations.', 'deropay-for-woocommerce'));
                 break;
 
             case 'invoice.expired':
                 if (!$order->is_paid()) {
-                    $order->update_status('cancelled', 'DeroPay invoice expired — no payment received.');
+                    $order->update_status('cancelled', __('DeroPay invoice expired — no payment received.', 'deropay-for-woocommerce'));
                 }
                 break;
 
             case 'invoice.partial':
                 $order->add_order_note(sprintf(
-                    'DeroPay partial payment received: %s of %s',
+                    /* translators: 1: amount received, 2: amount due */
+                    __('DeroPay partial payment received: %1$s of %2$s', 'deropay-for-woocommerce'),
                     $invoice['amountReceived'],
                     $invoice['amount']
                 ));

@@ -11,6 +11,8 @@
  * Requires at least: 6.2
  * WC requires at least: 7.0
  * WC tested up to: 9.0
+ * Text Domain: deropay-for-woocommerce
+ * Domain Path: /languages
  */
 
 defined('ABSPATH') || exit;
@@ -24,7 +26,11 @@ add_action('plugins_loaded', 'deropay_wc_init');
 function deropay_wc_init() {
     if (!class_exists('WC_Payment_Gateway')) {
         add_action('admin_notices', function () {
-            echo '<div class="error"><p><strong>DeroPay for WooCommerce</strong> requires WooCommerce to be installed and active.</p></div>';
+            echo '<div class="error"><p>' . sprintf(
+                /* translators: %s: plugin name, bolded */
+                esc_html__('%s requires WooCommerce to be installed and active.', 'deropay-for-woocommerce'),
+                '<strong>DeroPay for WooCommerce</strong>'
+            ) . '</p></div>';
         });
         return;
     }

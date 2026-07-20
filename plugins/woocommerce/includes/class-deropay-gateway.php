@@ -19,8 +19,8 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
 
     public function __construct() {
         $this->id                 = 'deropay';
-        $this->method_title       = 'DeroPay';
-        $this->method_description = 'Accept DERO cryptocurrency payments. Requires a running DeroPay gateway server.';
+        $this->method_title       = __('DeroPay', 'deropay-for-woocommerce');
+        $this->method_description = __('Accept DERO cryptocurrency payments. Requires a running DeroPay gateway server.', 'deropay-for-woocommerce');
         $this->has_fields         = false;
         $this->icon               = DEROPAY_WC_PLUGIN_URL . 'assets/dero-icon.svg';
 
@@ -42,48 +42,48 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
     public function init_form_fields() {
         $this->form_fields = [
             'enabled' => [
-                'title'   => 'Enable/Disable',
+                'title'   => __('Enable/Disable', 'deropay-for-woocommerce'),
                 'type'    => 'checkbox',
-                'label'   => 'Enable DeroPay',
+                'label'   => __('Enable DeroPay', 'deropay-for-woocommerce'),
                 'default' => 'no',
             ],
             'title' => [
-                'title'       => 'Title',
+                'title'       => __('Title', 'deropay-for-woocommerce'),
                 'type'        => 'text',
-                'description' => 'Payment method name shown to customers at checkout.',
-                'default'     => 'Pay with DERO',
+                'description' => __('Payment method name shown to customers at checkout.', 'deropay-for-woocommerce'),
+                'default'     => __('Pay with DERO', 'deropay-for-woocommerce'),
                 'desc_tip'    => true,
             ],
             'description' => [
-                'title'       => 'Description',
+                'title'       => __('Description', 'deropay-for-woocommerce'),
                 'type'        => 'textarea',
-                'description' => 'Description shown to customers at checkout.',
-                'default'     => 'Pay with DERO — private, fast, no account needed.',
+                'description' => __('Description shown to customers at checkout.', 'deropay-for-woocommerce'),
+                'default'     => __('Pay with DERO — private, fast, no account needed.', 'deropay-for-woocommerce'),
             ],
             'gateway_url' => [
-                'title'       => 'Gateway Server URL',
+                'title'       => __('Gateway Server URL', 'deropay-for-woocommerce'),
                 'type'        => 'text',
-                'description' => 'URL of your DeroPay gateway server (e.g. http://localhost:3080 or https://pay.yourstore.com).',
+                'description' => __('URL of your DeroPay gateway server (e.g. http://localhost:3080 or https://pay.yourstore.com).', 'deropay-for-woocommerce'),
                 'default'     => 'http://localhost:3080',
             ],
             'api_key' => [
-                'title'       => 'API Key',
+                'title'       => __('API Key', 'deropay-for-woocommerce'),
                 'type'        => 'password',
-                'description' => 'API key for your DeroPay gateway server. Generate one with <code>bun run generate-key</code>.',
+                'description' => __('API key for your DeroPay gateway server. Generate one with <code>bun run generate-key</code>.', 'deropay-for-woocommerce'),
             ],
             'webhook_secret' => [
-                'title'       => 'Webhook Secret',
+                'title'       => __('Webhook Secret', 'deropay-for-woocommerce'),
                 'type'        => 'password',
-                'description' => 'Must match the <code>DEROPAY_WEBHOOK_SECRET</code> on your gateway server.',
+                'description' => __('Must match the <code>DEROPAY_WEBHOOK_SECRET</code> on your gateway server.', 'deropay-for-woocommerce'),
             ],
             'order_status' => [
-                'title'       => 'Order Status After Payment',
+                'title'       => __('Order Status After Payment', 'deropay-for-woocommerce'),
                 'type'        => 'select',
-                'description' => 'Status to set when DERO payment is confirmed.',
+                'description' => __('Status to set when DERO payment is confirmed.', 'deropay-for-woocommerce'),
                 'default'     => 'processing',
                 'options'     => [
-                    'processing' => 'Processing',
-                    'completed'  => 'Completed',
+                    'processing' => __('Processing', 'deropay-for-woocommerce'),
+                    'completed'  => __('Completed', 'deropay-for-woocommerce'),
                 ],
             ],
         ];
@@ -124,7 +124,8 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
         ]);
 
         if (is_wp_error($result)) {
-            wc_add_notice('Payment error: ' . $result->get_error_message(), 'error');
+            /* translators: %s: error message from the gateway server */
+            wc_add_notice(sprintf(__('Payment error: %s', 'deropay-for-woocommerce'), $result->get_error_message()), 'error');
             return ['result' => 'failure'];
         }
 
@@ -135,7 +136,7 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
         $order->update_meta_data('_deropay_expires_at', $result['expiresAt']);
         $order->save();
 
-        $order->update_status('pending', 'Awaiting DERO payment.');
+        $order->update_status('pending', __('Awaiting DERO payment.', 'deropay-for-woocommerce'));
 
         WC()->cart->empty_cart();
 
@@ -168,7 +169,7 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
             $status_nonce = wp_create_nonce('deropay_check_status');
         ?>
         <div id="deropay-payment" class="deropay-payment-box" data-invoice-id="<?php echo esc_attr($invoice_id); ?>" data-status-url="<?php echo esc_url($status_url); ?>" data-expires="<?php echo esc_attr($expires_at); ?>" data-qr="<?php echo esc_attr($qr_data); ?>" data-nonce="<?php echo esc_attr($status_nonce); ?>">
-            <h2>Pay with DERO</h2>
+            <h2><?php esc_html_e('Pay with DERO', 'deropay-for-woocommerce'); ?></h2>
             <?php
                 $dero_display = number_format((float)$amount / 100000, 5);
                 $fiat_amount  = $order->get_total();
@@ -179,15 +180,15 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
                 <span style="color:#666; font-size:0.9em;">(<?php echo esc_html($fiat_currency . ' ' . $fiat_amount); ?>)</span>
             </p>
             <div class="deropay-address-box">
-                <label>Send DERO to this address:</label>
+                <label><?php esc_html_e('Send DERO to this address:', 'deropay-for-woocommerce'); ?></label>
                 <code class="deropay-address"><?php echo esc_html($address); ?></code>
-                <button type="button" class="button deropay-copy-btn" onclick="navigator.clipboard.writeText('<?php echo esc_js($address); ?>')">Copy</button>
+                <button type="button" class="button deropay-copy-btn" onclick="navigator.clipboard.writeText('<?php echo esc_js($address); ?>')"><?php esc_html_e('Copy', 'deropay-for-woocommerce'); ?></button>
             </div>
             <div class="deropay-qr">
                 <canvas id="deropay-qr-canvas" width="200" height="200" aria-label="DERO payment QR code"></canvas>
             </div>
             <div class="deropay-status">
-                <p id="deropay-status-text">Waiting for payment...</p>
+                <p id="deropay-status-text"><?php esc_html_e('Waiting for payment...', 'deropay-for-woocommerce'); ?></p>
                 <div id="deropay-countdown"></div>
             </div>
         </div>
@@ -382,11 +383,11 @@ class WC_Gateway_DeroPay extends WC_Payment_Gateway {
      * AJAX endpoint for checking invoice status from the payment page.
      */
     public function ajax_check_status() {
-        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field($_GET['_wpnonce']), 'deropay_check_status')) {
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'deropay_check_status')) {
             wp_send_json_error(['message' => 'Invalid or expired nonce'], 403);
         }
 
-        $invoice_id = sanitize_text_field($_GET['invoice_id'] ?? '');
+        $invoice_id = sanitize_text_field(wp_unslash($_GET['invoice_id'] ?? ''));
         if (empty($invoice_id)) {
             wp_send_json_error(['message' => 'Missing invoice_id'], 400);
         }

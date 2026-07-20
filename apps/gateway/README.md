@@ -16,10 +16,26 @@ bun run generate-key
 
 ```bash
 cp .env.example .env
-# Edit .env with your wallet RPC URL and API key
+# Edit .env: set DEROPAY_API_KEY and a strong DERO_RPC_PASSWORD
 ```
 
 ### 3. Run
+
+**Production (Docker — one command):**
+
+```bash
+docker compose up -d
+```
+
+This builds and starts three services: a DERO daemon (`--fastsync`), a wallet
+that **auto-creates a merchant wallet on first run**, and the gateway on
+`http://localhost:3080`. The daemon and wallet images are built from the
+official DERO release binaries — no image pull required.
+
+> **Back up your seed.** On first run the wallet writes its 25-word recovery
+> seed to `SEED-BACKUP.txt` inside the `wallet-data` volume and prints it to
+> the container logs. Those words are your money — save them offline, then
+> delete the file. See [Wallet & node](#wallet--node) below.
 
 **Development (local wallet):**
 
@@ -28,13 +44,23 @@ bun install
 bun run dev
 ```
 
-**Production (Docker):**
+Dev mode expects a DERO wallet + daemon you run yourself; point
+`DERO_WALLET_RPC_URL` / `DERO_DAEMON_RPC_URL` at them.
 
-```bash
-docker compose up -d
-```
+### Wallet & node
 
-The gateway starts on `http://localhost:3080`.
+- **Auto-created wallet.** The `wallet` service creates `merchant.db` on first
+  boot if none exists, and writes its recovery seed to `SEED-BACKUP.txt` in the
+  `wallet-data` volume. The RPC is protected by (a) binding to the internal
+  Docker network only — there is no host port — and (b) `--rpc-login`
+  credentials (`DERO_RPC_USERNAME`/`DERO_RPC_PASSWORD`, required). Do not expose
+  port `10103` to the internet. Set `WALLET_PASSWORD` to also encrypt the wallet
+  file at rest; leave it empty for an unencrypted file (protected only by the
+  network isolation + login above).
+- **Node mode.** The default daemon is self-hosted with `--fastsync` (a recent
+  state snapshot — hours and a few GB, not the multi-week full replay). To use
+  a remote node instead, set `DERO_DAEMON_ADDRESS=host:port` in `.env` and skip
+  the bundled node with `docker compose up gateway wallet`.
 
 ## API Reference
 

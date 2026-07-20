@@ -7,7 +7,12 @@ services:
       - "3080:3080"
     environment:
       - DERO_WALLET_RPC_URL=http://wallet:10103/json_rpc
-      - DERO_DAEMON_RPC_URL=http://daemon:10102/json_rpc
+      # Bundled node by default; DERO_DAEMON_ADDRESS overrides both this and
+      # the wallet's daemon (to go remote, also start only gateway + wallet).
+      - DERO_DAEMON_RPC_URL=http://${DERO_DAEMON_ADDRESS:-daemon:10102}/json_rpc
+      # Basic auth for the wallet RPC (must match WALLET_RPC_LOGIN below).
+      - DERO_RPC_USERNAME=${DERO_RPC_USERNAME:-deropay}
+      - DERO_RPC_PASSWORD=${DERO_RPC_PASSWORD:?set DERO_RPC_PASSWORD in .env}
       - DEROPAY_STORE=sqlite
       - DEROPAY_SQLITE_PATH=/app/data/deropay.db
       - DEROPAY_API_KEY=${DEROPAY_API_KEY}
@@ -19,32 +24,42 @@ services:
       - wallet
     restart: unless-stopped
 
-  # DERO daemon — syncs the blockchain
+  # DERO daemon — syncs the blockchain (built from the official release).
+  # Default: a self-hosted node using --fastsync (a recent state snapshot,
+  # not the multi-week full replay). To use a remote node instead, set
+  # DERO_DAEMON_ADDRESS in .env and point the wallet at it.
   daemon:
-    image: deroproject/derod:latest
-    command: ["--rpc-bind=0.0.0.0:10102"]
+    build:
+      context: .
+      dockerfile: docker/derod.Dockerfile
+    command: ["--rpc-bind=0.0.0.0:10102", "--fastsync"]
     ports:
-      - "10102:10102"
+      # P2P — needed to find peers. RPC (10102) stays internal-only.
       - "10101:10101"
     volumes:
       - daemon-data:/root/.dero
     restart: unless-stopped
 
-  # DERO wallet — receives payments
-  # You must create a wallet first, then mount it here.
-  # See README for wallet setup instructions.
-  # Port 10103 exposed so test-router.ts can connect from host.
+  # DERO wallet — receives payments (built from the official release).
+  # Auto-creates a merchant wallet on first run and writes the recovery
+  # seed to SEED-BACKUP.txt inside the wallet volume. BACK IT UP.
   wallet:
-    image: deroproject/dero-wallet-cli:latest
-    command:
-      [
-        "--wallet-file=/wallet/merchant.db",
-        "--rpc-server",
-        "--rpc-bind=0.0.0.0:10103",
-        "--daemon-address=daemon:10102",
-      ]
-    ports:
-      - "10103:10103"
+    build:
+      context: .
+      dockerfile: docker/wallet.Dockerfile
+    environment:
+      - WALLET_FILE=/wallet/merchant.db
+      # Optional at-rest encryption. If set, the auto-created wallet is
+      # encrypted with it; empty = unencrypted file (network-isolated + login).
+      - WALLET_PASSWORD=${WALLET_PASSWORD:-}
+      - DAEMON_ADDRESS=${DERO_DAEMON_ADDRESS:-daemon:10102}
+      - RPC_BIND=0.0.0.0:10103
+      - WALLET_RPC_LOGIN=${DERO_RPC_USERNAME:-deropay}:${DERO_RPC_PASSWORD:?set DERO_RPC_PASSWORD in .env}
+    # NOTE: no host port mapping — the wallet RPC is reachable only by the
+    # gateway over the internal Docker network (as wallet:10103). To run
+    # test-router.ts from the host, uncomment the mapping below (dev only):
+    # ports:
+    #   - "127.0.0.1:10103:10103"
     volumes:
       - wallet-data:/wallet
     depends_on:

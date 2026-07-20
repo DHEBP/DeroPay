@@ -12,7 +12,7 @@ The gateway talks to two DERO RPC endpoints — a **wallet RPC** (create integra
 
 ## Single-merchant gateway (docker-compose)
 
-`apps/gateway/docker-compose.yml` brings up three services: the gateway, a DERO `derod` daemon, and a DERO wallet (`dero-wallet-cli`). The daemon syncs the chain; the wallet receives payments; the gateway exposes the REST API on port `3080`.
+`apps/gateway/docker-compose.yml` brings up three services: the gateway, a DERO `derod` daemon, and a DERO wallet (`dero-wallet-cli`). The daemon syncs the chain; the wallet receives payments; the gateway exposes the REST API on port `3080`. The daemon and wallet images are built locally from the official DERO release binaries (the upstream project publishes no Docker images), so the only prerequisite is Docker itself.
 
 ### 1. Generate an API key
 
@@ -31,11 +31,15 @@ cp .env.example .env
 # Edit .env: set DEROPAY_API_KEY, webhook URL/secret, RPC URLs
 ```
 
-The compose file reads `DEROPAY_API_KEY`, `DEROPAY_WEBHOOK_URL`, and `DEROPAY_WEBHOOK_SECRET` from the environment (`.env`). It hard-wires the RPC URLs to the in-network `wallet` and `daemon` services and sets `DEROPAY_STORE=sqlite` with the database at `/app/data/deropay.db` on a named volume.
+The compose file reads `DEROPAY_API_KEY`, `DEROPAY_WEBHOOK_URL`, `DEROPAY_WEBHOOK_SECRET`, and `DERO_RPC_USERNAME`/`DERO_RPC_PASSWORD` from the environment (`.env`). It hard-wires the RPC URLs to the in-network `wallet` and `daemon` services and sets `DEROPAY_STORE=sqlite` with the database at `/app/data/deropay.db` on a named volume. **`DERO_RPC_PASSWORD` is required** — it becomes the wallet's `--rpc-login` credential and the gateway authenticates with it.
 
-### 3. Provide a wallet
+### 3. Wallet (auto-created)
 
-The `wallet` service runs `dero-wallet-cli` against `/wallet/merchant.db` with `--rpc-server`. You must create that wallet file first and mount it into the `wallet-data` volume — the compose file does not create one for you. See the DERO wallet documentation for creating a wallet in RPC mode.
+The `wallet` service runs `dero-wallet-cli` against `/wallet/merchant.db` with `--rpc-server`. On first run it **auto-creates the wallet** if the file is absent and writes the 25-word recovery seed to `SEED-BACKUP.txt` in the `wallet-data` volume (and to the container logs). **Back those words up offline immediately, then delete the file** — they are the only way to recover the merchant's funds.
+
+The auto-created wallet's RPC is protected by binding to the internal Docker network only (no host port) plus `--rpc-login`. Set `WALLET_PASSWORD` in `.env` to also encrypt the wallet file at rest (it encrypts the auto-created wallet and opens a wallet you mount yourself); leave it empty for an unencrypted file. Changing `WALLET_PASSWORD` does not re-encrypt an existing wallet.
+
+**Node mode.** The daemon defaults to a self-hosted node with `--fastsync` (a recent state snapshot — hours and a few GB, not the multi-week full replay). To point at a remote node instead, set `DERO_DAEMON_ADDRESS=host:port` — it redirects both the wallet and the gateway — and skip the bundled node with `docker compose up gateway wallet`.
 
 ### 4. Run
 
@@ -43,7 +47,7 @@ The `wallet` service runs `dero-wallet-cli` against `/wallet/merchant.db` with `
 docker compose up -d
 ```
 
-The daemon must finish syncing the chain before payments can be detected. The gateway starts on `http://localhost:3080`; check `GET /health` for wallet connectivity, address, and balance.
+The daemon must finish its fastsync before payments can be detected. The gateway starts on `http://localhost:3080`; check `GET /health` for wallet connectivity, address, and balance.
 
 ### Image build
 
@@ -71,7 +75,7 @@ The gateway serves plain HTTP on `3080`. Terminate TLS in front of it (reverse p
 - Webhook delivery to your store should be HTTPS end to end.
 - If you terminate TLS at a proxy, that proxy is your trusted `X-Forwarded-For` writer — pair it with `DEROPAY_TRUST_PROXY=true`.
 
-Do not expose the wallet or daemon RPC ports publicly. In the compose file the wallet's `10103` and the daemon's `10102`/`10101` are published for local/dev convenience; in production keep RPC on a private network or bind it to localhost, and set `DERO_RPC_USERNAME`/`DERO_RPC_PASSWORD` if the wallet requires auth.
+Do not expose the wallet or daemon RPC ports publicly. The compose file keeps both RPCs on the internal Docker network: the wallet's `10103` has **no host mapping** and the daemon's `10102` is internal-only (only P2P `10101` is published). The wallet RPC is additionally gated by `--rpc-login` (`DERO_RPC_USERNAME`/`DERO_RPC_PASSWORD`). If you uncomment the wallet's host port for tooling like `test-router.ts`, bind it to `127.0.0.1` only.
 
 ### SQLite backup
 

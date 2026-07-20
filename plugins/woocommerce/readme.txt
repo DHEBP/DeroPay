@@ -7,8 +7,8 @@ Stable tag: 0.1.0
 Requires PHP: 8.0
 WC requires at least: 7.0
 WC tested up to: 9.0
-License: GPLv2 or later
-License URI: https://www.gnu.org/licenses/gpl-2.0.html
+License: MIT
+License URI: https://opensource.org/licenses/MIT
 
 Accept DERO cryptocurrency payments on your WooCommerce store. Privacy-preserving, self-hosted, zero fees.
 
@@ -73,7 +73,7 @@ Yes. The plugin connects to a DeroPay gateway server that you run. The gateway s
 
 = What currency do I price products in? =
 
-The plugin automatically converts your WooCommerce order total to DERO at checkout using live price feeds (CoinGecko with TradeOgre as fallback). USD is supported. Price your products in USD as normal.
+Your order total is converted to DERO at checkout by the gateway server using live price feeds (CoinGecko with TradeOgre as fallback). The plugin itself makes no external calls other than to your gateway server. USD is supported — price your products in USD as normal.
 
 = Is the plugin secure? =
 

@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // Emit a self-contained server bundle so the Docker image ships only the
+  // traced runtime, not the whole monorepo node_modules (keeps it ~slim, like
+  // the gateway). `outputFileTracingRoot` must point at the repo root or the
+  // trace misses hoisted workspace deps.
+  output: "standalone",
+  outputFileTracingRoot: path.join(__dirname, "../../"),
   serverExternalPackages: ["better-sqlite3", "dero-pay"],
   // Allow external images for QR codes
   images: {

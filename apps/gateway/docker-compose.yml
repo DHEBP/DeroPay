@@ -24,6 +24,25 @@ services:
       - wallet
     restart: unless-stopped
 
+  # Merchant dashboard (Next.js). Ships in demo mode — the commerce views
+  # render sample data. Flip to live per-session from the UI, which then hits
+  # the wallet/daemon RPC wired below.
+  dashboard:
+    build:
+      context: ../../
+      dockerfile: apps/dashboard/Dockerfile
+    ports:
+      - "3100:3100"
+    environment:
+      - NEXT_PUBLIC_DEMO_MODE=true
+      - WALLET_RPC_URL=http://wallet:10103/json_rpc
+      - DAEMON_RPC_URL=http://${DERO_DAEMON_ADDRESS:-daemon:10102}/json_rpc
+      - DERO_RPC_USERNAME=${DERO_RPC_USERNAME:-deropay}
+      - DERO_RPC_PASSWORD=${DERO_RPC_PASSWORD:?set DERO_RPC_PASSWORD in .env}
+    depends_on:
+      - wallet
+    restart: unless-stopped
+
   # DERO daemon — syncs the blockchain (built from the official release).
   # Default: a self-hosted node using --fastsync (a recent state snapshot,
   # not the multi-week full replay). To use a remote node instead, set

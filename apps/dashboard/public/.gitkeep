@@ -1,0 +1,2 @@
+# Next.js static assets served at the web root.
+# Kept so the Docker standalone COPY has a stable path even when empty.

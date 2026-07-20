@@ -27,10 +27,16 @@ cp .env.example .env
 docker compose up -d
 ```
 
-This builds and starts three services: a DERO daemon (`--fastsync`), a wallet
-that **auto-creates a merchant wallet on first run**, and the gateway on
-`http://localhost:3080`. The daemon and wallet images are built from the
+This builds and starts four services: a DERO daemon (`--fastsync`), a wallet
+that **auto-creates a merchant wallet on first run**, the gateway on
+`http://localhost:3080`, and the merchant dashboard on
+`http://localhost:3100`. The daemon and wallet images are built from the
 official DERO release binaries — no image pull required.
+
+> **The dashboard ships in demo mode.** Its commerce views (orders, products,
+> promotions) render sample data out of the box (`NEXT_PUBLIC_DEMO_MODE=true`).
+> Flip an individual session to live from the dashboard UI, which then talks to
+> the wallet/daemon RPC over the internal Docker network.
 
 > **Back up your seed.** On first run the wallet writes its 25-word recovery
 > seed to `SEED-BACKUP.txt` inside the `wallet-data` volume and prints it to
@@ -60,7 +66,8 @@ Dev mode expects a DERO wallet + daemon you run yourself; point
 - **Node mode.** The default daemon is self-hosted with `--fastsync` (a recent
   state snapshot — hours and a few GB, not the multi-week full replay). To use
   a remote node instead, set `DERO_DAEMON_ADDRESS=host:port` in `.env` and skip
-  the bundled node with `docker compose up gateway wallet`.
+  the bundled node with
+  `docker compose up -d --no-deps wallet gateway dashboard`.
 
 ## API Reference
 

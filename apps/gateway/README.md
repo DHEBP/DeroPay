@@ -155,15 +155,12 @@ the one matching your host automatically.
 
 A tagged release (`git tag v0.x.y && git push --tags`) triggers
 [`docker-publish.yml`](../../.github/workflows/docker-publish.yml), which builds
-and pushes all four images. **One-time after the first publish:** ghcr packages
-are created private by default, even under a public repo — flip each public so
-merchants can pull without auth:
+and pushes all four multi-arch images. They publish public (linked to this
+public repo), so anonymous `docker compose pull` works with no further steps.
 
-```bash
-for c in gateway dashboard daemon wallet; do
-  gh api -X PATCH "/user/packages/container/deropay-$c" -f visibility=public
-done
-```
+If a package ever shows **private** in the DHEBP account's Packages tab, make it
+public via that package's *Package settings → Change visibility* (GitHub has no
+REST endpoint for this — it's a web-UI action).
 
 ## API Reference
 

@@ -1,5 +1,9 @@
 export type GatewayConfig = {
   port: number;
+  // Bind address. Defaults to 0.0.0.0 (all IPv4 interfaces) so the server is
+  // reachable through Docker's port mapping, which forwards to the container's
+  // interface, not its loopback. Set to 127.0.0.1 to restrict to localhost.
+  host: string;
   walletRpcUrl: string;
   daemonRpcUrl: string;
   rpcUsername?: string;
@@ -42,6 +46,7 @@ export function loadConfig(): GatewayConfig {
 
   return {
     port: parseInt(env.PORT ?? "3080", 10),
+    host: env.HOST ?? "0.0.0.0",
     walletRpcUrl: env.DERO_WALLET_RPC_URL ?? "http://127.0.0.1:10103/json_rpc",
     daemonRpcUrl: env.DERO_DAEMON_RPC_URL ?? "http://127.0.0.1:10102/json_rpc",
     rpcUsername: env.DERO_RPC_USERNAME,

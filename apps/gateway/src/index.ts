@@ -18,7 +18,7 @@ console.log(`
   Webhook:    ${config.webhookUrl || "not configured"}
 `);
 
-serve({ fetch: app.fetch, port: config.port }, (info) => {
-  console.log(`Gateway listening on http://localhost:${info.port}`);
-  console.log(`Health check: http://localhost:${info.port}/health`);
+serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
+  console.log(`Gateway listening on http://${config.host}:${info.port}`);
+  console.log(`Health check: http://${config.host}:${info.port}/health`);
 });

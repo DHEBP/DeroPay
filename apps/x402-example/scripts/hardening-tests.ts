@@ -1,6 +1,6 @@
 /**
  * On-chain negative/safety tests for the hardened x402-pay.bas.
- * Local demo harness (scripts/ is gitignored). Run against the simulator.
+ * Local demo harness — run against the simulator.
  *
  *   SCID=<scid> bun scripts/hardening-tests.ts
  *

@@ -5,7 +5,7 @@ session — every value below (SCID, txid, payer, height, receipt) traces to the
 same run.
 
 > **Scope of what was run live.** The end-to-end agent run, the negative
-> spending-firewall check, and the 5/5 contract safety suite below were all
+> spending-firewall check, and the contract safety checks below were all
 > executed against the **hardened** `x402-pay.bas` on a simulator built with
 > DERO PR #18's gas-estimate fix. The signed receipt in the agent run carries
 > `resource`, `merchantId`, and `orderId` in its payload — resource binding is
@@ -58,13 +58,13 @@ $ MAX_ATOMIC_PER_REQUEST=500 bun scripts/agent-pay.ts
 ```
 No wallet invocation occurred (deny happens at policy.reserve, before payDeroRail).
 
-## Contract hardening — on-chain safety suite (5/5)
+## Contract hardening — on-chain safety checks
 
 After a security audit, `x402-pay.bas` was hardened (PANIC-refund on
 duplicate `Pay`, collision-free length-prefixed keys). `scripts/hardening-tests.ts`
 exercises it on the simulator against a fresh deploy
 (SCID `a744a74da55b179f17c82fadd25a5716916afeacacff1a9be4c049b6f11509b4`,
-owner `:30000`, stranger `:30001`):
+owner `:30000`, stranger `:30001`). One capture:
 
 ```
 PASS  happy path records payment + credits contract — balance 0 -> 1000, paid key present
@@ -74,6 +74,19 @@ PASS  NON-OWNER withdraw is a no-op — stranger got nothing
 PASS  OWNER withdraw succeeds (contract balance drains) — balance 1000 -> 0
 5/5 on-chain safety checks passed
 ```
+
+**What these checks do and don't prove.** The happy-path and double-pay
+refund checks are strong positive/negative evidence — they assert exact
+balance deltas and key state on a real chain. The two withdraw *negative*
+checks (over-withdraw, non-owner) are weaker: the harness swallows the
+invoke error (`.catch(() => {})`) and only asserts the contract balance did
+not move, so a `PASS` confirms "no funds left the contract" but does not by
+itself distinguish a contract-enforced rejection from a transaction that
+never landed. The owner-withdraw check is the positive control that proves a
+withdraw can succeed, and it runs only when the contract holds a balance.
+Read the ratio as "checks run in this capture," not a hardening score;
+tightening the negative checks to assert on the revert reason is follow-up
+work.
 
 **Withdraw storage-gas finding (root-caused via DERO PR #18).** An owner
 withdraw performs an external `SEND`, which needs storage gas the wallet's

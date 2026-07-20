@@ -18,7 +18,7 @@ RUN set -eux; \
     esac; \
     url="https://github.com/deroproject/derohe/releases/download/${DERO_RELEASE}/${asset}"; \
     python3 -c "import sys,urllib.request; urllib.request.urlretrieve(sys.argv[1], 'dero.tgz')" "$url"; \
-    tar -xzf dero.tgz --strip-components=1; \
+    tar -xzf dero.tgz --strip-components=2; \
     rm dero.tgz; \
     mv "$bin" dero-wallet-cli; \
     chmod +x dero-wallet-cli; \

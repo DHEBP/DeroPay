@@ -69,6 +69,54 @@ Dev mode expects a DERO wallet + daemon you run yourself; point
   the bundled node with
   `docker compose up -d --no-deps wallet gateway dashboard`.
 
+### HTTPS / reverse proxy (optional)
+
+The stack serves plain HTTP on the internal Docker network. To put it behind a
+public domain with automatic HTTPS, front it with a reverse proxy. This is an
+**example** to adapt to your host, not a bundled service — most operators run
+their own proxy. Here's a minimal [Caddy](https://caddyserver.com) setup:
+
+Add a `caddy` service to `docker-compose.yml`:
+
+```yaml
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - gateway
+      - dashboard
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+```
+
+`Caddyfile` (Caddy fetches and renews Let's Encrypt certs automatically):
+
+```caddyfile
+pay.example.com {
+    reverse_proxy gateway:3080
+}
+
+dash.example.com {
+    reverse_proxy dashboard:3100
+}
+```
+
+**Before it works:** point both hostnames' DNS A records at your server's
+public IP, and open ports `80` + `443`. Swap `example.com` for your domain.
+With the proxy in front you can drop the `ports:` host mappings on `gateway`
+and `dashboard` so they're reachable only through Caddy.
+
+> **Never proxy the `wallet` or `daemon`.** They have no host port for a
+> reason — the wallet RPC controls your funds. Expose only `gateway` and
+> `dashboard`, exactly as above.
+
 ## API Reference
 
 All endpoints except `/health`, `/status`, `/price`, and `/convert` require the `X-DeroPay-ApiKey` header.

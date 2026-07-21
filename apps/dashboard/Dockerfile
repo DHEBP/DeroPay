@@ -25,7 +25,7 @@ COPY packages/dero-pay/package.json packages/dero-pay/
 COPY packages/deropay-widget/package.json packages/deropay-widget/
 COPY plugins/medusa-payment-deropay/package.json plugins/medusa-payment-deropay/
 
-RUN bun install --frozen-lockfile
+RUN bun install
 
 COPY packages/dero-pay/ packages/dero-pay/
 COPY apps/dashboard/ apps/dashboard/

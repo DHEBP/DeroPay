@@ -172,9 +172,9 @@
     },
     "plugins/medusa-payment-deropay": {
       "name": "medusa-payment-deropay",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
-        "dero-pay": "^0.3.0",
+        "dero-pay": "^0.5.0",
       },
       "devDependencies": {
         "@medusajs/framework": "^2.0.0",
@@ -2709,6 +2709,8 @@
     "knex/pg-connection-string": ["pg-connection-string@2.6.2", "", {}, "sha512-ch6OwaeaPYcova4kKZ15sbJ2hKb/VP48ZD2gE7i1J+L4MspCtBMAx8nMgz7bksc7IojCIIWuEhHibSMFH8m8oA=="],
 
     "loose-envify/js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
+
+    "medusa-payment-deropay/dero-pay": ["dero-pay@0.5.1", "", { "dependencies": { "bech32": "^2.0.0", "zod": "^3.23.0" }, "peerDependencies": { "better-sqlite3": ">=9.0.0", "next": ">=14.0.0", "react": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["better-sqlite3", "next", "react"], "bin": { "deropay-bridge": "dist/bridge/cli.js" } }, "sha512-hDktBaoqa35XSSABpB7zO6iVRzxpF6i78w6eCAH/tFfQCt9KnwLf16YL+17IDVxaZurmaYIAM1uZFRS4t9smsg=="],
 
     "micromatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
 

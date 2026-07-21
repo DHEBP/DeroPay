@@ -5,8 +5,9 @@ Status: draft · 2026-07-11 · scheme id `dero-exact` · protocol `x402-deropay-
 This document specifies two trust primitives DeroPay adds on top of the
 [x402](https://x402.org) machine-payment flow:
 
-1. **Resource-bound signed receipts** — proof that a specific payment
-   settled for a specific resource, verifiable offline.
+1. **Resource-bound signed receipts** — a facilitator-signed attestation that
+   a specific payment settled for a specific resource, verifiable offline
+   against the facilitator key.
 2. **Attenuable spending credentials** — macaroon-style capabilities that
    delegate a bounded slice of an agent's spending authority.
 
@@ -45,6 +46,21 @@ payer's deposit** (for a ring-size-2, identifiable signer) — so a second
 deposit to an already-paid order bounces back rather than being absorbed.
 The facilitator (and its key derivation) lives in `apps/facilitator`;
 `src/dero/keys.ts` mirrors the contract's `mkey` format exactly.
+
+### 1b. Privacy of the payer (READ THIS)
+
+The `paid_<mkey>` key above is the payer's **plaintext DERO address**, written
+by a **ring-size-2** (identifiable) signer — DERO's default is ring size 16.
+Ring-2 is intentional: refund-on-reject and owner-only-withdraw need a real,
+identifiable signer (an anonymous ring>2 caller writes a zero address and
+cannot be refunded). The consequence is that **the x402 payer is not
+sender-anonymous**: every payment publicly and permanently links
+payer ↔ merchant ↔ order ↔ amount ↔ block height, readable by anyone via
+`DERO.GetSC`. This is a **regression from DERO's baseline sender anonymity**,
+not an incremental leak. Account *balances* stay homomorphically encrypted;
+payer *identity* does not. If payer privacy matters, do not use the x402 rail
+for that payment — there is no ring-16 mode, the scheme's correctness depends
+on the identifiable signer — or fund each payment from a fresh, unlinked wallet.
 
 ---
 
@@ -104,8 +120,8 @@ amount.
 ### 2.1 The hole, and what this actually closes
 
 "Five Attacks on x402" (arXiv:2605.11781) and "Free-Riding the Agentic
-Web" (arXiv:2605.30998) show that **no audited x402 SDK binds a payment
-authorization to the resource purchased**: the EIP-3009 signature covers
+Web" (arXiv:2605.30998) report that **the x402 SDKs they examined do not bind
+a payment authorization to the resource purchased**: the EIP-3009 signature covers
 `from / to / value / nonce` but not the resource URL, so a payment signed
 for resource A can be replayed for B, C, D on the same server (resource
 leakage measured up to 100% against official SDKs). No v2 remediation

@@ -3,6 +3,10 @@
  * JSON-RPC interface (`scinvoke`). This is the autonomous path — no human
  * approval per payment — so it is loopback-only by default, mirroring the
  * Bridge's outbound-only posture: the wallet you can drain must be yours.
+ *
+ * PRIVACY: the payer address this returns is written verbatim to public
+ * contract state by the ring-2 Pay call — the x402 payer is not
+ * sender-anonymous. See the x402 privacy note in the SDK README / SECURITY.md.
  */
 
 import { WalletRpcClient } from "../../rpc/wallet-rpc.js";

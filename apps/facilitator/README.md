@@ -28,6 +28,8 @@ The facilitator authorizes a payment by reading **public contract state** — ne
 
 `mkey = strlen(merchant_id) + "_" + merchant_id + "_" + order_id`. Key derivation lives in `src/dero/keys.ts` and mirrors the contract's format byte-for-byte. Balances stay homomorphically encrypted throughout — the facilitator never sees one.
 
+> **Payer identity is public, though.** `paid_<mkey>` is the payer's plaintext address, written by a ring-size-2 (identifiable) signer — so the facilitator, and anyone reading the chain, can link payer ↔ merchant ↔ order ↔ amount ↔ height. Only *balances* are encrypted; the x402 payer is **not** sender-anonymous. See [SECURITY.md](../../SECURITY.md#x402-payments-are-not-sender-anonymous).
+
 ## Quick start
 
 Run from the monorepo root (these wrap `bun run --cwd apps/facilitator`):

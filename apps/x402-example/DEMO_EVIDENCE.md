@@ -60,8 +60,9 @@ No wallet invocation occurred (deny happens at policy.reserve, before payDeroRai
 
 ## Contract hardening — on-chain safety checks
 
-After a security audit, `x402-pay.bas` was hardened (PANIC-refund on
-duplicate `Pay`, collision-free length-prefixed keys). `scripts/hardening-tests.ts`
+After an internal security review, `x402-pay.bas` was hardened (PANIC-refund on
+duplicate `Pay`; length-prefixed keys that keep distinct `(merchant, order)`
+pairs from colliding onto one key). `scripts/hardening-tests.ts`
 exercises it on the simulator against a fresh deploy
 (SCID `a744a74da55b179f17c82fadd25a5716916afeacacff1a9be4c049b6f11509b4`,
 owner `:30000`, stranger `:30001`). One capture:
@@ -72,7 +73,7 @@ PASS  DOUBLE-PAY refunds: 2nd deposit bounces, record unchanged — balance stay
 PASS  OVER-WITHDRAW reverts (sanity check blocks over-send) — balance unchanged
 PASS  NON-OWNER withdraw is a no-op — stranger got nothing
 PASS  OWNER withdraw succeeds (contract balance drains) — balance 1000 -> 0
-5/5 on-chain safety checks passed
+5 of 5 checks in this capture passed (3 happy-path, 2 negative-path sanity checks)
 ```
 
 **What these checks do and don't prove.** The happy-path and double-pay

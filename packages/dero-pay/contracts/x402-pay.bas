@@ -15,6 +15,12 @@
    two distinct (merchant, order) pairs can ever collide onto one key
    (e.g. ("a","b_c") -> "1_a_b_c" vs ("a_b","c") -> "3_a_b_c").
 
+   PAYER PRIVACY: paid_<mkey> is the payer's PLAINTEXT address, written by a
+   ring-size-2 (identifiable) signer. Every Pay permanently links
+   payer<->merchant<->order<->amount<->height on public state — NOT
+   sender-anonymous, a regression from DERO's default ring-16. Balances stay
+   encrypted; payer identity does not.
+
    SECURITY MODEL (see packages/dero-pay/X402-RECEIPTS-SPEC.md threat model):
    - Duplicate or zero-value Pay calls PANIC(), which reverts the whole tx
      and refunds the payer's deposit (for a ring-size-2, identifiable

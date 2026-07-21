@@ -240,6 +240,14 @@ export const meteredGuard = createX402RouteGuard({
 The agent side of the same rail: a fetch wrapper that settles x402
 challenges automatically under a deny-by-default spending policy.
 
+> **x402 is not sender-anonymous.** Each payment is a ring-size-2 `Pay` (DERO's
+> default is 16) that writes the payer's **plaintext address** to public
+> contract state, alongside the amount and block height — all readable by anyone
+> via `DERO.GetSC`. Every x402 payment permanently links payer ↔ merchant ↔
+> order ↔ amount ↔ height on-chain. Balances stay encrypted; payer identity does
+> not. Don't meter payer-sensitive payments over x402, or fund each from a fresh
+> wallet. See [SECURITY.md](../../SECURITY.md#x402-payments-are-not-sender-anonymous).
+
 ```ts
 import {
   createPayingFetch,

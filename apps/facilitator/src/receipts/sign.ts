@@ -8,9 +8,9 @@ export interface ReceiptPayload {
   /**
    * The purchased resource, bound INTO the signature. Without this a
    * receipt signed for resource A verifies for B/C/D on the same server
-   * — the resource-binding hole formalized in arXiv:2605.11781 ("no
-   * audited SDK binds a payment to the intended resource"). Present on
-   * all receipts this facilitator issues.
+   * — the resource-binding gap described in arXiv:2605.11781 (the x402
+   * SDKs it examined do not bind a payment to the intended resource).
+   * Present on all receipts this facilitator issues.
    */
   resource: string;
   merchantId: string;

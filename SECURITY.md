@@ -90,6 +90,26 @@ not** block `RefundAfterDisputeTimeout` — a paused box can never permanently t
 the buyer's funds. `Pause` cannot claw back or drain a funded box; it is a
 freeze, not a seizure.
 
+### x402 payments are not sender-anonymous
+
+The x402 rail (`dero-exact` scheme: `dero-pay/x402`, `dero-pay/agent`,
+`apps/facilitator`) trades DERO's default sender anonymity for identifiable,
+refundable payments — and does so by writing the payer's identity to public
+chain state. An x402 payment is a `Pay(merchant, order)` into `x402-pay.bas`,
+whose DVM state is world-readable via `DERO.GetSC`. Per `(merchant, order)` it
+records the payer's **plaintext address** (`paid_<mkey>`), the amount
+(`amt_<mkey>`), and the block height (`h_<mkey>`).
+
+The rail is hardcoded to **ring size 2** (DERO's default is 16). This is
+intentional — refund-on-reject and owner-only-withdraw need a real, identifiable
+signer — but the consequence is that **every x402 payment publicly and
+permanently links payer ↔ merchant ↔ order ↔ amount ↔ height**, a regression
+from DERO's baseline sender anonymity. Account *balances* stay homomorphically
+encrypted; payer *identity* does not. There is no ring-16 mode. If payer privacy
+matters, do not meter it over x402, or fund each payment from a fresh, unlinked
+wallet. (Invoice-style integrated-address payments are a different rail and are
+unaffected.)
+
 ### x402 receipts are resource-bound and single-use
 
 For metered APIs and agent payments (`dero-pay/x402`, `dero-pay/agent`,

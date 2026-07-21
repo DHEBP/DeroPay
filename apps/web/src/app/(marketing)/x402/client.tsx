@@ -33,7 +33,7 @@ const loopSteps = [
     tag: "PAY",
     tagClass: "pay",
     title: "Agent pays on DERO",
-    body: <>Private on-chain transfer to the integrated address</>,
+    body: <>On-chain DERO payment settled via the x402 contract</>,
   },
   {
     tag: "RETRY",
@@ -81,7 +81,7 @@ const pillars = [
       </svg>
     ),
     title: "Production Security",
-    body: "Signed receipts, optional single-use replay protection, key rotation, and auditable events make payment-gated endpoints safe to operate.",
+    body: "Signed receipts, optional single-use replay protection, key rotation, and auditable events make payment-gated endpoints safe to operate. Note: x402 payments are not sender-anonymous — the payer's address is recorded on public chain state (see SECURITY.md).",
   },
   {
     icon: (

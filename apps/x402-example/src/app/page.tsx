@@ -5,6 +5,9 @@ export default function HomePage() {
       <p style={{ marginBottom: 8 }}>
         This app demonstrates x402-style protected resources with DeroPay receipts.
       </p>
+      <p style={{ marginBottom: 8, color: "#b45309" }}>
+        Note: paying via x402 publishes your wallet address on-chain — this demo is not anonymous.
+      </p>
       <p style={{ marginBottom: 8 }}>
         Start by requesting <code>/api/protected/report</code> to receive a{" "}
         <code>402 Payment Required</code> challenge.

@@ -18,6 +18,8 @@ Pick the primitive that fits the transaction — mix them freely in one app:
 | **Escrow** | Trust-minimized trades: funds locked on-chain, released on delivery, with dispute/arbitration and a buyer refund path. | `dero-pay/escrow` |
 | **x402 gate** | Metered APIs and AI agents paying per-request via HTTP `402`, with verifiable receipts. | `dero-pay/x402`, `dero-pay/agent` |
 
+> **x402 note:** the x402 payer's address is public on-chain — x402 is not sender-anonymous. See [SECURITY.md](./SECURITY.md#x402-payments-are-not-sender-anonymous).
+
 ## Structure
 
 ```

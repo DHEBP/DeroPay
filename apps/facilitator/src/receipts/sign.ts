@@ -1,7 +1,6 @@
 import * as ed from "@noble/ed25519";
 
 export interface ReceiptPayload {
-  transaction: string;
   network: string;
   payer: string;
   amount: string;
@@ -16,6 +15,15 @@ export interface ReceiptPayload {
   resource: string;
   merchantId: string;
   orderId: string;
+  /**
+   * Unix seconds after which this receipt is no longer valid. Bound INTO the
+   * signature. Because DVM state is fully public and permanent, the on-chain
+   * facts a valid X-PAYMENT header needs (merchant/order/payer/amount) are
+   * world-readable FOREVER — without an expiry any chain observer could
+   * reconstruct the header and re-settle the same payment indefinitely.
+   * Consumers MUST reject a receipt whose expiresAt is in the past.
+   */
+  expiresAt: number;
 }
 
 export interface SignedReceipt {
@@ -26,8 +34,16 @@ export interface SignedReceipt {
 
 function canonicalize(p: ReceiptPayload): string {
   // Fixed key order; every field is covered by the signature.
+  //
+  // NOTE: the payer's txHash is deliberately NOT signed here. The facilitator
+  // proves payment purely from on-chain (scid, merchant, order) state via
+  // DERO.GetSC and never looks up the tx — the contract does not even record a
+  // txid (x402-pay.bas). Signing an attacker-chosen, unverified 64-hex string
+  // as a "transaction" attestation would let a single real payment be settled
+  // into a receipt whose tx id is a lie. The (payer, amount, paidAtHeight,
+  // scid via merchant/order) tuple already identifies the settlement. txHash
+  // survives only as UNSIGNED transport metadata (see settle.ts).
   return JSON.stringify({
-    transaction: p.transaction,
     network: p.network,
     payer: p.payer,
     amount: p.amount,
@@ -35,6 +51,7 @@ function canonicalize(p: ReceiptPayload): string {
     resource: p.resource,
     merchantId: p.merchantId,
     orderId: p.orderId,
+    expiresAt: p.expiresAt,
   });
 }
 

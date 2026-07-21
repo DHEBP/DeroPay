@@ -25,8 +25,12 @@ export class ReceiptStore {
     this.db.exec("PRAGMA journal_mode = WAL");
     const schema = readFileSync(join(import.meta.dir, "schema.sql"), "utf8");
     this.db.exec(schema);
+    // Upsert on the canonical (scid|merchant|order) hash: a re-settle after
+    // the prior receipt expired replaces it with the fresh one. The consumer's
+    // one-time-use guard — not this row — is what prevents a double unlock.
     this.putStmt = this.db.prepare(
-      'INSERT OR IGNORE INTO receipts (payload_hash, "transaction", network, payer, signed) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO receipts (payload_hash, "transaction", network, payer, signed) VALUES (?, ?, ?, ?, ?) ' +
+        'ON CONFLICT(payload_hash) DO UPDATE SET "transaction"=excluded."transaction", network=excluded.network, payer=excluded.payer, signed=excluded.signed, created_at=strftime(\'%s\',\'now\')',
     );
     this.lookupStmt = this.db.prepare(
       'SELECT "transaction", network, payer, signed FROM receipts WHERE payload_hash = ?',

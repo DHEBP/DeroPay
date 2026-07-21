@@ -22,9 +22,9 @@ const app = new Hono();
 
 app.get("/", (c) => c.text("DeroPay x402 facilitator"));
 app.route("/", supportedRoute);
-app.route("/", buildVerifyRoute({ client, confirmations: config.confirmations }));
-app.route("/", buildSettleRoute({ client, store, signingKey: config.receiptSigningKey, confirmations: config.confirmations }));
-app.route("/", buildSettlementsRoute({ store }));
+app.route("/", buildVerifyRoute({ client, confirmations: config.confirmations, receiptScid: config.receiptScid }));
+app.route("/", buildSettleRoute({ client, store, signingKey: config.receiptSigningKey, confirmations: config.confirmations, receiptScid: config.receiptScid, receiptTtlSeconds: config.receiptTtlSeconds }));
+app.route("/", buildSettlementsRoute({ store, adminApiKey: config.adminApiKey }));
 
 export default {
   port: config.port,

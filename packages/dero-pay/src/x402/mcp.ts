@@ -19,6 +19,12 @@ import {
 import { paymentRequirementsSchema, type PaymentRequirements } from "./types";
 import type { SpendGuard } from "./policy";
 import { decodePayerFromHeader, type PaymentEvidence } from "./paying-fetch";
+import {
+  verifyX402Receipt,
+  ConsumedReceiptLedger,
+  type X402SignedReceipt,
+} from "./receipt";
+import type { OrderIdMinter } from "./order-id";
 
 /** Name of the reserved tool argument that carries the payment payload. */
 export const X402_PAYMENT_ARG = "x402Payment";
@@ -44,13 +50,48 @@ export type McpToolResult = {
 
 export type PaidToolGuardConfig = {
   facilitator: VerifySettleClient;
+  /**
+   * The facilitator's Ed25519 public key (64 hex). REQUIRED: the guard
+   * verifies the signed receipt (signature + resource binding + expiry) rather
+   * than trusting settle.success, so a compromised facilitator or MITM on the
+   * settle hop cannot unlock a paid tool with a forged/absent receipt.
+   */
+  facilitatorPublicKey: string;
+  /**
+   * OPT-IN strict one-time-use (see withX402). Supply a ledger to burn each
+   * receipt after a single tool invocation; leave unset to allow the TTL
+   * window. The signed expiry bounds replay in both modes.
+   */
+  consumedLedger?: ConsumedReceiptLedger;
   /** Rails offered for every guarded tool. payTo/merchant come from here. */
   accepts: Omit<PaymentRequirements, "resource">[];
   /**
    * Resource URI builder for a tool. Default: `mcp:tool/<name>`.
    * The resource is embedded in the challenge and bound at verify time.
+   *
+   * IMPORTANT (O17): the builder receives the call ARGS as well as the tool
+   * name. For a PARAMETERIZED paid tool (e.g. getQuote(symbol)), a resource of
+   * just `mcp:tool/getQuote` collapses every argument onto ONE paid unit
+   * (pay-per-handler): one payment for symbol=BTC unlocks symbol=ETH, and with
+   * a ledger, distinct args share one key and DoS the payer's second call.
+   * Fold the price-relevant args in — e.g. `mcp:tool/getQuote?symbol=${a.symbol}`
+   * — so the receipt (and the ledger key, which includes resource) is bound to
+   * the specific output. Args are omitted from the DEFAULT to stay backward
+   * compatible for tools that truly serve one unit regardless of args.
    */
-  resourceFor?: (toolName: string) => string;
+  resourceFor?: (toolName: string, args: Record<string, unknown>) => string;
+  /**
+   * SERVER-AUTHORITATIVE order id (O17/O19). Without this, merchant/order come
+   * only from static `config.accepts`, so a fixed orderId makes the tool's
+   * on-chain `paid_<mkey>` slot a ONE-TIME payment (the contract PANICs on a
+   * second Pay) whose world-readable tuple then replays for any caller within
+   * the receipt TTL. Supply an OrderIdMinter (createOrderIdMinter(secret)) to
+   * bind a fresh HMAC-authenticated orderId per call (context = merchant|
+   * resource); the claimed orderId in the x402Payment arg is honored ONLY when
+   * it validates for that context. Stateless — survives multi-instance MCP
+   * servers. Left unset, the static config orderId is used verbatim.
+   */
+  orderIdMinter?: OrderIdMinter;
   /** Called after each successful settle with the receipt payload. */
   onSettled?: (info: {
     toolName: string;
@@ -80,13 +121,41 @@ function challengeResult(challenge: PaidToolChallenge): McpToolResult {
  * against the facilitator before the handler runs.
  */
 export function createPaidToolGuard(config: PaidToolGuardConfig) {
-  const resourceFor = config.resourceFor ?? ((name: string) => `mcp:tool/${name}`);
+  const resourceFor =
+    config.resourceFor ?? ((name: string, _args: Record<string, unknown>) => `mcp:tool/${name}`);
+  const ledger = config.consumedLedger;
+  const minter = config.orderIdMinter;
 
+  /** Best-effort read of the claimed orderId from an x402 payment arg. */
+  function claimedOrderId(paymentArg: unknown): string | undefined {
+    const p = typeof paymentArg === "string" ? parsePaymentHeader(paymentArg) : null;
+    const claimed = (p as { payload?: { orderId?: unknown } } | null)?.payload?.orderId;
+    return typeof claimed === "string" ? claimed : undefined;
+  }
+
+  // Build the per-call requirements: resource is args-aware (O17) and, when a
+  // minter is configured, extra.orderId is a fresh server-authoritative id
+  // bound to (merchant|resource) — honoring the caller's claimed id only when
+  // it validates (O17/O19).
+  function buildAccepts(
+    toolName: string,
+    args: Record<string, unknown>,
+    paymentArg?: unknown,
+  ): PaymentRequirements[] {
+    const resource = resourceFor(toolName, args);
+    return config.accepts.map((entry) => {
+      let extra = entry.extra;
+      if (minter) {
+        const context = `${entry.extra.merchantId}|${resource}`;
+        extra = { ...entry.extra, orderId: minter.resolve(claimedOrderId(paymentArg), context) };
+      }
+      return paymentRequirementsSchema.parse({ ...entry, extra, resource });
+    });
+  }
+
+  /** Advertised requirements for a tool (no payment arg / order minting). */
   function acceptsFor(toolName: string): PaymentRequirements[] {
-    const resource = resourceFor(toolName);
-    return config.accepts.map((entry) =>
-      paymentRequirementsSchema.parse({ ...entry, resource })
-    );
+    return buildAccepts(toolName, {});
   }
 
   function guard<TArgs extends Record<string, unknown>>(
@@ -94,9 +163,9 @@ export function createPaidToolGuard(config: PaidToolGuardConfig) {
     handler: ToolHandler<TArgs>
   ): ToolHandler<TArgs & { [X402_PAYMENT_ARG]?: string }> {
     return async (args, extra) => {
-      const accepts = acceptsFor(toolName);
-      const resource = resourceFor(toolName);
       const paymentArg = args?.[X402_PAYMENT_ARG];
+      const accepts = buildAccepts(toolName, args ?? {}, paymentArg);
+      const resource = resourceFor(toolName, args ?? {});
 
       const payload = typeof paymentArg === "string" ? parsePaymentHeader(paymentArg) : null;
       if (!payload) {
@@ -135,6 +204,35 @@ export function createPaidToolGuard(config: PaidToolGuardConfig) {
           resource,
           accepts,
           invalidReason: settle.error,
+        });
+      }
+
+      // Enforce the signed receipt (signature + resource binding + expiry) and
+      // burn it one-time, instead of trusting settle.success.
+      const receiptCheck = verifyX402Receipt(settle.receipt as X402SignedReceipt | undefined, {
+        publicKeyHex: config.facilitatorPublicKey,
+        expectedResource: resource,
+        expectedMerchantId: matching.extra.merchantId,
+        expectedOrderId: matching.extra.orderId,
+        // Enforce the receipt's signed amount covers the tier price (O18).
+        expectedMinAmount: matching.maxAmountRequired,
+      });
+      if (!receiptCheck.ok) {
+        return challengeResult({
+          x402Version: 1,
+          error: X402_MCP_ERROR,
+          resource,
+          accepts,
+          invalidReason: receiptCheck.reason,
+        });
+      }
+      if (ledger && !(await ledger.consume(receiptCheck.payload))) {
+        return challengeResult({
+          x402Version: 1,
+          error: X402_MCP_ERROR,
+          resource,
+          accepts,
+          invalidReason: "receipt_replayed",
         });
       }
 

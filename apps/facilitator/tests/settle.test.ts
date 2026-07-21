@@ -35,7 +35,7 @@ beforeEach(async () => {
   const client = new DeroClient(daemon.url);
   const store = new ReceiptStore(":memory:");
   app = new Hono();
-  app.route("/", buildSettleRoute({ client, store, signingKey, confirmations: 5 }));
+  app.route("/", buildSettleRoute({ client, store, signingKey, confirmations: 5, receiptScid: SCID, receiptTtlSeconds: 900 }));
 });
 
 afterEach(() => daemon.stop());
@@ -77,4 +77,88 @@ test("POST /settle returns success and a signed receipt", async () => {
   expect(body.network).toBe("dero-mainnet");
   expect(body.receipt.payload.payer).toBe(AGENT);
   expect(body.receipt.signature).toMatch(/^[0-9a-f]{128}$/);
+});
+
+// O1 split-brain: a payer for a cheap order must NOT mint a receipt bound to
+// a different order/resource via mismatched payload vs requirements.
+test("POST /settle rejects order_mismatch when payload order != requirements order", async () => {
+  const req = JSON.parse(JSON.stringify(validRequest));
+  req.paymentRequirements.extra.orderId = "ord-expensive";
+  req.paymentRequirements.resource = "https://api.example.com/expensive";
+  const res = await app.request("/settle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const body = await res.json();
+  expect(body.success).toBe(false);
+  expect(body.error).toBe("order_mismatch");
+});
+
+// O1: the merchant leg of the mismatch guard must also be pinned. Only the
+// order leg is exercised above; without this, a regression narrowing the guard
+// to orderId-only would still pass CI while letting a shop-1 payer mint a
+// receipt bound to a different merchant.
+test("POST /settle rejects order_mismatch when payload merchant != requirements merchant", async () => {
+  const req = JSON.parse(JSON.stringify(validRequest));
+  req.paymentRequirements.extra.merchantId = "shop-evil";
+  const res = await app.request("/settle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const body = await res.json();
+  expect(body.success).toBe(false);
+  expect(body.error).toBe("order_mismatch");
+});
+
+// O1: claimed amount below required is rejected before signing.
+test("POST /settle rejects underpayment_claimed", async () => {
+  const req = JSON.parse(JSON.stringify(validRequest));
+  req.paymentPayload.payload.amount = "500";
+  req.paymentRequirements.maxAmountRequired = "1000";
+  const res = await app.request("/settle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const body = await res.json();
+  expect(body.success).toBe(false);
+  expect(body.error).toBe("underpayment_claimed");
+});
+
+// O4 SCID pinning: a payment into an attacker-named contract (scid==payTo but
+// != the facilitator's configured RECEIPT_SCID) must NOT be signed.
+test("POST /settle rejects untrusted_scid not equal to configured receiptScid", async () => {
+  const other = "a".repeat(64);
+  const daemon2 = mockDaemon({
+    contracts: {
+      [other]: {
+        stringkeys: { [paidKey("shop-1", "ord-42")]: AGENT },
+        uint64keys: { [amtKey("shop-1", "ord-42")]: "1500", [hKey("shop-1", "ord-42")]: "1000000" },
+      },
+    },
+    topoHeight: 1_000_100,
+  });
+  const app2 = new Hono();
+  app2.route("/", buildSettleRoute({
+    client: new DeroClient(daemon2.url),
+    store: new ReceiptStore(":memory:"),
+    signingKey,
+    confirmations: 5,
+    receiptScid: SCID, // facilitator trusts SCID, attacker names `other`
+    receiptTtlSeconds: 900,
+  }));
+  const req = JSON.parse(JSON.stringify(validRequest));
+  req.paymentPayload.payload.scid = other;
+  req.paymentRequirements.payTo = other;
+  const res = await app2.request("/settle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const body = await res.json();
+  expect(body.success).toBe(false);
+  expect(body.error).toBe("untrusted_scid");
+  daemon2.stop();
 });

@@ -30,8 +30,14 @@ export const paymentRequirementsSchema = z.object({
   maxAmountRequired: z.string().regex(/^\d+$/),
   resource: z.string().url(),
   extra: z.object({
-    merchantId: z.string().min(1),
-    orderId: z.string().min(1),
+    // Same bounds as the payload's merchantId/orderId (max 64): the two
+    // schemas describe the SAME (merchant, order) tuple and the order_mismatch
+    // equality can only ever hold if the bounds match. Bounding here also caps
+    // the key material that flows into on-chain key derivation (mkey/paidKey)
+    // and the SQLite receipt store when requirements come from a semi-trusted
+    // source (a DB row, an upstream service).
+    merchantId: z.string().min(1).max(64),
+    orderId: z.string().min(1).max(64),
   }),
 });
 export type PaymentRequirements = z.infer<typeof paymentRequirementsSchema>;

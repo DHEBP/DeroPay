@@ -7,6 +7,7 @@ import { verifyRequestSchema } from "../schemas/x402";
 export interface VerifyDeps {
   client: DeroClient;
   confirmations: number;
+  receiptScid: string;
 }
 
 export function buildVerifyRoute(deps: VerifyDeps): Hono {
@@ -24,6 +25,11 @@ export function buildVerifyRoute(deps: VerifyDeps): Hono {
 
     if (pp.payload.scid !== pr.payTo) {
       return c.json({ isValid: false, invalidReason: "scid_mismatch" });
+    }
+    // Pin to the facilitator's own contract: reject payments into any
+    // attacker-deployed copy of x402-pay.bas the merchant never designated.
+    if (pp.payload.scid !== deps.receiptScid) {
+      return c.json({ isValid: false, invalidReason: "untrusted_scid" });
     }
     if (pp.payload.merchantId !== pr.extra.merchantId || pp.payload.orderId !== pr.extra.orderId) {
       return c.json({ isValid: false, invalidReason: "order_mismatch" });
@@ -46,12 +52,13 @@ export function buildVerifyRoute(deps: VerifyDeps): Hono {
       return c.json({ isValid: false, invalidReason: "on_chain_underpayment" });
     }
 
-    if (deps.confirmations > 0) {
-      const onChainHeight = sc.uint64keys[hKey(pp.payload.merchantId, pp.payload.orderId)] ?? 0n;
-      const tip = BigInt(await deps.client.getTopoHeight());
-      if (tip - onChainHeight < BigInt(deps.confirmations)) {
-        return c.json({ isValid: false, invalidReason: "not_finalized" });
-      }
+    // Finality against the STABLE height, not the reorg-prone tip. A payment on
+    // an orphanable side-chain block must not pass verify. confirmations is
+    // floored at 1 in config, so this depth check is always active.
+    const onChainHeight = sc.uint64keys[hKey(pp.payload.merchantId, pp.payload.orderId)] ?? 0n;
+    const stable = BigInt(await deps.client.getStableHeight());
+    if (stable < onChainHeight || stable - onChainHeight < BigInt(deps.confirmations)) {
+      return c.json({ isValid: false, invalidReason: "not_finalized" });
     }
 
     return c.json({ isValid: true, payer: onChainPayer });

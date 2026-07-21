@@ -57,7 +57,7 @@ beforeEach(() => {
   });
   const client = new DeroClient(daemon.url);
   app = new Hono();
-  app.route("/", buildVerifyRoute({ client, confirmations: 0 }));
+  app.route("/", buildVerifyRoute({ client, confirmations: 0, receiptScid: SCID }));
 });
 
 afterEach(() => daemon.stop());
@@ -130,7 +130,7 @@ test("returns malformed_payload for unparseable body", async () => {
 test("rejects when finality not reached (confirmations required)", async () => {
   const client = new DeroClient(daemon.url);
   const appWithConfirms = new Hono();
-  appWithConfirms.route("/", buildVerifyRoute({ client, confirmations: 10 }));
+  appWithConfirms.route("/", buildVerifyRoute({ client, confirmations: 10, receiptScid: SCID }));
   const res = await appWithConfirms.request("/verify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

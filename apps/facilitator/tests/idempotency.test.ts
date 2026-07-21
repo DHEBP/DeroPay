@@ -31,7 +31,7 @@ beforeEach(async () => {
   const client = new DeroClient(daemon.url);
   const store = new ReceiptStore(":memory:");
   app = new Hono();
-  app.route("/", buildSettleRoute({ client, store, signingKey, confirmations: 5 }));
+  app.route("/", buildSettleRoute({ client, store, signingKey, confirmations: 5, receiptScid: SCID, receiptTtlSeconds: 900 }));
 });
 
 afterEach(() => daemon.stop());
@@ -73,4 +73,43 @@ test("parallel duplicate submissions converge to one receipt", async () => {
   const responses = await Promise.all(Array.from({ length: 20 }, () => app.request("/settle", opts).then((r) => r.json())));
   const sigs = new Set(responses.map((r) => r.receipt.signature));
   expect(sigs.size).toBe(1);
+});
+
+// O15: the idempotency cache must NOT hand a cheap-tier receipt back for an
+// expensive-tier request against the SAME (scid, merchant, order). Cache the
+// cheap receipt first, then re-request the same tuple with a higher price /
+// different resource — the cache must MISS (key includes resource+price) and
+// the receipt returned must be bound to the requested resource, never the
+// cheap one.
+test("cache hit cannot cross price/resource tiers (O15)", async () => {
+  const cheap = {
+    ...req,
+    paymentRequirements: {
+      ...req.paymentRequirements,
+      maxAmountRequired: "1000",
+      resource: "https://api.example.com/cheap",
+    },
+  };
+  const expensive = {
+    ...req,
+    paymentRequirements: {
+      ...req.paymentRequirements,
+      maxAmountRequired: "1400",
+      resource: "https://api.example.com/expensive",
+    },
+  };
+  const post = (b: unknown) =>
+    app.request("/settle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => r.json());
+
+  const rCheap = await post(cheap);
+  expect(rCheap.success).toBe(true);
+  expect(rCheap.receipt.payload.resource).toBe("https://api.example.com/cheap");
+
+  // Same (scid, merchant, order); different resource + price. On-chain amount is
+  // 1500 so the expensive tier IS actually covered — the point is the receipt
+  // must be bound to the EXPENSIVE resource, not the cached cheap one.
+  const rExpensive = await post(expensive);
+  expect(rExpensive.success).toBe(true);
+  expect(rExpensive.receipt.payload.resource).toBe("https://api.example.com/expensive");
+  expect(rExpensive.receipt.signature).not.toBe(rCheap.receipt.signature);
 });

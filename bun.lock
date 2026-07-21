@@ -132,7 +132,7 @@
     },
     "packages/dero-pay": {
       "name": "dero-pay",
-      "version": "0.4.0",
+      "version": "0.6.0",
       "bin": {
         "deropay-bridge": "./dist/bridge/cli.js",
       },

@@ -25,7 +25,17 @@ COPY packages/dero-pay/package.json packages/dero-pay/
 COPY packages/deropay-widget/package.json packages/deropay-widget/
 COPY plugins/medusa-payment-deropay/package.json plugins/medusa-payment-deropay/
 
-RUN bun install
+# Retry: better-sqlite3's native postinstall and large tarball fetches (next)
+# occasionally fail transiently on CI runners ("Fail extracting tarball"),
+# especially on arm64. Retry with a cache clear so a one-off hiccup can't sink
+# the image build; fail hard if all three attempts miss.
+RUN for i in 1 2 3; do \
+      bun install --frozen-lockfile && exit 0; \
+      echo "bun install failed (attempt $i), clearing cache and retrying"; \
+      bun pm cache rm || true; \
+      sleep 10; \
+    done; \
+    exit 1
 
 COPY packages/dero-pay/ packages/dero-pay/
 COPY apps/dashboard/ apps/dashboard/

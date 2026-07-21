@@ -19,9 +19,10 @@ jobs:
           bun-version: 1.3.14
 
       - name: Install dependencies
-        # Not --frozen-lockfile: bun.lock is regenerated on clean-network CI
-        # runners; local regen is blocked behind a VPN/IPv6 install hang.
-        run: bun install
+        # --frozen-lockfile: fail if bun.lock drifts from the manifests so CI
+        # can't silently re-resolve. Regenerate the lock locally (IPv6 off to
+        # dodge the VPN install hang) and commit it when a manifest changes.
+        run: bun install --frozen-lockfile
 
       # Guard: the SQLite-backed suites import better-sqlite3 at module load and
       # have no skip fallback, so a missing native binding must fail loudly here

@@ -28,7 +28,9 @@ jobs:
       - name: Install dependencies
         run: |
           for attempt in 1 2 3; do
-            if bun install --frozen-lockfile; then
+            # Not --frozen-lockfile: the runner regenerates bun.lock on clean
+            # network; local regen is blocked behind a VPN/IPv6 install hang.
+            if bun install; then
               exit 0
             fi
             echo "::warning::bun install failed (attempt $attempt) — clearing cache and retrying"

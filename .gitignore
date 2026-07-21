@@ -5,6 +5,7 @@ node_modules/
 dist/
 .next/
 out/
+deropay-for-woocommerce.zip
 
 # Documentation — local reference only; not for public repo
 docs/

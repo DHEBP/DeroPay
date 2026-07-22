@@ -73,6 +73,20 @@ origin(s) (or explicitly opt into an open deployment with
   buyer, bricking the escrow), never theft; recovery is a re-issued invoice.
 - **Residual griefing is rate-limited** (per-IP and per-invoiceId) on the public
   claim endpoint.
+- **Surface the bound arbitrator before deposit.** The escrow binds a named
+  **arbitrator** who rules on a dispute. `Bind` refuses an arbitrator equal to the
+  seller, but **not** one equal to the box owner — so in an `owner == seller`
+  self-host the same party can adjudicate its own sale. The contract cannot
+  enforce neutrality; it is a property of who was bound. A production checkout
+  **should show the buyer the bound arbitrator address before they `Deposit()`**
+  so they can decline a box that self-adjudicates. (See `SECURITY.md` → *Disputes
+  resolve via an arbitrator*.)
+- **The dispute default favors the buyer (sellers, note).** If the arbitrator
+  never rules, the buyer reclaims the full deposit after ~3 days
+  (`RefundAfterDisputeTimeout`). A disputed box has **no seller-side self-serve
+  exit**, so a bad-faith dispute against a legitimately-delivered order is
+  contained only by a **responsive arbitrator** — not by on-chain code. Funds are
+  never stealable, but a slow arbitrator can cost a seller a real sale.
 - **Production hardening (required before public escrow use):**
   - Set `DEROPAY_CORS_ORIGIN` to the exact checkout origin(s) — never `*` once the
     claim write is live. Enforced: the claim write fails closed under a wildcard

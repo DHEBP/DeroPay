@@ -90,6 +90,29 @@ not** block `RefundAfterDisputeTimeout` — a paused box can never permanently t
 the buyer's funds. `Pause` cannot claw back or drain a funded box; it is a
 freeze, not a seizure.
 
+**The dispute default favors the buyer — sellers should know this.** Because an
+absent arbitrator resolves to a full buyer refund, a buyer can `Dispute()` a box
+whose goods were *legitimately delivered* and, if the arbitrator does not rule
+inside the ~3-day window, reclaim the deposit through
+`RefundAfterDisputeTimeout()`. A disputed box (status 5) has **no seller-side
+self-serve terminal** — only the arbitrator's ruling protects a seller against a
+bad-faith dispute. On-chain code cannot close this: telling an honest dispute
+from a griefing one is a judgment, which is exactly what the arbitrator is for.
+The mitigation is operational, not cryptographic — **run a responsive
+arbitrator** (ideally one bound to an availability commitment) for any escrow you
+adjudicate. The contract guarantees the funds cannot be stolen; it does not
+guarantee that a slow or absent arbitrator can't cost a seller a legitimate sale.
+
+**The arbitrator is only as neutral as the address the merchant binds.** `Bind`
+refuses an arbitrator equal to the seller (no seller self-dealing), but it does
+**not** refuse an arbitrator equal to the box *owner* (the platform/merchant
+operator). In the default hosted layout owner ≠ seller, so the arbitrator is a
+distinct third party; in an `owner == seller` self-host the same wallet can be
+owner, seller, and arbitrator at once. Arbitration is neutral only by virtue of
+*who was bound* — the contract does not enforce it. **Disclose the bound
+arbitrator address to the buyer before they deposit** so the buyer can see who
+would rule on a dispute and decline a box that self-adjudicates.
+
 ### x402 payments are not sender-anonymous
 
 The x402 rail (`dero-exact` scheme: `dero-pay/x402`, `dero-pay/agent`,

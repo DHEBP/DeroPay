@@ -488,7 +488,7 @@ export class WalletRpcClient {
     ringsize: number = 2
   ): Promise<string> {
     const params: InstallScParams = {
-      sc: btoa(code), // wallet auto-decodes base64 → raw source for the DVM
+      sc: Buffer.from(code, "utf8").toString("base64"), // wallet auto-decodes base64 → raw source for the DVM (UTF-8-safe; btoa throws on non-ASCII comment chars)
       sc_rpc: args ?? [],
       ringsize,
     };

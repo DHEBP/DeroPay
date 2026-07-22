@@ -21,6 +21,8 @@ const defaultOnChainState: EscrowOnChainState = {
   depositHeight: null,
   disputeHeight: null,
   arbitrateResult: null,
+  paused: false,
+  pendingOwner: null,
   scBalance: 0,
 };
 

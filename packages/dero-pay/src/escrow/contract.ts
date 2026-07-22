@@ -59,6 +59,7 @@ Function Bind(sellerAddress String, arbitratorAddress String, feeBasisPoints Uin
 50 IF blockExpiration < 4000 THEN GOTO 200
 60 IF blockExpiration > 10000000 THEN GOTO 200
 70 IF expectedAmount == 0 THEN GOTO 200
+75 IF expectedAmount > 9007199254740991 THEN GOTO 200
 80 IF ADDRESS_RAW(arbitratorAddress) == ADDRESS_RAW(sellerAddress) THEN GOTO 200
 90 STORE("seller", ADDRESS_RAW(sellerAddress))
 100 STORE("arbitrator", ADDRESS_RAW(arbitratorAddress))
@@ -124,14 +125,20 @@ Function ConfirmDelivery() Uint64
 200 RETURN 1
 End Function
 
-// Seller or owner refunds the buyer in full (no fee).
+// SELLER-ONLY refunds the buyer in full (no fee). The owner is DELIBERATELY NOT a
+// refunder (O15): in the default owner!=seller hosted config, an owner-triggered refund
+// of a FUNDED box moves the SELLER'S principal payout back to the buyer with no dispute,
+// expiry, or seller consent -- a criterion-1 capture (seller loses the sale, buyer keeps
+// goods + funds) and an owner+buyer collusion grief against any targeted seller. Only the
+// seller (the party GIVING UP its own payout) may unilaterally refund. In owner==seller
+// self-host the SIGNER()==seller check still matches, so the reclaim path is preserved.
+// The owner retains no principal-moving lever on a funded box; its only funded-box powers
+// are the fee leg (ClaimOwnership rotation) and the Pause circuit-breaker (status 0 only).
 Function RefundBuyer() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
-30 IF SIGNER() == LOAD("seller") THEN GOTO 60
-40 IF SIGNER() == LOAD("owner") THEN GOTO 60
-50 GOTO 200
+30 IF SIGNER() != LOAD("seller") THEN GOTO 200
 60 SEND_DERO_TO_ADDRESS(LOAD("buyer"), LOAD("escrowBalance"))
 70 STORE("escrowBalance", 0)
 80 STORE("status", 3)
@@ -180,11 +187,20 @@ Function Dispute() Uint64
 End Function
 
 // Arbitrator resolves. releaseToSeller: 1 = pay seller (minus fee), 0 = full refund buyer.
+// Line 35 bounds the arbitrator's authority to the SAME 14400-block window the buyer's
+// RefundAfterDisputeTimeout waits out: Arbitrate is live for disputeHeight <= h <
+// disputeHeight+14400, the buyer timeout for h >= disputeHeight+14400. The two windows are
+// DISJOINT, so once the buyer's timeout is reachable an Arbitrate(1) can no longer be
+// front-run by RefundAfterDisputeTimeout on the same block (closes the mempool race).
+// disputeHeight always exists at status 5 (set in Dispute line 50), so the LOAD behind
+// line 20 cannot panic; disputeHeight+14400 cannot overflow Uint64.
 Function Arbitrate(releaseToSeller Uint64) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 5 THEN GOTO 200
 30 IF SIGNER() != LOAD("arbitrator") THEN GOTO 200
+35 IF BLOCK_HEIGHT() >= LOAD("disputeHeight") + 14400 THEN GOTO 200
+37 IF releaseToSeller > 1 THEN GOTO 200
 40 DIM balance, fee, payout AS Uint64
 50 LET balance = LOAD("escrowBalance")
 60 LET fee = balance * LOAD("feeBasisPoints") / 10000
@@ -634,6 +650,23 @@ export class EscrowContract {
       // escrowBalance, so balance alone cannot tell the two outcomes apart.
       arbitrateResult:
         vars["arbitrateResult"] != null ? Number(vars["arbitrateResult"]) : null,
+      // O13 — surface paused/pendingOwner so the keeper's pool-ready gate and the
+      // post-Bind readback can WITHHOLD a box that is frozen (paused==1 bricks Deposit)
+      // or carries a hostile/leftover pendingOwner (a pre-Bind hot-key plant that could
+      // redirect the fee leg mid-escrow). Both keys always exist by Initialize/Bind for
+      // the former and are optional for the latter; absent pendingOwner reads as null.
+      paused: Number(vars["paused"]) === 1,
+      pendingOwner: vars["pendingOwner"]
+        ? String(vars["pendingOwner"]).toLowerCase()
+        : null,
+      // O14 (accepted-low) — scBalance is the daemon's raw SC DERO balance, already a
+      // JS number at the RPC boundary. It is used ONLY by the custody check
+      // (manager.ts: `BigInt(scBalance) >= onChainBalance`). onChainBalance == the
+      // on-chain-capped escrowBalance (<= 2^53-1, see Bind line 75), so the comparison
+      // is exact within the safe-integer range. A raw-RPC overpay above 2^53-1 makes the
+      // REAL scBalance only larger; any lossy rounding there can at worst produce a
+      // conservative false-negative custody_shortfall that REFUSES to settle (fund-safe,
+      // funds stay recoverable) — never a false-positive that settles an unfunded box.
       scBalance: result.balance ?? 0,
     };
   }

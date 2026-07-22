@@ -160,9 +160,11 @@ export class EscrowKeeper {
 
   /**
    * Promote minted boxes that GetSC proves are empty and ours. THE TRAP gate:
-   * pool-ready iff owner is set (minted by us), bound === 0 (no terms yet), and
-   * status === 0 (never funded). Anything else stays 'minted' (still confirming)
-   * and is retried next tick — never handed out early.
+   * pool-ready iff owner is set (minted by us), bound === 0 (no terms yet),
+   * status === 0 (never funded), NOT paused (a paused box bricks Deposit), and
+   * carrying NO pendingOwner (O13 — a pre-Bind hot-key plant could complete a
+   * mid-escrow rotation and redirect the fee leg). Anything else stays 'minted'
+   * (still confirming) and is retried next tick — never handed out early.
    */
   private async confirmMinted(): Promise<void> {
     for (const scid of await this.store.listMinted()) {
@@ -174,7 +176,11 @@ export class EscrowKeeper {
         continue;
       }
       const poolReady =
-        state.owner !== "" && state.bound === 0 && state.statusCode === 0;
+        state.owner !== "" &&
+        state.bound === 0 &&
+        state.statusCode === 0 &&
+        !state.paused &&
+        state.pendingOwner === null;
       if (poolReady) {
         await this.store.markConfirmed(scid);
         this.emit("boxConfirmed", scid);

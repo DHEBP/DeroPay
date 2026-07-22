@@ -131,6 +131,13 @@ export type EscrowOnChainState = {
    *  Both arbitrate branches zero escrowBalance, so this flag — not the
    *  balance — is the authoritative source of the resolution direction. */
   arbitrateResult: number | null;
+  /** O13 — paused flag (Pause() sets 1). A paused box bricks Deposit; the keeper's
+   *  pool-ready gate must reject it. */
+  paused: boolean;
+  /** O13 — pendingOwner address if a two-step ownership transfer is in flight; null
+   *  otherwise. A box handed to a buyer must have NO pendingOwner (a pre-Bind hot-key
+   *  plant could complete a mid-escrow rotation and redirect the fee leg). */
+  pendingOwner: string | null;
   /** DERO balance held by the SC */
   scBalance: number;
 };

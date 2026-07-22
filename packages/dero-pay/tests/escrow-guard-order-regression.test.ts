@@ -119,4 +119,47 @@ describe("escrow contract — guard-order regression (Trap-1 lock)", () => {
     expect(code).not.toMatch(/Function\s+UpdateCode/i);
     expect(code).not.toMatch(/UPDATE_SC_CODE\s*\(/i);
   });
+
+  describe("r2 hardening — arbitrator window, seller-only refund, arg/amount validation", () => {
+    it("Arbitrate is bounded to a window DISJOINT from the buyer timeout (O15 front-run fix)", () => {
+      // 14400 blocks is infeasible to advance on the simulator, so the disjointness that
+      // closes the front-run is pinned statically here: same anchor, opposite comparison.
+      // Arbitrate lives for h < disputeHeight+14400; RefundAfterDisputeTimeout for h >= it,
+      // so the two settlement paths are never callable on the same block.
+      const arb = fnBody(src, "Arbitrate");
+      const timeout = fnBody(src, "RefundAfterDisputeTimeout");
+      expect(arb).toContain('IF BLOCK_HEIGHT() >= LOAD("disputeHeight") + 14400 THEN GOTO 200');
+      expect(timeout).toContain('IF BLOCK_HEIGHT() < LOAD("disputeHeight") + 14400 THEN GOTO 200');
+    });
+
+    it("Arbitrate bounds the window and validates the arg BEFORE settling", () => {
+      const arb = fnBody(src, "Arbitrate");
+      const windowBound = at(arb, 'IF BLOCK_HEIGHT() >= LOAD("disputeHeight") + 14400 THEN GOTO 200');
+      const argCheck = at(arb, "IF releaseToSeller > 1 THEN GOTO 200");
+      const firstSend = at(arb, "SEND_DERO_TO_ADDRESS");
+      expect(windowBound).toBeGreaterThanOrEqual(0);
+      expect(argCheck).toBeGreaterThanOrEqual(0);
+      expect(firstSend).toBeGreaterThanOrEqual(0);
+      // A stale ruling or an out-of-range releaseToSeller must bail before any payout.
+      expect(windowBound).toBeLessThan(firstSend);
+      expect(argCheck).toBeLessThan(firstSend);
+    });
+
+    it("RefundBuyer is seller-only (the owner cannot refund a funded box)", () => {
+      const refund = fnBody(src, "RefundBuyer");
+      expect(refund).toContain('IF SIGNER() != LOAD("seller") THEN GOTO 200');
+      // The owner refund lever is deliberately removed: no owner branch may route a
+      // funded box's seller payout back to the buyer.
+      expect(refund).not.toContain('LOAD("owner")');
+    });
+
+    it("Bind caps expectedAmount at the JS-safe integer max, after the zero check", () => {
+      const bind = fnBody(src, "Bind");
+      const zero = at(bind, "IF expectedAmount == 0 THEN GOTO 200");
+      const cap = at(bind, "IF expectedAmount > 9007199254740991 THEN GOTO 200");
+      expect(zero).toBeGreaterThanOrEqual(0);
+      expect(cap).toBeGreaterThanOrEqual(0);
+      expect(zero).toBeLessThan(cap);
+    });
+  });
 });

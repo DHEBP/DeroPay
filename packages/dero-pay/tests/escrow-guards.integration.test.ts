@@ -11,8 +11,15 @@
  *  - regression: mint -> bind -> deposit -> confirmDelivery releases to seller
  *  - router Pay: empty invoiceId REJECTED, non-empty ACCEPTED (STRLEN guard)
  *
+ * Also covers the 2026-07-21 r2 hardening adopted this session:
+ *  - escrow RefundBuyer: owner REJECTED, seller ACCEPTED (seller-only refund)
+ *  - escrow Bind: over-cap expectedAmount REJECTED on-chain (raw-invoke backstop, line 75)
+ *  - escrow Arbitrate: out-of-range releaseToSeller REJECTED on-chain (raw-invoke, line 37)
+ *
  * NOT covered (needs 4000+ mined blocks; stays logic-verified): the post-expiry
- * side of Dispute's gate and ClaimAfterExpiry's `<=` boundary.
+ * side of Dispute's gate, ClaimAfterExpiry's `<=` boundary, and the Arbitrate/
+ * buyer-timeout 14400-block disjointness (O15) — pinned statically in
+ * escrow-guard-order-regression.test.ts instead.
  *
  * Run: npx vitest run --config vitest.integration.config.ts tests/escrow-guards.integration.test.ts
  */
@@ -235,6 +242,80 @@ describe("escrow + router guard edits (integration)", () => {
       );
       expect(st.arbitrateResult).toBe(0);
       expect(st.scBalance).toBe(0);
+    },
+    180_000
+  );
+
+  it.skipIf(!live)(
+    "RefundBuyer is seller-only: owner REJECTED, seller ACCEPTED (funded box)",
+    async () => {
+      const scid = await fundFresh();
+      // The owner no longer has a refund lever on a funded box: the call reverts
+      // (line 30, SIGNER() != seller), so status stays 1 and funds stay held.
+      await ownerEscrow.refundBuyer(scid);
+      await waitHeightAdvance(2);
+      const held = await ownerEscrow.getState(scid);
+      expect(held.statusCode).toBe(1);
+      expect(held.scBalance).toBeGreaterThan(0);
+      // The seller (giving up its own payout) can still refund -> status 3 (refunded).
+      const sellerEscrow = new EscrowContract(
+        new WalletRpcClient({ url: WALLET_RPC_SELLER }),
+        daemon
+      );
+      await sellerEscrow.refundBuyer(scid);
+      const st = await waitFor(
+        () => ownerEscrow.getState(scid),
+        (s) => s.statusCode === 3,
+        { label: "refunded" }
+      );
+      expect(st.scBalance).toBe(0);
+    },
+    180_000
+  );
+
+  it.skipIf(!live)(
+    "Bind rejects an over-cap expectedAmount on-chain (raw invoke; line 75 backstop)",
+    async () => {
+      // The SDK bind() rejects amounts > 2^53-1 before broadcast, so raw-invoke Bind to
+      // exercise the on-chain backstop for any caller that skips the SDK. 2^53 is exactly
+      // representable as a JS number and is > the 9007199254740991 (2^53-1) cap.
+      const scid = await ownerEscrow.deploy();
+      await waitFor(() => ownerEscrow.exists(scid), (v) => v === true, {
+        label: `minted ${scid.slice(0, 8)}`,
+      });
+      const ownerWallet = new WalletRpcClient({ url: WALLET_RPC_OWNER });
+      await ownerWallet.invokeSc(scid, "Bind", [
+        { name: "sellerAddress", datatype: "S", value: sellerAddress },
+        { name: "arbitratorAddress", datatype: "S", value: arbitratorAddress },
+        { name: "feeBasisPoints", datatype: "U", value: FEE_BPS },
+        { name: "blockExpiration", datatype: "U", value: BLOCK_EXPIRATION },
+        { name: "expectedAmount", datatype: "U", value: 9007199254740992 },
+      ]);
+      await waitHeightAdvance(2);
+      // Over-cap Bind reverts -> the box stays unbound.
+      expect((await ownerEscrow.getState(scid)).bound).toBe(0);
+    },
+    150_000
+  );
+
+  it.skipIf(!live)(
+    "Arbitrate rejects an out-of-range releaseToSeller on-chain (raw invoke; line 37 backstop)",
+    async () => {
+      const scid = await fundFresh();
+      await buyerEscrow.dispute(scid);
+      await waitFor(() => ownerEscrow.getState(scid), (s) => s.statusCode === 5, {
+        label: "disputed",
+      });
+      // releaseToSeller must be 0 or 1; the SDK only ever sends those, so raw-invoke a 2.
+      const arbitratorWallet = new WalletRpcClient({ url: WALLET_RPC_ARBITRATOR });
+      await arbitratorWallet.invokeSc(scid, "Arbitrate", [
+        { name: "releaseToSeller", datatype: "U", value: 2 },
+      ]);
+      await waitHeightAdvance(2);
+      // Line 37 reverts -> the dispute is untouched (status stays 5, funds still held).
+      const st = await ownerEscrow.getState(scid);
+      expect(st.statusCode).toBe(5);
+      expect(st.scBalance).toBeGreaterThan(0);
     },
     180_000
   );

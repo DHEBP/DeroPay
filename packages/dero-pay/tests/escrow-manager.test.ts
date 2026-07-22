@@ -34,6 +34,8 @@ const mockContract = {
     depositHeight: null,
     disputeHeight: null,
     arbitrateResult: null,
+    paused: false,
+    pendingOwner: null,
     scBalance: 0,
   } satisfies EscrowOnChainState),
   exists: vi.fn().mockResolvedValue(true),
@@ -562,6 +564,8 @@ describe("EscrowManager", () => {
         // Direction is read from the on-chain arbitrateResult flag (1 = seller),
         // NOT the balance — both arbitrate branches zero escrowBalance.
         arbitrateResult: 1,
+        paused: false,
+        pendingOwner: null,
         scBalance: 0,
       } satisfies EscrowOnChainState);
 
@@ -605,6 +609,8 @@ describe("EscrowManager", () => {
         escrowBalance: 0,
         depositHeight: 1005,
         arbitrateResult: 0,
+        paused: false,
+        pendingOwner: null,
         scBalance: 0,
       } satisfies EscrowOnChainState);
 

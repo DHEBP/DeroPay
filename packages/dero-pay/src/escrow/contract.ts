@@ -139,13 +139,15 @@ Function RefundBuyer() Uint64
 200 RETURN 1
 End Function
 
-// Seller claims after the expiry window (buyer had time to dispute).
+// Seller claims after the expiry window. Boundary is exclusive: the claim is live only for
+// height > depositHeight+blockExpiration (via <=), disjoint from Dispute's pre-expiry gate
+// (>), so a dispute and an expiry-claim can never race on the same block.
 Function ClaimAfterExpiry() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
 30 IF SIGNER() != LOAD("seller") THEN GOTO 200
-40 IF BLOCK_HEIGHT() < LOAD("depositHeight") + LOAD("blockExpiration") THEN GOTO 200
+40 IF BLOCK_HEIGHT() <= LOAD("depositHeight") + LOAD("blockExpiration") THEN GOTO 200
 50 DIM balance, fee, payout AS Uint64
 60 LET balance = LOAD("escrowBalance")
 70 LET fee = balance * LOAD("feeBasisPoints") / 10000
@@ -162,11 +164,14 @@ End Function
 
 // Buyer raises a dispute -> locks funds for the arbitrator. Records disputeHeight so
 // the buyer has a timeout escape hatch if the arbitrator never resolves (see
-// RefundAfterDisputeTimeout).
+// RefundAfterDisputeTimeout). Line 25 gates the dispute to the pre-expiry window so a
+// buyer cannot preempt the seller's already-vested ClaimAfterExpiry; the boundary block
+// (height == depositHeight+blockExpiration) favors the buyer (Dispute uses >, Claim uses <=).
 Function Dispute() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 15 IF LOAD("paused") != 0 THEN GOTO 200
 20 IF LOAD("status") != 1 THEN GOTO 200
+25 IF BLOCK_HEIGHT() > LOAD("depositHeight") + LOAD("blockExpiration") THEN GOTO 200
 30 IF SIGNER() != LOAD("buyer") THEN GOTO 200
 40 STORE("status", 5)
 50 STORE("disputeHeight", BLOCK_HEIGHT())
@@ -243,12 +248,13 @@ Function CancelUnfunded() Uint64
 200 RETURN 1
 End Function
 
-// Owner circuit-breaker: freeze a box discovered mid-flight to be buggy. Blocks the
-// fund-movers (Deposit + discretionary settlement); cannot claw back an in-tx exploit
-// (honest limit), and cannot block the buyer's RefundAfterDisputeTimeout escape.
+// Owner circuit-breaker: freeze a box BEFORE anyone funds it (status 0 only; line 25).
+// A funded box can NEVER be paused -- a pause cannot stop the expiry clock, so freezing a
+// live escrow would deny the buyer's remedy while the seller's claim keeps vesting.
 Function Pause() Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+25 IF LOAD("status") != 0 THEN GOTO 200
 30 STORE("paused", 1)
 40 RETURN 0
 200 RETURN 1
@@ -267,9 +273,14 @@ End Function
 // never rewrite or drain a funded box.
 
 // Two-step ownership transfer (cold-key rotation without exposing the cold key at deploy).
+// Line 25 restricts rotation to a pre-deposit (status 0) box: once funded, the owner / fee-
+// sink / role snapshot is frozen so it cannot be repointed mid-escrow. ClaimOwnership is
+// deliberately NOT status-gated (guarding it would strand a rotation begun before a buyer
+// funds mid-handshake, leaving owner authority on the old key).
 Function TransferOwnership(newOwner String) Uint64
 10 IF DEROVALUE() > 0 THEN GOTO 200
 20 IF SIGNER() != LOAD("owner") THEN GOTO 200
+25 IF LOAD("status") != 0 THEN GOTO 200
 30 STORE("pendingOwner", ADDRESS_RAW(newOwner))
 40 RETURN 0
 200 RETURN 1

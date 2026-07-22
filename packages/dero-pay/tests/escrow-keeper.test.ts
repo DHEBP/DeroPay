@@ -22,6 +22,18 @@ const BOUND_BOX_KEYS = {
   seller: "sellerraw",
   expectedAmount: 200_000,
 };
+// A minted box that is otherwise pool-ready but PAUSED — Deposit is bricked on a
+// paused box, so it must NOT be handed out.
+const PAUSED_BOX_KEYS = { owner: "ownerraw", bound: 0, status: 0, paused: 1 };
+// A minted box carrying a leftover/hostile pendingOwner (a pre-Bind hot-key plant
+// that could complete a mid-escrow rotation and redirect the fee leg) — must NOT
+// be handed out.
+const PENDING_OWNER_BOX_KEYS = {
+  owner: "ownerraw",
+  bound: 0,
+  status: 0,
+  pendingOwner: "newownerraw",
+};
 
 /** Route GetSC per-scid so we can model "confirmed" vs "not-yet-on-chain". */
 function scGetter(map: Record<string, object | undefined>) {
@@ -131,6 +143,48 @@ describe("EscrowKeeper — PREMINT pool", () => {
     wallet.installSc.mockResolvedValue("scid-bound");
     daemon.getSc.mockResolvedValue({
       stringkeys: BOUND_BOX_KEYS,
+      balance: 0,
+      code: "",
+      status: "OK",
+    });
+
+    const keeper = new EscrowKeeper(contract, store, {
+      targetReady: 1,
+      refillBelow: 1,
+      pollMs: 1_000,
+    });
+
+    await keeper.tick();
+    await keeper.tick();
+    expect(await store.countReady()).toBe(0);
+    expect(await keeper.take()).toBeNull();
+  });
+
+  it("does NOT confirm a PAUSED box (a paused box bricks Deposit)", async () => {
+    wallet.installSc.mockResolvedValue("scid-paused");
+    daemon.getSc.mockResolvedValue({
+      stringkeys: PAUSED_BOX_KEYS,
+      balance: 0,
+      code: "",
+      status: "OK",
+    });
+
+    const keeper = new EscrowKeeper(contract, store, {
+      targetReady: 1,
+      refillBelow: 1,
+      pollMs: 1_000,
+    });
+
+    await keeper.tick();
+    await keeper.tick();
+    expect(await store.countReady()).toBe(0);
+    expect(await keeper.take()).toBeNull();
+  });
+
+  it("does NOT confirm a box carrying a pendingOwner (mid-rotation plant)", async () => {
+    wallet.installSc.mockResolvedValue("scid-pending");
+    daemon.getSc.mockResolvedValue({
+      stringkeys: PENDING_OWNER_BOX_KEYS,
       balance: 0,
       code: "",
       status: "OK",

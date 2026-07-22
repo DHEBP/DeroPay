@@ -55,8 +55,14 @@ Function Initialize(feeRecipientAddress String, feeBasisPoints Uint64) Uint64
 200 RETURN 1
 End Function
 
+// invoiceId is NOT used on-chain by design: it is recorded in the Pay transaction as the
+// invoke argument, and the merchant's off-chain watcher reads it back to correlate the
+// payment to an invoice -- the contract never needs to STORE it. Line 15 rejects an empty
+// invoiceId so a payment cannot succeed uncorrelatable. NOTE: invoiceId rides in the tx in
+// PLAINTEXT (SC invoke args are not encrypted) -- keep it an opaque token, never order data.
 Function Pay(invoiceId String) Uint64
 10 IF DEROVALUE() == 0 THEN GOTO 200
+15 IF STRLEN(invoiceId) == 0 THEN GOTO 200
 20 IF LOAD("paused") == 1 THEN GOTO 200
 30 DIM amount, fee, payout AS Uint64
 40 LET amount = DEROVALUE()

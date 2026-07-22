@@ -30,8 +30,10 @@ const PAYMENT_ROUTER_SOURCE = `Function Initialize(feeRecipientAddress String, f
 200 RETURN 1
 End Function
 
+// invoiceId: carried in the Pay tx for off-chain invoice correlation, unused on-chain; line 15 rejects empty.
 Function Pay(invoiceId String) Uint64
 10 IF DEROVALUE() == 0 THEN GOTO 200
+15 IF STRLEN(invoiceId) == 0 THEN GOTO 200
 20 IF LOAD("paused") == 1 THEN GOTO 200
 30 DIM amount, fee, payout AS Uint64
 40 LET amount = DEROVALUE()

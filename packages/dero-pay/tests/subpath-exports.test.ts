@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 // "exports" map against the built dist/, exactly as an npm consumer would.
 import * as agent from "dero-pay/agent";
 import * as x402 from "dero-pay/x402";
+import * as prepaid from "dero-pay/prepaid";
 
 describe("published subpath exports resolve", () => {
   it("dero-pay/x402 exposes its public surface", () => {
@@ -33,5 +34,17 @@ describe("published subpath exports resolve", () => {
       expect((agent as Record<string, unknown>)[name], `agent missing ${name}`).toBeDefined();
     }
     expect(typeof agent.createPayingFetch).toBe("function");
+  });
+
+  it("dero-pay/prepaid exposes its public surface", () => {
+    for (const name of [
+      "PrepaidLedger",
+      "PrepaidError",
+      "createPrepaidHandlers",
+      "createPrepaidClient",
+      "createMeteredProxy",
+    ]) {
+      expect((prepaid as Record<string, unknown>)[name], `prepaid missing ${name}`).toBeDefined();
+    }
   });
 });

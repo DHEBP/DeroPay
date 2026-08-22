@@ -26,6 +26,7 @@ scripts/
 # Runtime data
 apps/dashboard/mainnet/
 apps/dashboard/datashards/
+.wallet-agent/
 
 # Next.js generated
 next-env.d.ts

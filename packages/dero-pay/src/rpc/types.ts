@@ -143,9 +143,9 @@ export type TransferEntry = {
   /** Decoded payload */
   payload_rpc: PayloadRpcArg[];
   /** Destination port (payment ID) */
-  destination_port: number;
+  destination_port: number | bigint;
   /** Source port */
-  source_port: number;
+  source_port: number | bigint;
   /** Sender address */
   sender: string;
   /** Transaction time */

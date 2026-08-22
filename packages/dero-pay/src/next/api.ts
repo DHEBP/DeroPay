@@ -620,12 +620,28 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
         );
       }
 
+      const boundResource = invoice.metadata.deropayX402Resource;
+      if (typeof boundResource === "string" && body.resource !== boundResource) {
+        return Response.json(
+          { error: "Receipt resource does not match the paid x402 invoice" },
+          { status: 409 },
+        );
+      }
+
+      const network = config.chainId ?? "dero-mainnet";
+      if (body.network && body.network !== network) {
+        return Response.json(
+          { error: "Receipt network does not match the payment handler" },
+          { status: 400 },
+        );
+      }
+
       const issued = issueReceiptFromInvoice(invoice, {
         secret: signingKey.secret,
         keyId: signingKey.keyId,
         resource: body.resource,
         ttlSeconds: body.ttlSeconds,
-        network: body.network ?? (config.chainId ?? "dero-mainnet"),
+        network,
       });
 
       engine.emitX402AuditEvent({
@@ -685,6 +701,7 @@ export function createPaymentHandlers(config: PaymentHandlersConfig) {
 
       const claims = verifyPaymentReceipt(receipt, verificationSecrets, {
         resource: body.resource,
+        network: config.chainId ?? "dero-mainnet",
         minAmountAtomic:
           typeof body.minAmountAtomic === "string"
             ? BigInt(body.minAmountAtomic)

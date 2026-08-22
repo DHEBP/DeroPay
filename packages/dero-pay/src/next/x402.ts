@@ -51,6 +51,12 @@ export type X402ChallengeResponse = {
   };
 };
 
+export type X402AuthorizationContext = {
+  claims: import("../server/payment-receipts.js").PaymentReceiptClaims;
+  policy: X402PaymentPolicy;
+  resource: string;
+};
+
 function getUtcDayWindow(now = new Date()): { start: Date; end: Date } {
   const start = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0)
@@ -81,14 +87,14 @@ async function resolvePolicy(
   return policy;
 }
 
-function buildInvoiceParams(policy: X402PaymentPolicy): CreateInvoiceParams {
+function buildInvoiceParams(policy: X402PaymentPolicy, resource: string): CreateInvoiceParams {
   return {
     name: policy.name,
     description: policy.description,
     amount: policy.amountAtomic,
     ttlSeconds: policy.ttlSeconds,
     requiredConfirmations: policy.requiredConfirmations,
-    metadata: policy.metadata,
+    metadata: { ...policy.metadata, deropayX402Resource: resource },
   };
 }
 
@@ -107,7 +113,10 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
   const protocolId = config.protocolId ?? "x402-deropay-draft";
 
   return function withX402PaymentGuard(
-    handler: (request: Request) => Promise<Response> | Response
+    handler: (
+      request: Request,
+      context: X402AuthorizationContext,
+    ) => Promise<Response> | Response
   ) {
     return async function guardedHandler(request: Request): Promise<Response> {
       const policy = await resolvePolicy(config.policy, request);
@@ -128,6 +137,8 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
         const claims = verifyPaymentReceipt(existingReceipt, receiptSecrets, {
           resource,
           minAmountAtomic: policy.amountAtomic,
+          network: policy.network ?? "dero-mainnet",
+          minConfirmations: policy.requiredConfirmations ?? 3,
         });
         if (claims) {
           if (enforceSingleUseReceipts) {
@@ -287,7 +298,7 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
             invoiceId: claims.invoiceId,
             jti: claims.jti,
           });
-          return handler(request);
+          return handler(request, { claims, policy, resource });
         }
 
         (await getEngine()).emitX402AuditEvent({
@@ -298,7 +309,7 @@ export function createX402RouteGuard(config: X402RouteGuardConfig) {
       }
 
       const activeEngine = await getEngine();
-      const invoice = await activeEngine.createInvoice(buildInvoiceParams(policy));
+      const invoice = await activeEngine.createInvoice(buildInvoiceParams(policy, resource));
       activeEngine.emitX402AuditEvent({
         type: "x402.challenge_issued",
         resource,

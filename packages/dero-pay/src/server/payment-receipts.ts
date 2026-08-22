@@ -30,6 +30,8 @@ export type PaymentReceiptClaims = {
 export type VerifyReceiptOptions = {
   resource?: string;
   minAmountAtomic?: bigint;
+  network?: DeroChainId;
+  minConfirmations?: number;
   nowMs?: number;
 };
 
@@ -125,12 +127,28 @@ export function verifyPaymentReceipt(
     if (!claims.jti || !claims.invoiceId || !claims.resource || claims.asset !== "DERO") {
       return null;
     }
-    if (!claims.amountAtomic || Number.isNaN(Number(claims.confirmations))) return null;
+    if (
+      typeof claims.amountAtomic !== "string" ||
+      !/^[1-9]\d*$/.test(claims.amountAtomic) ||
+      !Number.isSafeInteger(claims.confirmations) ||
+      claims.confirmations < 0 ||
+      !Number.isFinite(claims.issuedAt) ||
+      !Number.isFinite(claims.expiresAt)
+    ) {
+      return null;
+    }
 
     const now = options?.nowMs ?? Date.now();
     if (claims.expiresAt <= now) return null;
 
     if (options?.resource && claims.resource !== options.resource) return null;
+    if (options?.network && claims.network !== options.network) return null;
+    if (
+      options?.minConfirmations !== undefined &&
+      claims.confirmations < options.minConfirmations
+    ) {
+      return null;
+    }
 
     if (
       typeof options?.minAmountAtomic !== "undefined" &&

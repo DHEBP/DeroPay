@@ -39,6 +39,8 @@ export type {
   CreatePaymentLinkArgs,
 } from "../store/types.js";
 
+export type { PrepaidStore } from "../prepaid/types.js";
+
 export { MemoryInvoiceStore } from "../store/memory.js";
 export { SqliteInvoiceStore, type SqliteStoreConfig } from "../store/sqlite.js";
 

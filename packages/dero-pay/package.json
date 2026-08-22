@@ -166,6 +166,16 @@
         "types": "./dist/agent/index.d.cts",
         "default": "./dist/agent/index.cjs"
       }
+    },
+    "./prepaid": {
+      "import": {
+        "types": "./dist/prepaid/index.d.ts",
+        "default": "./dist/prepaid/index.js"
+      },
+      "require": {
+        "types": "./dist/prepaid/index.d.cts",
+        "default": "./dist/prepaid/index.cjs"
+      }
     }
   },
   "bin": {
@@ -194,6 +204,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:prepaid": "vitest run tests/prepaid-client.test.ts tests/prepaid-ledger.test.ts tests/prepaid-handlers.test.ts tests/prepaid-proxy.test.ts tests/wallet-rpc-fields.test.ts tests/wallet-rpc-uint64.test.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:exports": "tsup && vitest run --config vitest.exports.config.ts",
     "test:pack-exports": "node tools/verify-pack-exports.mjs",

@@ -33,7 +33,10 @@
     "build:dashboard": "NEXT_PUBLIC_DEMO_MODE=true bun run --cwd apps/dashboard build",
     "build:medusa": "bun run --cwd plugins/medusa-payment-deropay build",
     "build:woocommerce": "cd plugins/woocommerce && zip -r ../../deropay-for-woocommerce.zip . -x '*.git*' -x '*node_modules*'",
-    "typecheck": "bun run --cwd packages/dero-pay typecheck"
+    "typecheck": "bun run --cwd packages/dero-pay typecheck",
+    "test:prepaid": "bun run build:x402-example && bun run --cwd packages/dero-pay test:prepaid && bun run --cwd apps/x402-example test:prepaid",
+    "test:prepaid:simulator": "bun run build:x402-example && bun run --cwd apps/x402-example test:prepaid:simulator",
+    "test:prepaid:venice": "bun run build:x402-example && bun run --cwd apps/x402-example test:prepaid:venice"
   },
   "packageManager": "bun",
   "trustedDependencies": [

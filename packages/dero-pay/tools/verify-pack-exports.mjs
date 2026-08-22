@@ -28,7 +28,10 @@ console.log("[pack-exports] building…");
 run("npm run build", pkgDir);
 
 console.log("[pack-exports] packing…");
-const tgz = JSON.parse(run("npm pack --json", pkgDir))[0].filename;
+const packed = JSON.parse(run("npm pack --json", pkgDir));
+const packResult = Array.isArray(packed) ? packed[0] : Object.values(packed)[0];
+if (!packResult?.filename) throw new Error("npm pack did not return a tarball filename");
+const tgz = packResult.filename;
 const tgzPath = join(pkgDir, tgz);
 
 const consumer = mkdtempSync(join(tmpdir(), "deropay-consumer-"));
@@ -52,6 +55,7 @@ try {
       "dero-pay/escrow", "dero-pay/router", "dero-pay/client", "dero-pay/gateway",
       "dero-pay/react", "dero-pay/next", "dero-pay/x402", "dero-pay/x402/types",
       "dero-pay/x402/server", "dero-pay/x402/client", "dero-pay/x402/next", "dero-pay/agent",
+      "dero-pay/prepaid",
     ];
     import { createRequire } from "node:module";
     const require = createRequire(import.meta.url + "/");

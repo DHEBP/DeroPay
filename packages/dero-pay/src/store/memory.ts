@@ -19,11 +19,28 @@ import type { EscrowClaimGuard } from "../escrow/manager.js";
 import { MemoryEscrowClaimGuard } from "../escrow/claim-guard.js";
 import type { EscrowInventoryStore } from "../escrow/inventory-store.js";
 import { MemoryEscrowInventoryStore } from "../escrow/inventory-store.js";
+import {
+  PrepaidError,
+  type CapturePrepaidInput,
+  type CreditPrepaidInput,
+  type PrepaidBalance,
+  type PrepaidCaptureResult,
+  type PrepaidCreditResult,
+  type PrepaidHold,
+  type PrepaidReleaseResult,
+  type PrepaidReservationResult,
+  type PrepaidStore,
+  type PrepaidTransaction,
+  type PrepaidTransactionPage,
+  type RefundPrepaidInput,
+  type ReleasePrepaidInput,
+  type ReservePrepaidInput,
+} from "../prepaid/types.js";
 
 /**
  * In-memory implementation of InvoiceStore.
  */
-export class MemoryInvoiceStore implements InvoiceStore {
+export class MemoryInvoiceStore implements InvoiceStore, PrepaidStore {
   private invoices = new Map<string, Invoice>();
   private claimGuard?: EscrowClaimGuard;
   private inventoryStore?: EscrowInventoryStore;
@@ -44,6 +61,10 @@ export class MemoryInvoiceStore implements InvoiceStore {
     string,
     { windowEndMs: number; receiptCount: number; totalAmountAtomic: bigint }
   >();
+  private prepaidBalances = new Map<string, PrepaidBalance>();
+  private prepaidTransactions = new Map<string, PrepaidTransaction>();
+  private prepaidHolds = new Map<string, PrepaidHold>();
+  private prepaidHoldReferences = new Map<string, string>();
 
   async createInvoice(invoice: Invoice): Promise<void> {
     if (this.invoices.has(invoice.id)) {
@@ -372,11 +393,317 @@ export class MemoryInvoiceStore implements InvoiceStore {
     };
   }
 
+  async creditPrepaid(input: CreditPrepaidInput): Promise<PrepaidCreditResult> {
+    const existing = this.prepaidTransactions.get(input.reference);
+    if (existing) {
+      if (
+        existing.type !== "TOP_UP" ||
+        existing.accountId !== input.accountId ||
+        existing.amountAtomic !== input.amountAtomic ||
+        existing.relatedReference !== input.relatedReference
+      ) {
+        throw new PrepaidError("idempotency_conflict", "Prepaid reference already exists");
+      }
+      return {
+        created: false,
+        balance: this.prepaidBalance(input.accountId),
+        transaction: this.prepaidTransaction(existing),
+      };
+    }
+
+    if (input.relatedReference) {
+      // ponytail: linear only in the development store; index if in-memory top-up volume grows.
+      const usedInvoice = Array.from(this.prepaidTransactions.values()).some(
+        (transaction) =>
+          transaction.type === "TOP_UP" &&
+          transaction.relatedReference === input.relatedReference,
+      );
+      if (usedInvoice) {
+        throw new PrepaidError("idempotency_conflict", "Top-up invoice was already credited");
+      }
+    }
+
+    const balance = this.prepaidBalance(input.accountId);
+    balance.availableAtomic += input.amountAtomic;
+    balance.updatedAt = input.createdAt;
+    this.prepaidBalances.set(input.accountId, balance);
+    const transaction: PrepaidTransaction = {
+      id: input.id,
+      accountId: input.accountId,
+      type: "TOP_UP",
+      amountAtomic: input.amountAtomic,
+      balanceAfterAtomic: balance.availableAtomic,
+      reference: input.reference,
+      relatedReference: input.relatedReference,
+      createdAt: input.createdAt,
+      metadata: { ...input.metadata },
+    };
+    this.prepaidTransactions.set(input.reference, transaction);
+    return {
+      created: true,
+      balance: this.prepaidBalance(input.accountId),
+      transaction: this.prepaidTransaction(transaction),
+    };
+  }
+
+  async reservePrepaid(input: ReservePrepaidInput): Promise<PrepaidReservationResult> {
+    const existingId = this.prepaidHoldReferences.get(input.reference);
+    if (existingId) {
+      const existing = this.prepaidHolds.get(existingId)!;
+      if (
+        existing.accountId !== input.accountId ||
+        existing.reservedAtomic !== input.amountAtomic
+      ) {
+        throw new PrepaidError("idempotency_conflict", "Prepaid hold reference already exists");
+      }
+      return {
+        created: false,
+        balance: this.prepaidBalance(input.accountId),
+        hold: this.prepaidHold(existing),
+      };
+    }
+
+    const balance = this.prepaidBalance(input.accountId);
+    if (balance.availableAtomic < input.amountAtomic) {
+      throw new PrepaidError("insufficient_balance", "Insufficient prepaid balance", {
+        availableAtomic: balance.availableAtomic.toString(),
+        requiredAtomic: input.amountAtomic.toString(),
+      });
+    }
+    balance.availableAtomic -= input.amountAtomic;
+    balance.reservedAtomic += input.amountAtomic;
+    balance.updatedAt = input.createdAt;
+    this.prepaidBalances.set(input.accountId, balance);
+    const hold: PrepaidHold = {
+      id: input.id,
+      accountId: input.accountId,
+      reference: input.reference,
+      reservedAtomic: input.amountAtomic,
+      capturedAtomic: 0n,
+      state: "open",
+      createdAt: input.createdAt,
+      metadata: { ...input.metadata },
+    };
+    this.prepaidHolds.set(hold.id, hold);
+    this.prepaidHoldReferences.set(hold.reference, hold.id);
+    return {
+      created: true,
+      balance: this.prepaidBalance(input.accountId),
+      hold: this.prepaidHold(hold),
+    };
+  }
+
+  async capturePrepaid(input: CapturePrepaidInput): Promise<PrepaidCaptureResult> {
+    const hold = this.prepaidHolds.get(input.holdId);
+    if (!hold) throw new PrepaidError("hold_not_found", "Prepaid hold was not found");
+    const chargeReference = `charge:${hold.id}`;
+    if (hold.state === "captured") {
+      if (hold.capturedAtomic !== input.amountAtomic) {
+        throw new PrepaidError("idempotency_conflict", "Hold was captured for another amount");
+      }
+      const existing = this.prepaidTransactions.get(chargeReference);
+      return {
+        created: false,
+        balance: this.prepaidBalance(hold.accountId),
+        hold: this.prepaidHold(hold),
+        transaction: existing ? this.prepaidTransaction(existing) : undefined,
+      };
+    }
+    if (hold.state !== "open") {
+      throw new PrepaidError("hold_not_open", "Prepaid hold is no longer open");
+    }
+    if (input.amountAtomic > hold.reservedAtomic) {
+      throw new PrepaidError(
+        "capture_exceeds_reservation",
+        "Capture amount exceeds prepaid reservation",
+      );
+    }
+
+    const balance = this.prepaidBalance(hold.accountId);
+    balance.availableAtomic += hold.reservedAtomic - input.amountAtomic;
+    balance.reservedAtomic -= hold.reservedAtomic;
+    balance.updatedAt = input.finalizedAt;
+    this.prepaidBalances.set(hold.accountId, balance);
+    hold.state = "captured";
+    hold.capturedAtomic = input.amountAtomic;
+    hold.finalizedAt = input.finalizedAt;
+    hold.metadata = { ...hold.metadata, ...input.metadata };
+
+    let transaction: PrepaidTransaction | undefined;
+    if (input.amountAtomic > 0n) {
+      transaction = {
+        id: input.transactionId,
+        accountId: hold.accountId,
+        type: "CHARGE",
+        amountAtomic: input.amountAtomic,
+        balanceAfterAtomic: balance.availableAtomic,
+        reference: chargeReference,
+        relatedReference: hold.reference,
+        createdAt: input.finalizedAt,
+        metadata: { ...input.metadata },
+      };
+      this.prepaidTransactions.set(transaction.reference, transaction);
+    }
+    return {
+      created: true,
+      balance: this.prepaidBalance(hold.accountId),
+      hold: this.prepaidHold(hold),
+      transaction: transaction ? this.prepaidTransaction(transaction) : undefined,
+    };
+  }
+
+  async releasePrepaid(input: ReleasePrepaidInput): Promise<PrepaidReleaseResult> {
+    const hold = this.prepaidHolds.get(input.holdId);
+    if (!hold) throw new PrepaidError("hold_not_found", "Prepaid hold was not found");
+    if (hold.state === "released") {
+      return {
+        released: false,
+        balance: this.prepaidBalance(hold.accountId),
+        hold: this.prepaidHold(hold),
+      };
+    }
+    if (hold.state !== "open") {
+      throw new PrepaidError("hold_not_open", "Captured prepaid hold cannot be released");
+    }
+    const balance = this.prepaidBalance(hold.accountId);
+    balance.availableAtomic += hold.reservedAtomic;
+    balance.reservedAtomic -= hold.reservedAtomic;
+    balance.updatedAt = input.finalizedAt;
+    this.prepaidBalances.set(hold.accountId, balance);
+    hold.state = "released";
+    hold.finalizedAt = input.finalizedAt;
+    return {
+      released: true,
+      balance: this.prepaidBalance(hold.accountId),
+      hold: this.prepaidHold(hold),
+    };
+  }
+
+  async refundPrepaid(input: RefundPrepaidInput): Promise<PrepaidCreditResult> {
+    const existing = this.prepaidTransactions.get(input.reference);
+    if (existing) {
+      if (
+        existing.type !== "REFUND" ||
+        existing.accountId !== input.accountId ||
+        existing.amountAtomic !== input.amountAtomic ||
+        existing.relatedReference !== input.chargeReference
+      ) {
+        throw new PrepaidError("idempotency_conflict", "Refund reference already exists");
+      }
+      return {
+        created: false,
+        balance: this.prepaidBalance(input.accountId),
+        transaction: this.prepaidTransaction(existing),
+      };
+    }
+    const charge = this.prepaidTransactions.get(input.chargeReference);
+    if (!charge || charge.type !== "CHARGE" || charge.accountId !== input.accountId) {
+      throw new PrepaidError("charge_not_found", "Charge reference was not found");
+    }
+    let refunded = 0n;
+    for (const transaction of this.prepaidTransactions.values()) {
+      if (
+        transaction.type === "REFUND" &&
+        transaction.relatedReference === input.chargeReference
+      ) {
+        refunded += transaction.amountAtomic;
+      }
+    }
+    if (refunded + input.amountAtomic > charge.amountAtomic) {
+      throw new PrepaidError("refund_exceeds_charge", "Refund exceeds original charge");
+    }
+    const balance = this.prepaidBalance(input.accountId);
+    balance.availableAtomic += input.amountAtomic;
+    balance.updatedAt = input.createdAt;
+    this.prepaidBalances.set(input.accountId, balance);
+    const transaction: PrepaidTransaction = {
+      id: input.id,
+      accountId: input.accountId,
+      type: "REFUND",
+      amountAtomic: input.amountAtomic,
+      balanceAfterAtomic: balance.availableAtomic,
+      reference: input.reference,
+      relatedReference: input.chargeReference,
+      createdAt: input.createdAt,
+      metadata: { ...input.metadata },
+    };
+    this.prepaidTransactions.set(transaction.reference, transaction);
+    return {
+      created: true,
+      balance: this.prepaidBalance(input.accountId),
+      transaction: this.prepaidTransaction(transaction),
+    };
+  }
+
+  async getPrepaidBalance(accountId: string): Promise<PrepaidBalance> {
+    return this.prepaidBalance(accountId);
+  }
+
+  async getPrepaidTransaction(reference: string): Promise<PrepaidTransaction | null> {
+    const transaction = this.prepaidTransactions.get(reference);
+    return transaction ? this.prepaidTransaction(transaction) : null;
+  }
+
+  async listPrepaidTransactions(
+    accountId: string,
+    options: { limit: number; offset: number },
+  ): Promise<PrepaidTransactionPage> {
+    const all = Array.from(this.prepaidTransactions.values())
+      .filter((transaction) => transaction.accountId === accountId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return {
+      items: all
+        .slice(options.offset, options.offset + options.limit)
+        .map((transaction) => this.prepaidTransaction(transaction)),
+      total: all.length,
+      limit: options.limit,
+      offset: options.offset,
+    };
+  }
+
+  async listOpenPrepaidHolds(
+    options: { accountId?: string; limit?: number } = {},
+  ): Promise<PrepaidHold[]> {
+    return Array.from(this.prepaidHolds.values())
+      .filter(
+        (hold) =>
+          hold.state === "open" &&
+          (options.accountId === undefined || hold.accountId === options.accountId),
+      )
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, options.limit ?? 100)
+      .map((hold) => this.prepaidHold(hold));
+  }
+
   async close(): Promise<void> {
     this.invoices.clear();
     this.paymentIdIndex.clear();
     this.usedReceiptJtis.clear();
     this.x402UsageWindows.clear();
+    this.prepaidBalances.clear();
+    this.prepaidTransactions.clear();
+    this.prepaidHolds.clear();
+    this.prepaidHoldReferences.clear();
+  }
+
+  private prepaidBalance(accountId: string): PrepaidBalance {
+    const balance = this.prepaidBalances.get(accountId);
+    return balance
+      ? { ...balance }
+      : {
+          accountId,
+          availableAtomic: 0n,
+          reservedAtomic: 0n,
+          updatedAt: new Date(0).toISOString(),
+        };
+  }
+
+  private prepaidTransaction(transaction: PrepaidTransaction): PrepaidTransaction {
+    return { ...transaction, metadata: { ...transaction.metadata } };
+  }
+
+  private prepaidHold(hold: PrepaidHold): PrepaidHold {
+    return { ...hold, metadata: { ...hold.metadata } };
   }
 
   private pruneExpiredReceiptJtis(nowMs = Date.now()): void {

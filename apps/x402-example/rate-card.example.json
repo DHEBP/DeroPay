@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "id": "models",
+      "method": "GET",
+      "path": "/api/v1/models",
+      "kind": "free",
+      "reserveAtomic": "0"
+    },
+    {
+      "id": "chat-completions",
+      "method": "POST",
+      "path": "/api/v1/chat/completions",
+      "kind": "tokens",
+      "reserveAtomic": "50000",
+      "models": { "*": { "inputAtomicPerMillion": "100000", "outputAtomicPerMillion": "200000" } }
+    },
+    {
+      "id": "responses",
+      "method": "POST",
+      "path": "/api/v1/responses",
+      "kind": "tokens",
+      "reserveAtomic": "50000",
+      "models": { "*": { "inputAtomicPerMillion": "100000", "outputAtomicPerMillion": "200000" } }
+    },
+    {
+      "id": "embeddings",
+      "method": "POST",
+      "path": "/api/v1/embeddings",
+      "kind": "tokens",
+      "reserveAtomic": "25000",
+      "models": { "*": { "inputAtomicPerMillion": "100000", "outputAtomicPerMillion": "0" } }
+    },
+    { "id": "image-generate", "method": "POST", "path": "/api/v1/image/generate", "kind": "operation", "reserveAtomic": "50000", "models": { "*": { "chargeAtomic": "50000" } } },
+    { "id": "images-generations", "method": "POST", "path": "/api/v1/images/generations", "kind": "operation", "reserveAtomic": "50000", "models": { "*": { "chargeAtomic": "50000" } } },
+    { "id": "image-upscale", "method": "POST", "path": "/api/v1/image/upscale", "kind": "operation", "reserveAtomic": "50000", "models": { "*": { "chargeAtomic": "50000" } } },
+    { "id": "image-edit", "method": "POST", "path": "/api/v1/image/edit", "kind": "operation", "reserveAtomic": "50000", "models": { "*": { "chargeAtomic": "50000" } } },
+    { "id": "image-multi-edit", "method": "POST", "path": "/api/v1/image/multi-edit", "kind": "operation", "reserveAtomic": "50000", "models": { "*": { "chargeAtomic": "50000" } } },
+    { "id": "image-background-remove", "method": "POST", "path": "/api/v1/image/background-remove", "kind": "operation", "reserveAtomic": "50000", "models": { "*": { "chargeAtomic": "50000" } } },
+    { "id": "audio-speech", "method": "POST", "path": "/api/v1/audio/speech", "kind": "operation", "reserveAtomic": "25000", "models": { "*": { "chargeAtomic": "25000" } } },
+    { "id": "audio-transcriptions", "method": "POST", "path": "/api/v1/audio/transcriptions", "kind": "operation", "reserveAtomic": "25000", "models": { "*": { "chargeAtomic": "25000" } } },
+    { "id": "audio-complete", "method": "POST", "path": "/api/v1/audio/complete", "kind": "operation", "reserveAtomic": "25000", "models": { "*": { "chargeAtomic": "25000" } } },
+    { "id": "audio-queue", "method": "POST", "path": "/api/v1/audio/queue", "kind": "operation", "reserveAtomic": "25000", "models": { "*": { "chargeAtomic": "25000" } } },
+    { "id": "audio-retrieve", "method": "POST", "path": "/api/v1/audio/retrieve", "kind": "operation", "reserveAtomic": "5000", "models": { "*": { "chargeAtomic": "5000" } } },
+    { "id": "video-complete", "method": "POST", "path": "/api/v1/video/complete", "kind": "operation", "reserveAtomic": "100000", "models": { "*": { "chargeAtomic": "100000" } } },
+    { "id": "video-queue", "method": "POST", "path": "/api/v1/video/queue", "kind": "operation", "reserveAtomic": "100000", "models": { "*": { "chargeAtomic": "100000" } } },
+    { "id": "video-retrieve", "method": "POST", "path": "/api/v1/video/retrieve", "kind": "operation", "reserveAtomic": "5000", "models": { "*": { "chargeAtomic": "5000" } } },
+    { "id": "video-transcriptions", "method": "POST", "path": "/api/v1/video/transcriptions", "kind": "operation", "reserveAtomic": "25000", "models": { "*": { "chargeAtomic": "25000" } } }
+  ]
+}

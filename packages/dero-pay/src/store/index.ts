@@ -10,5 +10,7 @@ export type {
   InvoiceStats,
 } from "./types.js";
 
+export type { PrepaidStore } from "../prepaid/types.js";
+
 export { MemoryInvoiceStore } from "./memory.js";
 export { SqliteInvoiceStore, type SqliteStoreConfig } from "./sqlite.js";

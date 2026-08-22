@@ -151,13 +151,39 @@ function serializeRpcBody(request: unknown): string {
  * `BigInt(undefined)` on every poll, so no live payment is ever detected.
  * Fill the canonical fields from whichever alias the wallet provided.
  */
+type TransferPortWireValue = number | string | bigint;
+
+function normalizeTransferPort(value: TransferPortWireValue | undefined): number | bigint {
+  if (value === undefined) return 0;
+  if (typeof value === "number") return value;
+  const exact = BigInt(value);
+  return exact <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(exact) : exact;
+}
+
 function normalizeTransferEntry(entry: TransferEntry): TransferEntry {
-  const raw = entry as TransferEntry & { dstport?: number; srcport?: number };
+  const raw = entry as TransferEntry & {
+    dstport?: TransferPortWireValue;
+    srcport?: TransferPortWireValue;
+    destination_port?: TransferPortWireValue;
+    source_port?: TransferPortWireValue;
+  };
   return {
     ...entry,
-    destination_port: entry.destination_port ?? raw.dstport ?? 0,
-    source_port: entry.source_port ?? raw.srcport ?? 0,
+    destination_port: normalizeTransferPort(raw.destination_port ?? raw.dstport),
+    source_port: normalizeTransferPort(raw.source_port ?? raw.srcport),
   };
+}
+
+function parseTransferRpcResponse<T>(raw: string): JsonRpcResponse<T> {
+  // JSON.parse rounds uint64 ports above 2^53. Quote just those numeric fields
+  // before parsing; normalizeTransferEntry converts safe values back to numbers
+  // and retains large values as bigint.
+  return JSON.parse(
+    raw.replace(
+      /("(?:dstport|srcport|destination_port|source_port)"\s*:\s*)(\d+)/g,
+      '$1"$2"',
+    ),
+  ) as JsonRpcResponse<T>;
 }
 
 /**
@@ -195,7 +221,11 @@ export class WalletRpcClient {
   /**
    * Send a JSON-RPC request to the wallet.
    */
-  private async rpcCall<T>(method: string, params?: unknown): Promise<T> {
+  private async rpcCall<T>(
+    method: string,
+    params?: unknown,
+    preserveTransferPorts = false,
+  ): Promise<T> {
     const id = String(++this.requestCounter);
     const request: JsonRpcRequest = {
       jsonrpc: "2.0",
@@ -221,7 +251,9 @@ export class WalletRpcClient {
         throw new Error(`Wallet RPC HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const json = (await response.json()) as JsonRpcResponse<T>;
+      const json = preserveTransferPorts && typeof response.text === "function"
+        ? parseTransferRpcResponse<T>(await response.text())
+        : (await response.json()) as JsonRpcResponse<T>;
 
       if (json.error) {
         // DETERMINISTIC — a JSON-RPC error response is a definitive refusal from
@@ -301,7 +333,7 @@ export class WalletRpcClient {
    * @returns Array of transfer entries
    */
   async getTransfers(params?: GetTransfersParams): Promise<TransferEntry[]> {
-    const result = await this.rpcCall<GetTransfersResult>("GetTransfers", params ?? {});
+    const result = await this.rpcCall<GetTransfersResult>("GetTransfers", params ?? {}, true);
     return (result.entries ?? []).map(normalizeTransferEntry);
   }
 
@@ -371,7 +403,13 @@ export class WalletRpcClient {
     if (minHeight !== undefined) {
       params.min_height = minHeight;
     }
-    return this.getTransfers(params);
+    const entries = await this.getTransfers(params);
+    // Pinned derohe accepts dstport in GetTransfers but Show_Transfers ignores
+    // it. Enforce the filter here so concurrent invoices cannot claim each
+    // other's transaction.
+    return entries.filter(
+      (entry) => BigInt(entry.destination_port) === destinationPort,
+    );
   }
 
   /**
@@ -380,7 +418,8 @@ export class WalletRpcClient {
   async getTransferByTxid(txid: string): Promise<TransferEntry> {
     const result = await this.rpcCall<GetTransferByTXIDResult>(
       "GetTransferbyTXID",
-      { txid } satisfies GetTransferByTXIDParams
+      { txid } satisfies GetTransferByTXIDParams,
+      true,
     );
     return normalizeTransferEntry(result.entry);
   }

@@ -46,4 +46,24 @@ describe("webhook_outbox migration is additive + idempotent", () => {
     expect(await store.getInvoice("inv-legacy")).not.toBeNull();
     await store.close();
   });
+
+  it("adds prepaid tables to an existing invoice database", async () => {
+    dir = mkdtempSync(join(tmpdir(), "deropay-prepaid-mig-"));
+    const path = join(dir, "store.db");
+    let store = new SqliteInvoiceStore({ path });
+    await store.createInvoice(makeInvoice({ id: "inv-before-prepaid", paymentId: 11n }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (store as any).db.exec(
+      "DROP TABLE prepaid_transactions; DROP TABLE prepaid_holds; DROP TABLE prepaid_accounts;",
+    );
+    await store.close();
+
+    store = new SqliteInvoiceStore({ path });
+    expect(await store.getInvoice("inv-before-prepaid")).not.toBeNull();
+    expect(await store.getPrepaidBalance("dero1new")).toMatchObject({
+      availableAtomic: 0n,
+      reservedAtomic: 0n,
+    });
+    await store.close();
+  });
 });

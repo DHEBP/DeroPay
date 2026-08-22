@@ -14,8 +14,9 @@ export const GET = meteredX402Guard(async (request) => {
       billedAtomic: (BigInt(tokens) * 5_000n).toString(),
     },
     data: {
-      model: "example-llm",
-      completion: "Dynamic pricing route served by DeroPay x402 policy resolver.",
+      model: "deropay-local-deterministic",
+      rail: "invoice",
+      completion: `Processed ${tokens} local token units after invoice settlement.`,
     },
   });
 });

@@ -44,6 +44,11 @@ describe("createX402RouteGuard", () => {
     expect(body.payment.amountAtomic).toBe("500000");
     expect(response.headers.get("WWW-Authenticate")).toContain("X402");
     expect(createInvoice).toHaveBeenCalledTimes(1);
+    expect(createInvoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: { deropayX402Resource: "/api/protected" },
+      }),
+    );
     expect(emitX402AuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "x402.challenge_issued",

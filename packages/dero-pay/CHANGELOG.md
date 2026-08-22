@@ -2,6 +2,24 @@
 
 All notable changes to `dero-pay` will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- Added the `dero-pay/prepaid` export with durable atomic-DERO balances,
+  idempotent invoice top-ups, reserve/capture/release/refund accounting, a
+  DeroAuth-aware client, and an allowlisted metered upstream proxy.
+- Added prepaid tables to the memory and SQLite stores and exposed verified
+  x402 receipt context to guarded route handlers.
+- Added a Next.js reference gateway with DeroAuth routes, a configurable rate
+  card, and chat, responses, embeddings, image, audio, and video adapters.
+
+### Fixed
+
+- Preserve uint64 transfer ports in wallet RPC responses and enforce the
+  destination-port filter client-side, because pinned derohe accepts `dstport`
+  on `GetTransfers` but returns unrelated incoming transfers.
+
 ## 0.5.1 - 2026-07-19
 
 ### Changed

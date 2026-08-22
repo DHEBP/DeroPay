@@ -22,4 +22,5 @@ export {
   type X402PolicyResolver,
   type X402RouteGuardConfig,
   type X402ChallengeResponse,
+  type X402AuthorizationContext,
 } from "./x402.js";

@@ -14,6 +14,7 @@ Payment processing SDK for DERO — Accept DERO payments with invoices, payment 
 - **Next.js Integration** — Ready-made API route handlers and middleware
 - **Wallet Connectors** — XSWD-first browser payments with optional gated advanced connectors
 - **Self-Hosted Dashboard** — Admin UI for invoice management, payment history, wallet status
+- **Prepaid API Metering** — Invoice-funded DERO balances with durable reserve/capture accounting
 
 ## Quick Start
 
@@ -285,6 +286,34 @@ Also in `dero-pay/agent`:
 Full flow, safety properties, and wire format:
 [`AGENT-PAYER.md`](./AGENT-PAYER.md).
 
+### Prepaid balances (`dero-pay/prepaid`)
+
+Use one DERO invoice to fund many authenticated API calls. `PrepaidLedger`
+provides idempotent top-ups, atomic holds, capture/release, refunds, and stale
+hold inspection on the existing memory and SQLite stores. `createMeteredProxy`
+reserves before an upstream call and never forwards the wallet JWT, cookies,
+or DeroPay payment headers.
+
+```ts
+import { PrepaidLedger, createMeteredProxy } from "dero-pay/prepaid";
+import { SqliteInvoiceStore } from "dero-pay/server";
+
+const ledger = new PrepaidLedger({
+  store: new SqliteInvoiceStore({ path: "deropay.sqlite" }),
+});
+
+const proxy = createMeteredProxy({
+  ledger,
+  authenticate: verifyDeroAuthBearer,
+  allowedUpstreamOrigins: ["https://inference.example"],
+  adapters: [chatAdapter],
+});
+```
+
+The same export includes `createPrepaidHandlers` for invoice top-up, balance,
+and transaction routes, plus `createPrepaidClient` for agents. See
+`apps/x402-example` for the complete DeroAuth + rate-card gateway.
+
 ### Audit Event Subscription
 
 ```ts
@@ -345,6 +374,7 @@ dero-pay/
 | `dero-pay/client` | Browser-side wallet connectors, XSWD client, and payment session |
 | `dero-pay/react` | React components and provider |
 | `dero-pay/next` | Next.js API route handlers and middleware |
+| `dero-pay/prepaid` | Prepaid ledger, top-up/client handlers, and metered proxy |
 
 ## Payment Flow
 

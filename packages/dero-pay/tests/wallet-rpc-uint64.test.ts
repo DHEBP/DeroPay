@@ -96,4 +96,26 @@ describe("uint64 wire serialization (O12)", () => {
     expect(polledPort).toBe(MAX_ID);
     expect(madePort).toBe(polledPort);
   });
+
+  it("preserves response uint64 ports and filters when derohe returns other payments", async () => {
+    const otherId = BIG_ID - 1n;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "1",
+      result: {
+        entries: [
+          { txid: "wanted", incoming: true, dstport: BIG_ID.toString() },
+          { txid: "other", incoming: true, dstport: otherId.toString() },
+        ],
+      },
+    }).replace(/"dstport":"(\d+)"/g, '"dstport":$1'), {
+      headers: { "Content-Type": "application/json" },
+    })));
+    const client = new WalletRpcClient();
+
+    const entries = await client.getIncomingByPaymentId(BIG_ID, 0);
+
+    expect(entries.map((entry) => entry.txid)).toEqual(["wanted"]);
+    expect(BigInt(entries[0].destination_port)).toBe(BIG_ID);
+  });
 });

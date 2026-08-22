@@ -4,12 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "agent-pay": "bun scripts/agent-pay.ts"
+    "agent-pay": "bun scripts/agent-pay.ts",
+    "wallet-agent": "bun scripts/agent-pay.ts",
+    "prepaid-agent": "bun scripts/prepaid-agent.ts",
+    "simulator-finality": "bun advance-simulator-finality.ts",
+    "test:wallet-agent": "bun test tests/wallet-budget-agent.test.ts",
+    "test:prepaid:unit": "bun test tests/prepaid-gateway.test.ts",
+    "test:prepaid:http": "bunx vitest run tests/prepaid-http.e2e.test.ts --testTimeout 120000",
+    "test:prepaid:simulator": "bunx vitest run tests/prepaid-simulator.e2e.test.ts",
+    "test:prepaid:venice": "bunx vitest run tests/prepaid-venice.live.test.ts",
+    "test:prepaid": "bun run test:prepaid:unit && bun run test:prepaid:http"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
+    "dero-auth": "^0.2.0",
     "dero-pay": "workspace:*",
     "next": "16.1.6",
     "react": "19.2.3",

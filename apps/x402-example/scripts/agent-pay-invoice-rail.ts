@@ -5,8 +5,8 @@
  * integrated address through the LOCAL wallet RPC (loopback-only), waits
  * for the invoice to complete, redeems it for a DPAY-RECEIPT token,
  * retries with X-DeroPay-Receipt, and prints the payment evidence — all
- * under a deny-by-default spending policy. A second request demonstrates
- * receipt reuse: it returns 200 without paying again.
+ * under a deny-by-default spending policy. Receipts are deliberately not
+ * reused: the protected inference route charges once per successful call.
  *
  * Requirements:
  *   - The x402-example app running (bun run dev:x402-example)
@@ -15,7 +15,7 @@
  *     from itself won't register as an incoming transfer.
  *
  * Env:
- *   RESOURCE_URL           — paid endpoint (default http://localhost:3000/api/protected/report)
+ *   RESOURCE_URL           — paid endpoint (default inference route, 10 token units)
  *   AGENT_WALLET_RPC_URL   — the agent's wallet RPC (default http://127.0.0.1:10104/json_rpc)
  *   MAX_ATOMIC_PER_REQUEST — per-payment cap in atomic units (default 100000 = 1 DERO)
  *   MAX_ATOMIC_PER_HOUR    — rolling-hour cap in atomic units (default 500000 = 5 DERO)
@@ -32,7 +32,8 @@ import {
   type PaymentEvidence,
 } from "dero-pay/agent";
 
-const RESOURCE = process.env.RESOURCE_URL ?? "http://localhost:3000/api/protected/report";
+const RESOURCE =
+  process.env.RESOURCE_URL ?? "http://localhost:3000/api/protected/inference?tokens=10";
 const AGENT_WALLET_RPC_URL =
   process.env.AGENT_WALLET_RPC_URL ?? "http://127.0.0.1:10104/json_rpc";
 const MAX_PER_REQUEST = BigInt(process.env.MAX_ATOMIC_PER_REQUEST ?? "100000");
@@ -49,6 +50,7 @@ async function main() {
   const payingFetch = createPayingFetch({
     payer: createWalletRpcPayer({ url: AGENT_WALLET_RPC_URL }),
     policy,
+    reuseReceipts: false,
     onPayment: (e) => {
       evidence.push(e);
       console.log("[paid]", JSON.stringify(e));
@@ -60,7 +62,7 @@ async function main() {
   console.log("[agent] status:", res.status);
   console.log("[agent] body:", await res.text());
 
-  console.log("[agent] calling again — the live receipt should be reused, no new payment");
+  console.log("[agent] calling again — pay-per-call creates a second payment");
   const again = await payingFetch(RESOURCE);
   console.log("[agent] status:", again.status);
 

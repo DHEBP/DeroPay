@@ -45,3 +45,101 @@ jobs:
 
       - name: Build SDK
         run: bun run --cwd packages/dero-pay build
+
+      - name: Typecheck x402 example
+        run: bunx tsc -p apps/x402-example/tsconfig.json --noEmit
+
+      - name: Build x402 example
+        run: bun run --cwd apps/x402-example build
+
+      - name: Run deterministic prepaid gateway tests
+        run: bun run --cwd apps/x402-example test:prepaid
+
+  prepaid-simulator:
+    needs: sdk-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEROHE_SIMULATOR_COMMIT: e9df1205b6603c62f0651d0e18e5e77a2584b15e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify better-sqlite3 native binding built
+        run: test -f packages/dero-pay/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+          || (echo "::error::better-sqlite3 native binding missing" && exit 1)
+
+      - name: Build SDK and production gateway
+        run: bun run build:x402-example
+
+      - name: Build pinned DERO simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_source="$RUNNER_TEMP/derohe"
+          git clone --no-checkout --filter=blob:none https://github.com/DEROFDN/derohe.git "$simulator_source"
+          git -C "$simulator_source" checkout --detach "$DEROHE_SIMULATOR_COMMIT"
+          test "$(git -C "$simulator_source" rev-parse HEAD)" = "$DEROHE_SIMULATOR_COMMIT"
+          (cd "$simulator_source" && go build -o "$RUNNER_TEMP/dero-simulator" ./cmd/simulator)
+
+      - name: Run six-wallet prepaid simulator suite
+        shell: bash
+        env:
+          REQUIRE_DERO_SIMULATOR: "1"
+        run: |
+          set -euo pipefail
+          simulator_console_log="$RUNNER_TEMP/dero-simulator-console.log"
+          simulator_internal_log="$RUNNER_TEMP/dero-simulator.log"
+          simulator_data="$RUNNER_TEMP/dero-simulator-data"
+          mkdir -p "$simulator_data"
+          "$RUNNER_TEMP/dero-simulator" \
+            --data-dir="$simulator_data" \
+            --http-address=127.0.0.1:18080 \
+            >"$simulator_console_log" 2>&1 </dev/null &
+          simulator_pid=$!
+          cleanup() {
+            kill "$simulator_pid" 2>/dev/null || true
+            wait "$simulator_pid" 2>/dev/null || true
+            rm -f "$simulator_console_log" "$simulator_internal_log"
+            rm -rf "$simulator_data"
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 180); do
+            if ! kill -0 "$simulator_pid" 2>/dev/null; then
+              echo "::error::DERO simulator exited before its RPCs became ready"
+              exit 1
+            fi
+            ready=1
+            for port in 30000 30001 30002 30003 30004 30005; do
+              if ! curl --silent --fail --max-time 2 \
+                -H 'Content-Type: application/json' \
+                -d '{"jsonrpc":"2.0","id":"ready","method":"GetAddress"}' \
+                "http://127.0.0.1:${port}/json_rpc" >/dev/null; then
+                ready=0
+                break
+              fi
+            done
+            if [ "$ready" -eq 1 ]; then break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::DERO wallet RPCs 30000-30005 were not ready within 180 seconds"
+            exit 1
+          fi
+
+          bun run --cwd apps/x402-example test:prepaid:simulator

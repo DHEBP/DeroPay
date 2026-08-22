@@ -19,6 +19,7 @@ export default defineConfig({
     "x402/client": "src/x402/client.ts",
     "x402/next": "src/x402/next.ts",
     "agent/index": "src/agent/index.ts",
+    "prepaid/index": "src/prepaid/index.ts",
   },
   // Dual-format: ESM (.js) for modern consumers + CJS (.cjs) so CommonJS Node
   // backends (e.g. the Medusa plugin, which require()s dero-pay/gateway) can load

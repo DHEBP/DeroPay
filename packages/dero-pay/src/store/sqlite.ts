@@ -35,6 +35,23 @@ import type { EscrowClaimGuard } from "../escrow/manager.js";
 import { SqliteEscrowClaimGuard } from "../escrow/claim-guard.js";
 import type { EscrowInventoryStore } from "../escrow/inventory-store.js";
 import { SqliteEscrowInventoryStore } from "../escrow/inventory-store.js";
+import {
+  PrepaidError,
+  type CapturePrepaidInput,
+  type CreditPrepaidInput,
+  type PrepaidBalance,
+  type PrepaidCaptureResult,
+  type PrepaidCreditResult,
+  type PrepaidHold,
+  type PrepaidReleaseResult,
+  type PrepaidReservationResult,
+  type PrepaidStore,
+  type PrepaidTransaction,
+  type PrepaidTransactionPage,
+  type RefundPrepaidInput,
+  type ReleasePrepaidInput,
+  type ReservePrepaidInput,
+} from "../prepaid/types.js";
 
 /** SQLite row for invoices table */
 type InvoiceRow = {
@@ -129,6 +146,37 @@ type OutboxRow = {
   delivered_at: number | null;
 };
 
+type PrepaidAccountRow = {
+  account_id: string;
+  available_atomic: string;
+  reserved_atomic: string;
+  updated_at: string;
+};
+
+type PrepaidTransactionRow = {
+  id: string;
+  account_id: string;
+  type: "TOP_UP" | "CHARGE" | "REFUND";
+  amount_atomic: string;
+  balance_after_atomic: string;
+  reference: string;
+  related_reference: string | null;
+  created_at: string;
+  metadata: string;
+};
+
+type PrepaidHoldRow = {
+  id: string;
+  account_id: string;
+  reference: string;
+  reserved_atomic: string;
+  captured_atomic: string;
+  state: "open" | "captured" | "released";
+  created_at: string;
+  finalized_at: string | null;
+  metadata: string;
+};
+
 function rowToOutbox(row: OutboxRow): OutboxRecord {
   return {
     id: row.id,
@@ -165,7 +213,7 @@ export type SqliteStoreConfig = {
  *
  * Uses better-sqlite3 which must be installed as a peer dependency.
  */
-export class SqliteInvoiceStore implements InvoiceStore {
+export class SqliteInvoiceStore implements InvoiceStore, PrepaidStore {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private db: any;
   private claimGuard?: EscrowClaimGuard;
@@ -314,6 +362,48 @@ export class SqliteInvoiceStore implements InvoiceStore {
 
       CREATE INDEX IF NOT EXISTS idx_webhook_outbox_due
         ON webhook_outbox(status, next_attempt_at);
+
+      CREATE TABLE IF NOT EXISTS prepaid_accounts (
+        account_id TEXT PRIMARY KEY,
+        available_atomic TEXT NOT NULL DEFAULT '0',
+        reserved_atomic TEXT NOT NULL DEFAULT '0',
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS prepaid_holds (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES prepaid_accounts(account_id),
+        reference TEXT NOT NULL UNIQUE,
+        reserved_atomic TEXT NOT NULL,
+        captured_atomic TEXT NOT NULL DEFAULT '0',
+        state TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        finalized_at TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}'
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_prepaid_holds_account_state
+        ON prepaid_holds(account_id, state, created_at);
+
+      CREATE TABLE IF NOT EXISTS prepaid_transactions (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES prepaid_accounts(account_id),
+        type TEXT NOT NULL,
+        amount_atomic TEXT NOT NULL,
+        balance_after_atomic TEXT NOT NULL,
+        reference TEXT NOT NULL UNIQUE,
+        related_reference TEXT,
+        created_at TEXT NOT NULL,
+        metadata TEXT NOT NULL DEFAULT '{}'
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_prepaid_transactions_account_created
+        ON prepaid_transactions(account_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_prepaid_transactions_related
+        ON prepaid_transactions(related_reference);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_prepaid_top_up_invoice
+        ON prepaid_transactions(related_reference)
+        WHERE type = 'TOP_UP' AND related_reference IS NOT NULL;
     `);
 
     this.migratePaymentLinks();
@@ -873,6 +963,399 @@ export class SqliteInvoiceStore implements InvoiceStore {
     return transaction() as X402UsageBatchReservationResult;
   }
 
+  async creditPrepaid(input: CreditPrepaidInput): Promise<PrepaidCreditResult> {
+    const transaction = this.db.transaction(() => {
+      const existing = this.db
+        .prepare("SELECT * FROM prepaid_transactions WHERE reference = ?")
+        .get(input.reference) as PrepaidTransactionRow | undefined;
+      if (existing) {
+        if (
+          existing.type !== "TOP_UP" ||
+          existing.account_id !== input.accountId ||
+          BigInt(existing.amount_atomic) !== input.amountAtomic ||
+          (existing.related_reference ?? undefined) !== input.relatedReference
+        ) {
+          throw new PrepaidError("idempotency_conflict", "Prepaid reference already exists");
+        }
+        return {
+          created: false,
+          balance: this.readPrepaidBalance(input.accountId),
+          transaction: this.rowToPrepaidTransaction(existing),
+        };
+      }
+
+      if (input.relatedReference) {
+        const usedInvoice = this.db
+          .prepare(
+            `SELECT 1 FROM prepaid_transactions
+             WHERE type = 'TOP_UP' AND related_reference = ?`,
+          )
+          .get(input.relatedReference);
+        if (usedInvoice) {
+          throw new PrepaidError("idempotency_conflict", "Top-up invoice was already credited");
+        }
+      }
+
+      this.ensurePrepaidAccount(input.accountId, input.createdAt);
+      const balance = this.readPrepaidBalance(input.accountId);
+      const available = balance.availableAtomic + input.amountAtomic;
+      this.db
+        .prepare(
+          `UPDATE prepaid_accounts
+           SET available_atomic = ?, updated_at = ?
+           WHERE account_id = ?`,
+        )
+        .run(available.toString(), input.createdAt, input.accountId);
+      this.db
+        .prepare(
+          `INSERT INTO prepaid_transactions (
+             id, account_id, type, amount_atomic, balance_after_atomic,
+             reference, related_reference, created_at, metadata
+           ) VALUES (?, ?, 'TOP_UP', ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.id,
+          input.accountId,
+          input.amountAtomic.toString(),
+          available.toString(),
+          input.reference,
+          input.relatedReference ?? null,
+          input.createdAt,
+          JSON.stringify(input.metadata),
+        );
+      const row = this.db
+        .prepare("SELECT * FROM prepaid_transactions WHERE reference = ?")
+        .get(input.reference) as PrepaidTransactionRow;
+      return {
+        created: true,
+        balance: this.readPrepaidBalance(input.accountId),
+        transaction: this.rowToPrepaidTransaction(row),
+      };
+    });
+    return transaction() as PrepaidCreditResult;
+  }
+
+  async reservePrepaid(input: ReservePrepaidInput): Promise<PrepaidReservationResult> {
+    const transaction = this.db.transaction(() => {
+      const existing = this.db
+        .prepare("SELECT * FROM prepaid_holds WHERE reference = ?")
+        .get(input.reference) as PrepaidHoldRow | undefined;
+      if (existing) {
+        if (
+          existing.account_id !== input.accountId ||
+          BigInt(existing.reserved_atomic) !== input.amountAtomic
+        ) {
+          throw new PrepaidError("idempotency_conflict", "Prepaid hold reference already exists");
+        }
+        return {
+          created: false,
+          balance: this.readPrepaidBalance(input.accountId),
+          hold: this.rowToPrepaidHold(existing),
+        };
+      }
+
+      this.ensurePrepaidAccount(input.accountId, input.createdAt);
+      const balance = this.readPrepaidBalance(input.accountId);
+      if (balance.availableAtomic < input.amountAtomic) {
+        throw new PrepaidError("insufficient_balance", "Insufficient prepaid balance", {
+          availableAtomic: balance.availableAtomic.toString(),
+          requiredAtomic: input.amountAtomic.toString(),
+        });
+      }
+      const available = balance.availableAtomic - input.amountAtomic;
+      const reserved = balance.reservedAtomic + input.amountAtomic;
+      this.db
+        .prepare(
+          `UPDATE prepaid_accounts
+           SET available_atomic = ?, reserved_atomic = ?, updated_at = ?
+           WHERE account_id = ?`,
+        )
+        .run(available.toString(), reserved.toString(), input.createdAt, input.accountId);
+      this.db
+        .prepare(
+          `INSERT INTO prepaid_holds (
+             id, account_id, reference, reserved_atomic, captured_atomic,
+             state, created_at, finalized_at, metadata
+           ) VALUES (?, ?, ?, ?, '0', 'open', ?, NULL, ?)`,
+        )
+        .run(
+          input.id,
+          input.accountId,
+          input.reference,
+          input.amountAtomic.toString(),
+          input.createdAt,
+          JSON.stringify(input.metadata),
+        );
+      const row = this.db
+        .prepare("SELECT * FROM prepaid_holds WHERE id = ?")
+        .get(input.id) as PrepaidHoldRow;
+      return {
+        created: true,
+        balance: this.readPrepaidBalance(input.accountId),
+        hold: this.rowToPrepaidHold(row),
+      };
+    });
+    return transaction() as PrepaidReservationResult;
+  }
+
+  async capturePrepaid(input: CapturePrepaidInput): Promise<PrepaidCaptureResult> {
+    const transaction = this.db.transaction(() => {
+      const holdRow = this.db
+        .prepare("SELECT * FROM prepaid_holds WHERE id = ?")
+        .get(input.holdId) as PrepaidHoldRow | undefined;
+      if (!holdRow) throw new PrepaidError("hold_not_found", "Prepaid hold was not found");
+      const chargeReference = `charge:${holdRow.id}`;
+      if (holdRow.state === "captured") {
+        if (BigInt(holdRow.captured_atomic) !== input.amountAtomic) {
+          throw new PrepaidError("idempotency_conflict", "Hold was captured for another amount");
+        }
+        const existing = this.db
+          .prepare("SELECT * FROM prepaid_transactions WHERE reference = ?")
+          .get(chargeReference) as PrepaidTransactionRow | undefined;
+        return {
+          created: false,
+          balance: this.readPrepaidBalance(holdRow.account_id),
+          hold: this.rowToPrepaidHold(holdRow),
+          transaction: existing ? this.rowToPrepaidTransaction(existing) : undefined,
+        };
+      }
+      if (holdRow.state !== "open") {
+        throw new PrepaidError("hold_not_open", "Prepaid hold is no longer open");
+      }
+      const reservedByHold = BigInt(holdRow.reserved_atomic);
+      if (input.amountAtomic > reservedByHold) {
+        throw new PrepaidError(
+          "capture_exceeds_reservation",
+          "Capture amount exceeds prepaid reservation",
+        );
+      }
+      const balance = this.readPrepaidBalance(holdRow.account_id);
+      const available = balance.availableAtomic + reservedByHold - input.amountAtomic;
+      const reserved = balance.reservedAtomic - reservedByHold;
+      this.db
+        .prepare(
+          `UPDATE prepaid_accounts
+           SET available_atomic = ?, reserved_atomic = ?, updated_at = ?
+           WHERE account_id = ?`,
+        )
+        .run(available.toString(), reserved.toString(), input.finalizedAt, holdRow.account_id);
+      this.db
+        .prepare(
+          `UPDATE prepaid_holds
+           SET captured_atomic = ?, state = 'captured', finalized_at = ?, metadata = ?
+           WHERE id = ?`,
+        )
+        .run(
+          input.amountAtomic.toString(),
+          input.finalizedAt,
+          JSON.stringify({ ...safeJsonObject(holdRow.metadata), ...input.metadata }),
+          holdRow.id,
+        );
+
+      let charge: PrepaidTransactionRow | undefined;
+      if (input.amountAtomic > 0n) {
+        this.db
+          .prepare(
+            `INSERT INTO prepaid_transactions (
+               id, account_id, type, amount_atomic, balance_after_atomic,
+               reference, related_reference, created_at, metadata
+             ) VALUES (?, ?, 'CHARGE', ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            input.transactionId,
+            holdRow.account_id,
+            input.amountAtomic.toString(),
+            available.toString(),
+            chargeReference,
+            holdRow.reference,
+            input.finalizedAt,
+            JSON.stringify(input.metadata),
+          );
+        charge = this.db
+          .prepare("SELECT * FROM prepaid_transactions WHERE reference = ?")
+          .get(chargeReference) as PrepaidTransactionRow;
+      }
+      const updatedHold = this.db
+        .prepare("SELECT * FROM prepaid_holds WHERE id = ?")
+        .get(holdRow.id) as PrepaidHoldRow;
+      return {
+        created: true,
+        balance: this.readPrepaidBalance(holdRow.account_id),
+        hold: this.rowToPrepaidHold(updatedHold),
+        transaction: charge ? this.rowToPrepaidTransaction(charge) : undefined,
+      };
+    });
+    return transaction() as PrepaidCaptureResult;
+  }
+
+  async releasePrepaid(input: ReleasePrepaidInput): Promise<PrepaidReleaseResult> {
+    const transaction = this.db.transaction(() => {
+      const holdRow = this.db
+        .prepare("SELECT * FROM prepaid_holds WHERE id = ?")
+        .get(input.holdId) as PrepaidHoldRow | undefined;
+      if (!holdRow) throw new PrepaidError("hold_not_found", "Prepaid hold was not found");
+      if (holdRow.state === "released") {
+        return {
+          released: false,
+          balance: this.readPrepaidBalance(holdRow.account_id),
+          hold: this.rowToPrepaidHold(holdRow),
+        };
+      }
+      if (holdRow.state !== "open") {
+        throw new PrepaidError("hold_not_open", "Captured prepaid hold cannot be released");
+      }
+      const reservedByHold = BigInt(holdRow.reserved_atomic);
+      const balance = this.readPrepaidBalance(holdRow.account_id);
+      const available = balance.availableAtomic + reservedByHold;
+      const reserved = balance.reservedAtomic - reservedByHold;
+      this.db
+        .prepare(
+          `UPDATE prepaid_accounts
+           SET available_atomic = ?, reserved_atomic = ?, updated_at = ?
+           WHERE account_id = ?`,
+        )
+        .run(available.toString(), reserved.toString(), input.finalizedAt, holdRow.account_id);
+      this.db
+        .prepare(
+          `UPDATE prepaid_holds SET state = 'released', finalized_at = ? WHERE id = ?`,
+        )
+        .run(input.finalizedAt, holdRow.id);
+      const updatedHold = this.db
+        .prepare("SELECT * FROM prepaid_holds WHERE id = ?")
+        .get(holdRow.id) as PrepaidHoldRow;
+      return {
+        released: true,
+        balance: this.readPrepaidBalance(holdRow.account_id),
+        hold: this.rowToPrepaidHold(updatedHold),
+      };
+    });
+    return transaction() as PrepaidReleaseResult;
+  }
+
+  async refundPrepaid(input: RefundPrepaidInput): Promise<PrepaidCreditResult> {
+    const transaction = this.db.transaction(() => {
+      const existing = this.db
+        .prepare("SELECT * FROM prepaid_transactions WHERE reference = ?")
+        .get(input.reference) as PrepaidTransactionRow | undefined;
+      if (existing) {
+        if (
+          existing.type !== "REFUND" ||
+          existing.account_id !== input.accountId ||
+          BigInt(existing.amount_atomic) !== input.amountAtomic ||
+          existing.related_reference !== input.chargeReference
+        ) {
+          throw new PrepaidError("idempotency_conflict", "Refund reference already exists");
+        }
+        return {
+          created: false,
+          balance: this.readPrepaidBalance(input.accountId),
+          transaction: this.rowToPrepaidTransaction(existing),
+        };
+      }
+      const charge = this.db
+        .prepare(
+          `SELECT * FROM prepaid_transactions
+           WHERE reference = ? AND type = 'CHARGE' AND account_id = ?`,
+        )
+        .get(input.chargeReference, input.accountId) as PrepaidTransactionRow | undefined;
+      if (!charge) throw new PrepaidError("charge_not_found", "Charge reference was not found");
+      const refundRows = this.db
+        .prepare(
+          `SELECT amount_atomic FROM prepaid_transactions
+           WHERE related_reference = ? AND type = 'REFUND'`,
+        )
+        .all(input.chargeReference) as Array<{ amount_atomic: string }>;
+      const refunded = refundRows.reduce((sum, row) => sum + BigInt(row.amount_atomic), 0n);
+      if (refunded + input.amountAtomic > BigInt(charge.amount_atomic)) {
+        throw new PrepaidError("refund_exceeds_charge", "Refund exceeds original charge");
+      }
+      const balance = this.readPrepaidBalance(input.accountId);
+      const available = balance.availableAtomic + input.amountAtomic;
+      this.db
+        .prepare(
+          `UPDATE prepaid_accounts SET available_atomic = ?, updated_at = ? WHERE account_id = ?`,
+        )
+        .run(available.toString(), input.createdAt, input.accountId);
+      this.db
+        .prepare(
+          `INSERT INTO prepaid_transactions (
+             id, account_id, type, amount_atomic, balance_after_atomic,
+             reference, related_reference, created_at, metadata
+           ) VALUES (?, ?, 'REFUND', ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.id,
+          input.accountId,
+          input.amountAtomic.toString(),
+          available.toString(),
+          input.reference,
+          input.chargeReference,
+          input.createdAt,
+          JSON.stringify(input.metadata),
+        );
+      const row = this.db
+        .prepare("SELECT * FROM prepaid_transactions WHERE reference = ?")
+        .get(input.reference) as PrepaidTransactionRow;
+      return {
+        created: true,
+        balance: this.readPrepaidBalance(input.accountId),
+        transaction: this.rowToPrepaidTransaction(row),
+      };
+    });
+    return transaction() as PrepaidCreditResult;
+  }
+
+  async getPrepaidBalance(accountId: string): Promise<PrepaidBalance> {
+    return this.readPrepaidBalance(accountId);
+  }
+
+  async getPrepaidTransaction(reference: string): Promise<PrepaidTransaction | null> {
+    const row = this.db
+      .prepare("SELECT * FROM prepaid_transactions WHERE reference = ?")
+      .get(reference) as PrepaidTransactionRow | undefined;
+    return row ? this.rowToPrepaidTransaction(row) : null;
+  }
+
+  async listPrepaidTransactions(
+    accountId: string,
+    options: { limit: number; offset: number },
+  ): Promise<PrepaidTransactionPage> {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM prepaid_transactions
+         WHERE account_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      )
+      .all(accountId, options.limit, options.offset) as PrepaidTransactionRow[];
+    const count = this.db
+      .prepare("SELECT COUNT(*) AS count FROM prepaid_transactions WHERE account_id = ?")
+      .get(accountId) as { count: number };
+    return {
+      items: rows.map((row) => this.rowToPrepaidTransaction(row)),
+      total: count.count,
+      limit: options.limit,
+      offset: options.offset,
+    };
+  }
+
+  async listOpenPrepaidHolds(
+    options: { accountId?: string; limit?: number } = {},
+  ): Promise<PrepaidHold[]> {
+    const limit = options.limit ?? 100;
+    const rows = options.accountId
+      ? (this.db
+          .prepare(
+            `SELECT * FROM prepaid_holds
+             WHERE state = 'open' AND account_id = ? ORDER BY created_at ASC LIMIT ?`,
+          )
+          .all(options.accountId, limit) as PrepaidHoldRow[])
+      : (this.db
+          .prepare(
+            `SELECT * FROM prepaid_holds WHERE state = 'open' ORDER BY created_at ASC LIMIT ?`,
+          )
+          .all(limit) as PrepaidHoldRow[]);
+    return rows.map((row) => this.rowToPrepaidHold(row));
+  }
+
   createPaymentLink(args: CreatePaymentLinkArgs): PaymentLink {
     const token = generateShortToken();
     const id = `pl_${token}`;
@@ -1375,6 +1858,63 @@ export class SqliteInvoiceStore implements InvoiceStore {
       .prepare(`SELECT * FROM webhook_outbox WHERE id = ?`)
       .get(id) as OutboxRow | undefined;
     return row ? rowToOutbox(row) : null;
+  }
+
+  private ensurePrepaidAccount(accountId: string, updatedAt: string): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO prepaid_accounts (
+           account_id, available_atomic, reserved_atomic, updated_at
+         ) VALUES (?, '0', '0', ?)`,
+      )
+      .run(accountId, updatedAt);
+  }
+
+  private readPrepaidBalance(accountId: string): PrepaidBalance {
+    const row = this.db
+      .prepare("SELECT * FROM prepaid_accounts WHERE account_id = ?")
+      .get(accountId) as PrepaidAccountRow | undefined;
+    return row
+      ? {
+          accountId: row.account_id,
+          availableAtomic: BigInt(row.available_atomic),
+          reservedAtomic: BigInt(row.reserved_atomic),
+          updatedAt: row.updated_at,
+        }
+      : {
+          accountId,
+          availableAtomic: 0n,
+          reservedAtomic: 0n,
+          updatedAt: new Date(0).toISOString(),
+        };
+  }
+
+  private rowToPrepaidTransaction(row: PrepaidTransactionRow): PrepaidTransaction {
+    return {
+      id: row.id,
+      accountId: row.account_id,
+      type: row.type,
+      amountAtomic: BigInt(row.amount_atomic),
+      balanceAfterAtomic: BigInt(row.balance_after_atomic),
+      reference: row.reference,
+      relatedReference: row.related_reference ?? undefined,
+      createdAt: row.created_at,
+      metadata: safeJsonObject(row.metadata),
+    };
+  }
+
+  private rowToPrepaidHold(row: PrepaidHoldRow): PrepaidHold {
+    return {
+      id: row.id,
+      accountId: row.account_id,
+      reference: row.reference,
+      reservedAtomic: BigInt(row.reserved_atomic),
+      capturedAtomic: BigInt(row.captured_atomic),
+      state: row.state,
+      createdAt: row.created_at,
+      finalizedAt: row.finalized_at ?? undefined,
+      metadata: safeJsonObject(row.metadata),
+    };
   }
 
   async close(): Promise<void> {

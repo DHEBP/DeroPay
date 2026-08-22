@@ -62,6 +62,30 @@ describe("payment receipts", () => {
     expect(claims).toBeNull();
   });
 
+  it("rejects receipts from another network or below the confirmation policy", () => {
+    const now = Date.now();
+    const token = createPaymentReceipt(
+      {
+        jti: "jti_network",
+        invoiceId: "inv_network",
+        resource: "/api/protected/report",
+        asset: "DERO",
+        network: "dero-testnet",
+        amountAtomic: "1000000",
+        confirmations: 1,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+      },
+      secret,
+    );
+
+    expect(verifyPaymentReceipt(token, secret, { network: "dero-mainnet" })).toBeNull();
+    expect(verifyPaymentReceipt(token, secret, {
+      network: "dero-testnet",
+      minConfirmations: 3,
+    })).toBeNull();
+  });
+
   it("rejects expired receipts", () => {
     const now = Date.now();
     const token = createPaymentReceipt(

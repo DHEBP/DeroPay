@@ -1,7 +1,19 @@
 import type { NextConfig } from "next";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3", "dero-pay"],
+  outputFileTracingRoot: workspaceRoot,
+  serverExternalPackages: [
+    "better-sqlite3",
+    "dero-pay",
+    "dero-pay/next",
+    "dero-pay/prepaid",
+    "dero-pay/server",
+  ],
+  turbopack: { root: workspaceRoot },
 };
 
 export default nextConfig;

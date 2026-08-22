@@ -7,27 +7,14 @@ import {
 } from "dero-pay/x402";
 import type { NextRequest } from "next/server";
 
-const RECEIPT_SCID = process.env.RECEIPT_SCID;
-if (!RECEIPT_SCID) throw new Error("RECEIPT_SCID env var is required");
-
 // The facilitator's Ed25519 PUBLIC key (64 hex). Required: the middleware
 // cryptographically verifies each settled receipt against it rather than
 // trusting the facilitator's success flag, so a compromised facilitator or a
 // MITM on the settle hop cannot unlock this route with a forged receipt.
-const FACILITATOR_PUBLIC_KEY = process.env.FACILITATOR_PUBLIC_KEY;
-if (!FACILITATOR_PUBLIC_KEY) throw new Error("FACILITATOR_PUBLIC_KEY env var is required");
-
 // Secret for HMAC-signing server-issued order ids. MUST be shared across every
 // instance of this route (it is a deploy-wide secret, not per-instance) so that
 // the instance handling the paid RETRY can validate an order id minted by the
 // instance that served the 402 — see the stateless-order-id note below.
-const ORDER_HMAC_SECRET = process.env.ORDER_HMAC_SECRET;
-if (!ORDER_HMAC_SECRET) throw new Error("ORDER_HMAC_SECRET env var is required");
-
-const facilitator = new FacilitatorHttpClient(
-  process.env.FACILITATOR_URL ?? "http://localhost:4402",
-);
-const RESOURCE_BASE = process.env.RESOURCE_URL ?? "http://localhost:3002/api/data";
 const MERCHANT_ID = "x402-example";
 
 // One-time-use replay defense. CRITICAL FOR MULTI-INSTANCE / SERVERLESS: the
@@ -64,8 +51,6 @@ function buildReplayStore(): ConsumedReceiptStore | undefined {
   );
 }
 
-const consumedLedger = new ConsumedReceiptLedger(buildReplayStore());
-
 // STATELESS server-authoritative order identity, now provided by the SDK
 // (createOrderIdMinter). The order id MUST NOT be sourced from the attacker-
 // controlled X-PAYMENT header, or `pp.payload.orderId` and `pr.extra.orderId`
@@ -78,20 +63,34 @@ const consumedLedger = new ConsumedReceiptLedger(buildReplayStore());
 // id only when it validates and otherwise mints fresh, forcing a 402 (no on-
 // chain payment can exist for a brand-new nonce). Single-use is enforced by the
 // durable ledger. (O19: this lives in the SDK now, not hand-rolled per app.)
-const orderIdMinter = createOrderIdMinter(ORDER_HMAC_SECRET!);
+let paidHandler: ReturnType<typeof withX402> | undefined;
 
-export async function GET(req: NextRequest) {
-  const handler = withX402(
+function getPaidHandler(): ReturnType<typeof withX402> {
+  if (paidHandler) return paidHandler;
+  const receiptScid = process.env.RECEIPT_SCID;
+  if (!receiptScid) throw new Error("RECEIPT_SCID env var is required");
+  const facilitatorPublicKey = process.env.FACILITATOR_PUBLIC_KEY;
+  if (!facilitatorPublicKey) throw new Error("FACILITATOR_PUBLIC_KEY env var is required");
+  const orderHmacSecret = process.env.ORDER_HMAC_SECRET;
+  if (!orderHmacSecret) throw new Error("ORDER_HMAC_SECRET env var is required");
+  const resourceBase = process.env.RESOURCE_URL ?? "http://localhost:3002/api/data";
+  const facilitator = new FacilitatorHttpClient(
+    process.env.FACILITATOR_URL ?? "http://localhost:4402",
+  );
+  const consumedLedger = new ConsumedReceiptLedger(buildReplayStore());
+  const orderIdMinter = createOrderIdMinter(orderHmacSecret);
+
+  return (paidHandler = withX402(
     {
       facilitator,
-      facilitatorPublicKey: FACILITATOR_PUBLIC_KEY!,
+      facilitatorPublicKey,
       // Resource is derived PER REQUEST so a receipt is bound to what was
       // actually served, not just to this handler URL. This handler returns the
       // same output for every request, so the base URL suffices; if it served
       // different paid outputs per query/path/body, that variance MUST be folded
       // in here (e.g. `${RESOURCE_BASE}?${new URL(r.url).searchParams}`) and the
       // ledger key (which includes resource) then distinguishes them.
-      resource: () => RESOURCE_BASE,
+      resource: () => resourceBase,
       consumedLedger,
       // Server-authoritative order id: withX402 binds a fresh HMAC id per
       // request (or honors the caller's claimed id only if it validates for
@@ -103,9 +102,9 @@ export async function GET(req: NextRequest) {
           scheme: "dero-exact",
           network: "dero-mainnet",
           asset: "DERO",
-          payTo: RECEIPT_SCID!,
-          maxAmountRequired: "1000",
-          resource: RESOURCE_BASE,
+          payTo: receiptScid,
+          maxAmountRequired: "50000",
+          resource: resourceBase,
           // orderId is overridden per request by orderIdMinter; this literal is
           // only a placeholder for the advertised challenge shape.
           extra: { merchantId: MERCHANT_ID, orderId: "placeholder" },
@@ -115,8 +114,23 @@ export async function GET(req: NextRequest) {
     async () => {
       // Fulfilled. Single-use is enforced by consumedLedger (durable, shared);
       // the order id is stateless so there is nothing to "burn" locally.
-      return Response.json({ secret: "you paid; here's the goods", ts: Date.now() });
+      return Response.json({
+        message: "Paid metered inference unlocked",
+        generatedAt: new Date().toISOString(),
+        usage: {
+          billedTokens: 10,
+          billedAtomic: "50000",
+        },
+        data: {
+          model: "deropay-local-deterministic",
+          rail: "contract",
+          completion: "Processed 10 local token units after contract settlement.",
+        },
+      });
     },
-  );
-  return handler(req as unknown as Request);
+  ));
+}
+
+export async function GET(req: NextRequest) {
+  return getPaidHandler()(req as unknown as Request);
 }

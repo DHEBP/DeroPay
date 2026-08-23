@@ -45,7 +45,7 @@ module.exports = defineConfig({
             options: {
               gatewayUrl: process.env.DEROPAY_GATEWAY_URL!,
               apiKey: process.env.DEROPAY_API_KEY!,
-              webhookSecret: process.env.DEROPAY_WEBHOOK_SECRET, // optional
+              webhookSecret: process.env.DEROPAY_WEBHOOK_SECRET,
             },
           },
         ],
@@ -60,7 +60,7 @@ Add the corresponding variables to `apps/backend/.env`:
 ```bash
 DEROPAY_GATEWAY_URL=http://localhost:3080
 DEROPAY_API_KEY=your-api-key
-DEROPAY_WEBHOOK_SECRET=your-webhook-secret   # optional but recommended
+DEROPAY_WEBHOOK_SECRET=your-webhook-secret
 ```
 
 ## Options
@@ -69,7 +69,7 @@ DEROPAY_WEBHOOK_SECRET=your-webhook-secret   # optional but recommended
 |--------|----------|-------------|
 | `gatewayUrl` | Yes | Base URL of your DeroPay gateway (e.g. `http://localhost:3080`) |
 | `apiKey` | Yes | API key for the gateway. Set `DEROPAY_API_KEYS` in the gateway's env to enable key auth. |
-| `webhookSecret` | No | HMAC-SHA256 secret for webhook signature verification. Skips verification if not set. |
+| `webhookSecret` | Yes | HMAC-SHA256 secret for webhook signature verification. Required — without it, a forged webhook could mark an order paid with no real payment. |
 
 ## Activating the payment provider in admin
 
@@ -102,7 +102,7 @@ The gateway sends `{ invoiceId, status, metadata }` payloads. The plugin maps `i
 2. **authorizePayment** — Polls invoice status. Maps `completed` → `captured`, `confirming` → `authorized`, `expired` → `error`.
 3. **capturePayment** — No-op. DERO settles on-chain so capture is implicit at authorization.
 4. **getPaymentStatus** — Used by Medusa to poll status during the checkout flow.
-5. **getWebhookActionAndData** — Verifies the gateway webhook signature (if `webhookSecret` is set) and returns the captured/authorized action so Medusa can auto-complete orders without polling.
+5. **getWebhookActionAndData** — Verifies the gateway webhook signature (required) and returns the captured/authorized action so Medusa can auto-complete orders without polling.
 
 ## Important Notes
 

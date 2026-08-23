@@ -97,12 +97,17 @@ class DeroPay_Webhook_Handler {
                 break;
 
             case 'payment.detected':
-                $order->add_order_note(sprintf(
-                    /* translators: %s: transaction ID */
-                    __('DeroPay payment detected — awaiting confirmations. TXID: %s', 'deropay-for-woocommerce'),
-                    $event['payment']['txid'] ?? 'unknown'
-                ));
-                $order->update_status('on-hold', __('DERO payment detected, awaiting confirmations.', 'deropay-for-woocommerce'));
+                // Guard like the other branches: a late or replayed
+                // payment.detected for an already-paid order must not
+                // regress it back to on-hold.
+                if (!$order->is_paid()) {
+                    $order->add_order_note(sprintf(
+                        /* translators: %s: transaction ID */
+                        __('DeroPay payment detected — awaiting confirmations. TXID: %s', 'deropay-for-woocommerce'),
+                        $event['payment']['txid'] ?? 'unknown'
+                    ));
+                    $order->update_status('on-hold', __('DERO payment detected, awaiting confirmations.', 'deropay-for-woocommerce'));
+                }
                 break;
 
             case 'invoice.expired':

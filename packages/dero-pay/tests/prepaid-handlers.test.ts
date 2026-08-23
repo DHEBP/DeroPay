@@ -132,4 +132,168 @@ describe("prepaid HTTP handlers", () => {
       ).status,
     ).toBe(403);
   });
+
+  function makeHarness() {
+    const store = new MemoryInvoiceStore();
+    const ledger = new PrepaidLedger({ store, createId: () => crypto.randomUUID() });
+    const account = "dero1alice";
+    const key = "topup-key";
+    const resource = [
+      "/api/v1/x402/top-up",
+      createHash("sha256").update(account).digest("hex"),
+      "100",
+      createHash("sha256").update(key).digest("hex"),
+    ].join(":");
+    const engine = {
+      emitX402AuditEvent() {},
+      getStore: () => store,
+      getInvoice: async () => ({ metadata: { deropayX402Resource: resource } }),
+      createInvoice: async () => ({
+        id: "invoice-challenge",
+        amount: 100n,
+        integratedAddress: "dero1integrated",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        requiredConfirmations: 3,
+      }),
+    } as unknown as InvoiceEngine;
+    const secret = "test-receipt-secret";
+    const handlers = createPrepaidHandlers({
+      getEngine: async () => engine,
+      ledger,
+      authenticate: async (request) => request.headers.get("X-Test-Wallet"),
+      receiptSecret: secret,
+      minimumTopUpAtomic: 10n,
+      suggestedTopUpAtomic: 100n,
+    });
+    const topUpRequest = (receiptToken: string) =>
+      new Request("http://localhost/api/v1/x402/top-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": key,
+          "X-DeroPay-Receipt": receiptToken,
+          "X-Test-Wallet": account,
+        },
+        body: JSON.stringify({ amountAtomic: "100" }),
+      });
+    return { ledger, handlers, account, key, resource, secret, topUpRequest };
+  }
+
+  it("rejects a top-up receipt signed with the wrong secret", async () => {
+    const { ledger, handlers, account, resource, topUpRequest } = makeHarness();
+    const now = Date.now();
+    const forgedReceipt = createPaymentReceipt(
+      {
+        jti: "forged-receipt",
+        invoiceId: "invoice-1",
+        resource,
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "100",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+        paymentTxid: "tx-1",
+      },
+      "not-the-real-secret",
+    );
+    const response = await handlers.topUpHandler(topUpRequest(forgedReceipt));
+    expect(response.status).not.toBe(200);
+    expect((await ledger.getBalance(account)).availableAtomic).toBe(0n);
+  });
+
+  it("rejects a top-up receipt with fewer than the required confirmations", async () => {
+    const { ledger, handlers, account, resource, secret, topUpRequest } = makeHarness();
+    const now = Date.now();
+    const underConfirmedReceipt = createPaymentReceipt(
+      {
+        jti: "under-confirmed-receipt",
+        invoiceId: "invoice-1",
+        resource,
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "100",
+        confirmations: 1,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+        paymentTxid: "tx-1",
+      },
+      secret,
+    );
+    const response = await handlers.topUpHandler(topUpRequest(underConfirmedReceipt));
+    expect(response.status).not.toBe(200);
+    expect((await ledger.getBalance(account)).availableAtomic).toBe(0n);
+  });
+
+  it("rejects an invoice whose paid receipt is bound to a different resource (409)", async () => {
+    // The receipt itself is validly signed and matches THIS request's resource
+    // hash (so signature + resource checks in verifyPaymentReceipt pass), but
+    // the invoice it references was actually created/paid for a different
+    // top-up (different amount), simulating a receipt lifted from one
+    // top-up request and replayed against another that shares an
+    // idempotency key collision window.
+    const store = new MemoryInvoiceStore();
+    const ledger = new PrepaidLedger({ store, createId: () => crypto.randomUUID() });
+    const account = "dero1alice";
+    const key = "topup-key";
+    const resource = [
+      "/api/v1/x402/top-up",
+      createHash("sha256").update(account).digest("hex"),
+      "100",
+      createHash("sha256").update(key).digest("hex"),
+    ].join(":");
+    const staleResource = [
+      "/api/v1/x402/top-up",
+      createHash("sha256").update(account).digest("hex"),
+      "9999",
+      createHash("sha256").update("some-other-key").digest("hex"),
+    ].join(":");
+    const engine = {
+      emitX402AuditEvent() {},
+      getStore: () => store,
+      // The engine's own record of the invoice says it was bound to a
+      // DIFFERENT resource than the one on the receipt/request.
+      getInvoice: async () => ({ metadata: { deropayX402Resource: staleResource } }),
+    } as unknown as InvoiceEngine;
+    const secret = "test-receipt-secret";
+    const handlers = createPrepaidHandlers({
+      getEngine: async () => engine,
+      ledger,
+      authenticate: async (request) => request.headers.get("X-Test-Wallet"),
+      receiptSecret: secret,
+      minimumTopUpAtomic: 10n,
+      suggestedTopUpAtomic: 100n,
+    });
+    const now = Date.now();
+    const receipt = createPaymentReceipt(
+      {
+        jti: "mismatched-invoice-receipt",
+        invoiceId: "invoice-1",
+        resource,
+        asset: "DERO",
+        network: "dero-mainnet",
+        amountAtomic: "100",
+        confirmations: 3,
+        issuedAt: now,
+        expiresAt: now + 60_000,
+        paymentTxid: "tx-1",
+      },
+      secret,
+    );
+    const response = await handlers.topUpHandler(
+      new Request("http://localhost/api/v1/x402/top-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": key,
+          "X-DeroPay-Receipt": receipt,
+          "X-Test-Wallet": account,
+        },
+        body: JSON.stringify({ amountAtomic: "100" }),
+      }),
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe("invalid_top_up_invoice");
+    expect((await ledger.getBalance(account)).availableAtomic).toBe(0n);
+  });
 });

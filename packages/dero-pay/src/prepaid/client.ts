@@ -11,6 +11,15 @@ export type PrepaidClientConfig = {
   createIdempotencyKey?: () => string;
 };
 
+/**
+ * Generates a fresh idempotency key for a single logical topUp() attempt.
+ * Call this ONCE before a retry loop and pass the same key to every retry
+ * of that attempt — never call it again for a retry of the same top-up.
+ */
+export function createTopUpIdempotencyKey(): string {
+  return randomUUID();
+}
+
 export class PrepaidClientResponseError extends Error {
   constructor(readonly response: Response, message: string) {
     super(message);
@@ -58,7 +67,16 @@ export function createPrepaidClient(config: PrepaidClientConfig) {
     return plainFetch(target(path), await authorizedInit(init));
   }
 
-  async function topUp(amountAtomic: bigint, idempotencyKey = createKey()) {
+  /**
+   * Tops up the prepaid balance by amountAtomic.
+   *
+   * idempotencyKey is required: generate it ONCE per logical top-up attempt
+   * (e.g. via createTopUpIdempotencyKey()) and reuse the SAME key across every
+   * retry of that same attempt. Never generate a new key for a retry — doing
+   * so defeats idempotency and can double-credit the wallet if an earlier
+   * attempt actually landed server-side before the retry.
+   */
+  async function topUp(amountAtomic: bigint, idempotencyKey: string) {
     if (amountAtomic <= 0n) throw new Error("amountAtomic must be greater than zero");
     const init = await authorizedInit({
       method: "POST",

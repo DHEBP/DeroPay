@@ -29,6 +29,7 @@ export {
 
 export {
   createPrepaidClient,
+  createTopUpIdempotencyKey,
   PrepaidClientResponseError,
   type PrepaidClientConfig,
 } from "./client.js";

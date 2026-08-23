@@ -3,7 +3,7 @@ import {
   createWalletRpcPayer,
   SpendPolicy,
 } from "dero-pay/agent";
-import { createPrepaidClient } from "dero-pay/prepaid";
+import { createPrepaidClient, createTopUpIdempotencyKey } from "dero-pay/prepaid";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -43,7 +43,7 @@ const client = createPrepaidClient({
 const before = (await client.getBalance()) as { balanceAtomic: string };
 console.log(`[prepaid] opening balance=${before.balanceAtomic} atomic`);
 if (BigInt(before.balanceAtomic) < topUpAtomic) {
-  const toppedUp = (await client.topUp(topUpAtomic)) as {
+  const toppedUp = (await client.topUp(topUpAtomic, createTopUpIdempotencyKey())) as {
     balanceAtomic: string;
     creditedAtomic: string;
   };

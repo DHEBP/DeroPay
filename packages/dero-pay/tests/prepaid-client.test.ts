@@ -54,7 +54,7 @@ describe("prepaid client", () => {
       fetch: async () => Response.json({}),
     });
     await expect(emptySession.getBalance()).rejects.toThrow("session token is empty");
-    await expect(emptySession.topUp(0n)).rejects.toThrow("greater than zero");
+    await expect(emptySession.topUp(0n, "zero-amount-key")).rejects.toThrow("greater than zero");
 
     const denied = createPrepaidClient({
       baseUrl: "https://gateway.example",

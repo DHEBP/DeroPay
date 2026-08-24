@@ -2,7 +2,7 @@
 
 All notable changes to `dero-pay` will be documented in this file.
 
-## Unreleased
+## 0.7.0 - 2026-08-23
 
 ### Added
 
@@ -19,6 +19,14 @@ All notable changes to `dero-pay` will be documented in this file.
 - Preserve uint64 transfer ports in wallet RPC responses and enforce the
   destination-port filter client-side, because pinned derohe accepts `dstport`
   on `GetTransfers` but returns unrelated incoming transfers.
+- `topUp()`'s idempotency key is now a required argument instead of an
+  auto-generated default — the default was evaluated fresh on every call, so
+  a naive retry after a timeout silently sent a new key and could double-credit
+  a wallet. Added `createTopUpIdempotencyKey()` for callers to generate one key
+  up front and reuse it across retries of the same attempt.
+- Added test coverage for forged, under-confirmed, and misbound top-up
+  receipts — the existing tests never constructed an invalid receipt and
+  checked that the handler rejects it.
 
 ## 0.5.1 - 2026-07-19
 

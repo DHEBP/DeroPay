@@ -28,6 +28,28 @@ All notable changes to `dero-pay` will be documented in this file.
   receipts — the existing tests never constructed an invalid receipt and
   checked that the handler rejects it.
 
+## 0.6.0 - 2026-07-21
+
+### Added
+
+- `createOrderIdMinter` (`dero-pay/x402`) — stateless, HMAC-based per-request
+  order-id minting for x402 integrations built directly on the framework-agnostic
+  primitives (not `createX402RouteGuard`, which is unaffected). Closes a replay
+  path: a static, hard-coded `orderId` pays its on-chain slot once, and every
+  later presentation of that now-public payment tuple is a free replay for
+  anyone within the receipt's TTL.
+- `X402SignedReceipt` / `X402ReceiptPayload` (`dero-pay/x402`) — client-side
+  verification of the facilitator's signed settlement receipt, so a consuming
+  server enforces resource-binding and the replay window itself rather than
+  trusting the facilitator's `success` flag.
+
+### Security
+
+- Documented that x402 payments settle at ring size 2 and write the payer's
+  plaintext address to public contract state — **not sender-anonymous**.
+  Added to `SECURITY.md`, both READMEs, the receipts spec, and the contract
+  header, plus a one-time runtime warning from `payDeroRail`.
+
 ## 0.5.1 - 2026-07-19
 
 ### Changed

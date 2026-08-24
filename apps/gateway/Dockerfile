@@ -57,7 +57,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
-RUN printf '%s' '{"name":"deropay-gateway-runtime","private":true,"dependencies":{"hono":"4.12.3","@hono/node-server":"1.19.9","better-sqlite3":"12.6.2","bech32":"2.0.0","zod":"3.25.76"}}' > package.json \
+RUN printf '%s' '{"name":"deropay-gateway-runtime","private":true,"dependencies":{"hono":"4.12.3","@hono/node-server":"1.19.9","better-sqlite3":"13.0.3","bech32":"2.0.0","zod":"3.25.76"}}' > package.json \
  && bun install --production
 
 # --- Production ---

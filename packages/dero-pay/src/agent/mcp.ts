@@ -79,7 +79,7 @@ export type PaidToolGuardConfig = {
   resourceFor?: (toolName: string) => string;
   network?: DeroChainId;
   protocolId?: string;
-  /** TTL for receipts minted on redemption. Unset: issueReceiptFromInvoice default (600s). */
+  /** @deprecated Receipts have a fixed 600-second lifetime anchored to invoice completion. Ignored. */
   receiptTtlSeconds?: number;
   /**
    * One paid call per payment (default true): each redeemed invoice and
@@ -462,17 +462,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Deterministic key regardless of object key insertion order. */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(",")}}`;
+}
+
 /**
  * Wrap an MCP callTool so payment_required results are paid under the
  * spending policy and the call replayed with the paid invoice id until
- * the guard reports it settled.
+ * the guard reports it settled. A concurrent or duplicate call for the
+ * SAME (toolName, args) shares one attempt rather than paying twice — the
+ * probe call that surfaces a payment_required challenge is itself the
+ * dedup boundary, so this must be keyed on the call before that probe
+ * runs, the same lesson x402/paying-fetch.ts's outer dedup (O15) needed.
  */
 export function createPayingToolCaller(config: PayingToolCallerConfig): CallTool {
   const protocol = config.protocol ?? "x402-deropay-draft";
   const settleTimeoutMs = config.settleTimeoutMs ?? 180_000;
   const settlePollIntervalMs = config.settlePollIntervalMs ?? 2_500;
+  const inFlight = new Map<string, Promise<McpToolResult>>();
 
-  return async (toolName, args) => {
+  async function doCall(toolName: string, args: Record<string, unknown>): Promise<McpToolResult> {
     const first = await config.callTool(toolName, args);
     const challenge = parsePaidToolChallenge(first);
     if (!challenge) return first;
@@ -544,6 +557,20 @@ export function createPayingToolCaller(config: PayingToolCallerConfig): CallTool
       }
       await sleep(settlePollIntervalMs);
       result = await config.callTool(toolName, paidArgs);
+    }
+  }
+
+  return async (toolName, args) => {
+    const key = `${toolName}:${stableStringify(args)}`;
+    const existing = inFlight.get(key);
+    if (existing) return existing;
+
+    const attempt = doCall(toolName, args);
+    inFlight.set(key, attempt);
+    try {
+      return await attempt;
+    } finally {
+      inFlight.delete(key);
     }
   };
 }

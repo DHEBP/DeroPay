@@ -81,17 +81,18 @@ export type PaidToolGuardConfig = {
    */
   resourceFor?: (toolName: string, args: Record<string, unknown>) => string;
   /**
-   * SERVER-AUTHORITATIVE order id (O17/O19). Without this, merchant/order come
-   * only from static `config.accepts`, so a fixed orderId makes the tool's
-   * on-chain `paid_<mkey>` slot a ONE-TIME payment (the contract PANICs on a
-   * second Pay) whose world-readable tuple then replays for any caller within
-   * the receipt TTL. Supply an OrderIdMinter (createOrderIdMinter(secret)) to
-   * bind a fresh HMAC-authenticated orderId per call (context = merchant|
+   * SERVER-AUTHORITATIVE order id (O17/O19). Required: without it, merchant/
+   * order come only from static `config.accepts`, so a fixed orderId makes
+   * the tool's on-chain `paid_<mkey>` slot a ONE-TIME payment (the contract
+   * PANICs on a second Pay) whose world-readable tuple then replays for any
+   * caller within the receipt TTL — a plain ordinary retry (no attacker
+   * needed) can hit an already-occupied slot. Pass createOrderIdMinter(secret)
+   * to bind a fresh HMAC-authenticated orderId per call (context = merchant|
    * resource); the claimed orderId in the x402Payment arg is honored ONLY when
    * it validates for that context. Stateless — survives multi-instance MCP
-   * servers. Left unset, the static config orderId is used verbatim.
+   * servers.
    */
-  orderIdMinter?: OrderIdMinter;
+  orderIdMinter: OrderIdMinter;
   /** Called after each successful settle with the receipt payload. */
   onSettled?: (info: {
     toolName: string;
@@ -121,6 +122,13 @@ function challengeResult(challenge: PaidToolChallenge): McpToolResult {
  * against the facilitator before the handler runs.
  */
 export function createPaidToolGuard(config: PaidToolGuardConfig) {
+  if (!config.orderIdMinter) {
+    throw new Error(
+      "createPaidToolGuard requires orderIdMinter — a fixed config.accepts orderId lets a " +
+        "plain retry replay a world-readable payment tuple, or hit a contract slot that " +
+        "PANICs on reuse. Pass createOrderIdMinter(secret).",
+    );
+  }
   const resourceFor =
     config.resourceFor ?? ((name: string, _args: Record<string, unknown>) => `mcp:tool/${name}`);
   const ledger = config.consumedLedger;
@@ -133,10 +141,10 @@ export function createPaidToolGuard(config: PaidToolGuardConfig) {
     return typeof claimed === "string" ? claimed : undefined;
   }
 
-  // Build the per-call requirements: resource is args-aware (O17) and, when a
-  // minter is configured, extra.orderId is a fresh server-authoritative id
-  // bound to (merchant|resource) — honoring the caller's claimed id only when
-  // it validates (O17/O19).
+  // Build the per-call requirements: resource is args-aware (O17) and
+  // extra.orderId is a fresh server-authoritative id bound to
+  // (merchant|resource) — honoring the caller's claimed id only when it
+  // validates (O17/O19).
   function buildAccepts(
     toolName: string,
     args: Record<string, unknown>,
@@ -144,11 +152,8 @@ export function createPaidToolGuard(config: PaidToolGuardConfig) {
   ): PaymentRequirements[] {
     const resource = resourceFor(toolName, args);
     return config.accepts.map((entry) => {
-      let extra = entry.extra;
-      if (minter) {
-        const context = `${entry.extra.merchantId}|${resource}`;
-        extra = { ...entry.extra, orderId: minter.resolve(claimedOrderId(paymentArg), context) };
-      }
+      const context = `${entry.extra.merchantId}|${resource}`;
+      const extra = { ...entry.extra, orderId: minter.resolve(claimedOrderId(paymentArg), context) };
       return paymentRequirementsSchema.parse({ ...entry, extra, resource });
     });
   }
@@ -328,16 +333,30 @@ export class X402ToolPaymentRejectedError extends Error {
   }
 }
 
+/** Deterministic key regardless of object key insertion order. */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(",")}}`;
+}
+
 /**
  * Wrap an MCP callTool so payment_required results are settled under the
- * spending policy and the call retried once with the payment attached.
+ * spending policy and the call retried once with the payment attached. A
+ * concurrent or duplicate call for the SAME (toolName, args) shares one
+ * attempt rather than paying twice — the probe call that surfaces a
+ * payment_required challenge is itself the dedup boundary, so this must be
+ * keyed on the call before that probe runs, the same lesson
+ * x402/paying-fetch.ts's outer dedup (O15) needed.
  */
 export function createPayingToolCaller(config: PayingToolCallerConfig): CallTool {
   const match = config.match ?? { scheme: "dero-exact", network: "dero-mainnet" };
   const settleTimeoutMs = config.settleTimeoutMs ?? 90_000;
   const settlePollIntervalMs = config.settlePollIntervalMs ?? 2_000;
+  const inFlight = new Map<string, Promise<McpToolResult>>();
 
-  return async (toolName, args) => {
+  async function doCall(toolName: string, args: Record<string, unknown>): Promise<McpToolResult> {
     const first = await config.callTool(toolName, args);
     const challenge = parsePaidToolChallenge(first);
     if (!challenge) return first;
@@ -390,5 +409,19 @@ export function createPayingToolCaller(config: PayingToolCallerConfig): CallTool
       );
     }
     return second;
+  }
+
+  return async (toolName, args) => {
+    const key = `${toolName}:${stableStringify(args)}`;
+    const existing = inFlight.get(key);
+    if (existing) return existing;
+
+    const attempt = doCall(toolName, args);
+    inFlight.set(key, attempt);
+    try {
+      return await attempt;
+    } finally {
+      inFlight.delete(key);
+    }
   };
 }

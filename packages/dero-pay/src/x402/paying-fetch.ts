@@ -75,12 +75,29 @@ export type PayingFetchConfig = {
   settleTimeoutMs?: number;
   /** Delay between settlement retries. Default 2s. */
   settlePollIntervalMs?: number;
+  /**
+   * Key used to share ONE full payingFetch() call (probe, mint, pay, settle)
+   * across concurrent/duplicate requests for the same logical resource.
+   * Default: `${method}:${url}`, computed before the 402 round-trip. This is
+   * the ONLY dedup boundary that can work with a mandatory orderIdMinter
+   * (O11): the server mints a fresh orderId on every unpaid probe, so a
+   * boundary keyed on the server's response (as the old inner `payOnce`
+   * dedup was) can never see two concurrent probes land on the same key —
+   * each mints its own, and both pay.
+   */
+  dedupKey?: (input: RequestInfo | URL, init?: RequestInit) => string;
 };
 
 function requestUrlOf(input: RequestInfo | URL): string {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();
   return input.url;
+}
+
+function requestMethodOf(input: RequestInfo | URL, init?: RequestInit): string {
+  if (init?.method) return init.method.toUpperCase();
+  if (typeof Request !== "undefined" && input instanceof Request) return input.method.toUpperCase();
+  return "GET";
 }
 
 export function decodePayerFromHeader(paymentHeader: string): string {
@@ -94,8 +111,9 @@ export function decodePayerFromHeader(paymentHeader: string): string {
 
 /**
  * Returns a fetch-compatible function that transparently settles x402
- * challenges under the given policy. Concurrent calls that hit the same
- * (origin, orderId) challenge share one payment instead of double-paying.
+ * challenges under the given policy. Concurrent or duplicate calls for the
+ * same logical resource (default key: method+url, see `dedupKey`) share one
+ * full attempt — probe, mint, pay, settle — instead of double-paying.
  */
 export function createPayingFetch(config: PayingFetchConfig) {
   const baseFetch: FetchLike = config.fetch ?? ((input, init) => fetch(input, init));
@@ -103,6 +121,11 @@ export function createPayingFetch(config: PayingFetchConfig) {
   const unpayable = config.unpayable ?? "throw";
   const settleTimeoutMs = config.settleTimeoutMs ?? 90_000;
   const settlePollIntervalMs = config.settlePollIntervalMs ?? 2_000;
+  const resolveDedupKey =
+    config.dedupKey ?? ((input, init) => `${requestMethodOf(input, init)}:${requestUrlOf(input)}`);
+  // Inner backstop, unchanged: protects a custom dedupKey (e.g. keyed on
+  // request body) from accidentally letting two DIFFERENT outer keys reach
+  // the wallet for the SAME (origin, merchantId, orderId) within one attempt.
   const inFlight = new Map<string, Promise<{ paymentHeader: string; txid: string }>>();
 
   async function payOnce(
@@ -149,7 +172,7 @@ export function createPayingFetch(config: PayingFetchConfig) {
     }
   }
 
-  return async function payingFetch(
+  async function doPayingFetch(
     input: RequestInfo | URL,
     init?: RequestInit
   ): Promise<Response> {
@@ -235,5 +258,30 @@ export function createPayingFetch(config: PayingFetchConfig) {
       );
     }
     return paidResponse;
+  }
+
+  // Outer dedup boundary (O8/O15): keyed on request identity known BEFORE
+  // the 402 round-trip, so a concurrent or same-process retry shares this
+  // SAME in-flight attempt rather than triggering its own probe — which
+  // would mint its own fresh orderId (O11) and pay a second time. Each
+  // caller gets its own clone() since a Response body can only be read once.
+  const outerInFlight = new Map<string, Promise<Response>>();
+
+  return async function payingFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> {
+    const key = resolveDedupKey(input, init);
+    const existing = outerInFlight.get(key);
+    if (existing) return (await existing).clone();
+
+    const attempt = doPayingFetch(input, init);
+    outerInFlight.set(key, attempt);
+    try {
+      const result = await attempt;
+      return result.clone();
+    } finally {
+      outerInFlight.delete(key);
+    }
   };
 }

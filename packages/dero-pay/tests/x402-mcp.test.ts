@@ -12,6 +12,12 @@ import {
   X402_PAYMENT_ARG,
   type McpToolResult,
 } from "../src/x402/mcp";
+import { createOrderIdMinter } from "../src/x402/order-id";
+
+// Required config field (O11): a fixed accepts[].extra.orderId lets a plain
+// retry replay a world-readable payment tuple or hit a contract slot that
+// PANICs on reuse. Tests not specifically exercising minting share one.
+const TEST_MINTER = createOrderIdMinter("test-order-id-hmac-secret");
 
 const SCID = "4".repeat(64);
 const TXID = "c".repeat(64);
@@ -34,10 +40,14 @@ function canonicalize(p: X402ReceiptPayload): string {
 }
 
 // Receipt bound to the tool resource `mcp:tool/<name>` the guard will assert.
-function signReceiptFor(resource: string): X402SignedReceipt {
+// orderId defaults to the static ACCEPTS_ENTRY value but callers that already
+// know the minted orderId (settle() below) pass it explicitly — a minter is
+// now mandatory (O11), so a receipt signed against the stale static literal
+// would order_mismatch against whatever the guard actually minted.
+function signReceiptFor(resource: string, orderId = "tool-call-1"): X402SignedReceipt {
   const payload: X402ReceiptPayload = {
     network: "dero-mainnet", payer: PAYER, amount: "1000",
-    paidAtHeight: 1, resource, merchantId: "hive-mcp", orderId: "tool-call-1",
+    paidAtHeight: 1, resource, merchantId: "hive-mcp", orderId,
     expiresAt: Math.floor(Date.now() / 1000) + 900,
   };
   const sig = cryptoSign(null, Buffer.from(canonicalize(payload), "utf8"), FAC_PRIV);
@@ -61,9 +71,14 @@ function okFacilitator(resource = "mcp:tool/echo"): VerifySettleClient & { verif
       state.verifies++;
       return { isValid: true, payer: PAYER };
     },
-    settle: async () => {
+    settle: async (req: { paymentRequirements: { extra: { orderId: string } } }) => {
       state.settles++;
-      return { success: true, transaction: TXID, network: "dero-mainnet", receipt: signReceiptFor(resource) };
+      return {
+        success: true,
+        transaction: TXID,
+        network: "dero-mainnet",
+        receipt: signReceiptFor(resource, req.paymentRequirements.extra.orderId),
+      };
     },
   };
   return state;
@@ -91,6 +106,7 @@ test("unpaid call gets a payment_required challenge with mcp:tool resource", asy
     facilitator: okFacilitator(),
     accepts: [ACCEPTS_ENTRY],
     facilitatorPublicKey: FACILITATOR_PUBLIC_KEY,
+    orderIdMinter: TEST_MINTER,
   });
   const paidEcho = guard("echo", echoTool);
 
@@ -109,7 +125,7 @@ test("unpaid call gets a payment_required challenge with mcp:tool resource", asy
 
 test("guard verifies AND settles before running the handler, stamps settle meta", async () => {
   const facilitator = okFacilitator();
-  const { guard } = createPaidToolGuard({ facilitator, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY });
+  const { guard } = createPaidToolGuard({ facilitator, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER });
   const paidEcho = guard("echo", echoTool);
   const { invoke } = makeWalletInvoke();
 
@@ -133,7 +149,7 @@ test("guard verifies AND settles before running the handler, stamps settle meta"
 test("handler never sees the payment argument", async () => {
   const facilitator = okFacilitator("mcp:tool/inspect");
   let seenArgs: Record<string, unknown> | null = null;
-  const { guard } = createPaidToolGuard({ facilitator, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY });
+  const { guard } = createPaidToolGuard({ facilitator, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER });
   const paidTool = guard("inspect", async (args: Record<string, unknown>) => {
     seenArgs = args;
     return { content: [{ type: "text", text: "ok" }] };
@@ -151,11 +167,72 @@ test("handler never sees the payment argument", async () => {
   expect(seenArgs).not.toHaveProperty(X402_PAYMENT_ARG);
 });
 
+test("O7: concurrent identical calls share one payment, not two", async () => {
+  const facilitator = okFacilitator();
+  const { guard } = createPaidToolGuard({
+    facilitator,
+    accepts: [ACCEPTS_ENTRY],
+    facilitatorPublicKey: FACILITATOR_PUBLIC_KEY,
+    orderIdMinter: TEST_MINTER,
+  });
+  const paidEcho = guard("echo", echoTool);
+  const { invoke, calls } = makeWalletInvoke();
+
+  const caller = createPayingToolCaller({
+    callTool: async (_name, args) => paidEcho(args as never),
+    walletInvoke: invoke,
+    policy: policyAllowing(),
+    serverOrigin: SERVER_ORIGIN,
+  });
+
+  // Before the dedup fix, each concurrent call independently probed and got
+  // its own fresh, minted orderId (O11 makes the minter mandatory) — two
+  // DIFFERENT minted orderIds, so the guard's own single-use consumed-ledger
+  // does nothing to stop two separate on-chain payments.
+  const [a, b] = await Promise.all([
+    caller("echo", { q: "same" }),
+    caller("echo", { q: "same" }),
+  ]);
+
+  expect(a.isError).toBeUndefined();
+  expect(b.isError).toBeUndefined();
+  expect(calls.length).toBe(1);
+});
+
+test("O7: concurrent calls with different args pay separately (dedup is per-call, not global)", async () => {
+  const facilitator = okFacilitator();
+  const { guard } = createPaidToolGuard({
+    facilitator,
+    accepts: [ACCEPTS_ENTRY],
+    facilitatorPublicKey: FACILITATOR_PUBLIC_KEY,
+    orderIdMinter: TEST_MINTER,
+  });
+  const paidEcho = guard("echo", echoTool);
+  const { invoke, calls } = makeWalletInvoke();
+
+  const caller = createPayingToolCaller({
+    callTool: async (_name, args) => paidEcho(args as never),
+    walletInvoke: invoke,
+    policy: policyAllowing(),
+    serverOrigin: SERVER_ORIGIN,
+  });
+
+  const [a, b] = await Promise.all([
+    caller("echo", { q: "one" }),
+    caller("echo", { q: "two" }),
+  ]);
+
+  expect(a.isError).toBeUndefined();
+  expect(b.isError).toBeUndefined();
+  expect(calls.length).toBe(2);
+});
+
 test("policy denial blocks the tool payment before any wallet call", async () => {
   const { guard } = createPaidToolGuard({
     facilitator: okFacilitator(),
     accepts: [ACCEPTS_ENTRY],
     facilitatorPublicKey: FACILITATOR_PUBLIC_KEY,
+    orderIdMinter: TEST_MINTER,
   });
   const paidEcho = guard("echo", echoTool);
   const { invoke, calls } = makeWalletInvoke();
@@ -176,7 +253,7 @@ test("invalid payment yields a challenge with invalidReason; caller refuses to d
     verify: async () => ({ isValid: false, invalidReason: "tx not on chain" }),
     settle: async () => ({ success: false, error: "unreachable" }),
   };
-  const { guard } = createPaidToolGuard({ facilitator: rejecting, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY });
+  const { guard } = createPaidToolGuard({ facilitator: rejecting, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER });
   const paidEcho = guard("echo", echoTool);
   const { invoke, calls } = makeWalletInvoke();
 
@@ -201,9 +278,14 @@ test("settlement lag: replays the same tool payment until verify passes", async 
         ? { isValid: false, invalidReason: "not_finalized" }
         : { isValid: true, payer: PAYER };
     },
-    settle: async () => ({ success: true, transaction: TXID, network: "dero-mainnet", receipt: signReceiptFor("mcp:tool/echo") }),
+    settle: async (req: { paymentRequirements: { extra: { orderId: string } } }) => ({
+      success: true,
+      transaction: TXID,
+      network: "dero-mainnet",
+      receipt: signReceiptFor("mcp:tool/echo", req.paymentRequirements.extra.orderId),
+    }),
   };
-  const { guard } = createPaidToolGuard({ facilitator: lagging, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY });
+  const { guard } = createPaidToolGuard({ facilitator: lagging, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER });
   const paidEcho = guard("echo", echoTool);
   const { invoke, calls } = makeWalletInvoke();
 
@@ -241,7 +323,7 @@ test("free tools and non-challenge errors pass through the paying caller untouch
 
 test("payment evidence is emitted for paid tool calls", async () => {
   const facilitator = okFacilitator();
-  const { guard } = createPaidToolGuard({ facilitator, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY });
+  const { guard } = createPaidToolGuard({ facilitator, accepts: [ACCEPTS_ENTRY], facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER });
   const paidEcho = guard("echo", echoTool);
   const { invoke } = makeWalletInvoke();
   const evidence: unknown[] = [];
@@ -271,6 +353,7 @@ test("O17: resourceFor sees call args so a parameterized tool binds per-argument
     facilitator: okFacilitator(),
     accepts: [ACCEPTS_ENTRY],
     facilitatorPublicKey: FACILITATOR_PUBLIC_KEY,
+    orderIdMinter: TEST_MINTER,
     resourceFor: (name, args) => `mcp:tool/${name}?symbol=${String(args.symbol)}`,
   });
   const paidQuote = guard("getQuote", echoTool);

@@ -77,7 +77,8 @@ main().catch((error) => {
   } else if (error instanceof X402SettlementTimeoutError) {
     console.error(
       `[agent] paid invoice ${error.invoiceId} (txid ${error.txid}) but it did not settle ` +
-        `in time (${error.reason}). Re-running this script resumes the wait without paying again.`
+        `in time (${error.reason}). This process's in-memory dedup record is gone — re-running ` +
+        `this script will pay again. Check invoice ${error.invoiceId} before retrying.`
     );
   } else if (error instanceof X402PaymentRejectedError) {
     console.error(

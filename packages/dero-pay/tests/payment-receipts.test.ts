@@ -108,9 +108,11 @@ describe("payment receipts", () => {
   });
 
   it("issues receipt from completed invoice", () => {
+    const completedAt = new Date(Date.now() - 1_000).toISOString();
     const invoice = makeInvoice({
       id: "inv_done",
       status: "completed",
+      completedAt,
       amountReceived: 2_000_000n,
       requiredConfirmations: 3,
       payments: [makePayment({ status: "confirmed", txid: "tx_receipt" })],
@@ -131,7 +133,51 @@ describe("payment receipts", () => {
     expect(claims).not.toBeNull();
     expect(claims?.invoiceId).toBe("inv_done");
     expect(claims?.paymentTxid).toBe("tx_receipt");
-    expect(claims?.jti).toBeTruthy();
+    expect(claims?.jti).toBe("invoice:inv_done");
+    expect(claims?.issuedAt).toBe(Date.parse(completedAt));
+    expect(claims?.expiresAt).toBe(Date.parse(completedAt) + 600_000);
+
+    const reissued = issueReceiptFromInvoice(invoice, {
+      secret,
+      resource: "/api/protected/report",
+      ttlSeconds: 86_400,
+      network: "dero-mainnet",
+    });
+    expect(reissued.token).toBe(issued.token);
+  });
+
+  it("refuses to revive a completed invoice after its fixed receipt window", () => {
+    const invoice = makeInvoice({
+      id: "inv_old",
+      status: "completed",
+      completedAt: new Date(Date.now() - 601_000).toISOString(),
+      amountReceived: 2_000_000n,
+    });
+
+    expect(() =>
+      issueReceiptFromInvoice(invoice, {
+        secret,
+        resource: "/api/protected/report",
+      }),
+    ).toThrow("receipt window has expired");
+  });
+
+  it("rejects a completed invoice without a trustworthy completion timestamp", () => {
+    for (const completedAt of [null, "not-a-date", new Date(Date.now() + 60_000).toISOString()]) {
+      const invoice = makeInvoice({
+        id: "inv_bad_completion",
+        status: "completed",
+        completedAt,
+        amountReceived: 2_000_000n,
+      });
+
+      expect(() =>
+        issueReceiptFromInvoice(invoice, {
+          secret,
+          resource: "/api/protected/report",
+        }),
+      ).toThrow("valid completedAt");
+    }
   });
 
   it("throws when issuing from incomplete invoice", () => {

@@ -18,6 +18,14 @@ import {
   X402UnpayableError,
   type PaymentEvidence,
 } from "../src/x402/paying-fetch";
+import { createOrderIdMinter } from "../src/x402/order-id";
+
+// Required config field (O11): a fixed accepts[].extra.orderId lets a plain
+// retry replay a world-readable payment tuple or hit a contract slot that
+// PANICs on reuse. This test's facilitator already signs whatever orderId it
+// is actually handed (realistic — matches apps/facilitator), so any minter
+// works here without further fixture changes.
+const TEST_MINTER = createOrderIdMinter("test-order-id-hmac-secret");
 
 const ORIGIN = "http://merchant.test";
 const RESOURCE = `${ORIGIN}/api/data`;
@@ -110,7 +118,7 @@ test("non-402 responses pass through untouched, nothing is paid", async () => {
 
 test("pays a 402, retries with X-PAYMENT, returns 200 with settle response header", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ secret: 42 })
   );
   const { invoke, calls } = makeWalletInvoke();
@@ -134,7 +142,12 @@ test("pays a 402, retries with X-PAYMENT, returns 200 with settle response heade
   expect(call.entrypoint).toBe("Pay");
   expect(call.ringsize).toBe(2);
   expect(call.deroDeposit).toBe(500n);
-  expect(call.args).toEqual({ merchant_id: "merchant-1", order_id: "order-1" });
+  // orderId is now server-minted (O11), not the static makeAccepts() literal —
+  // assert it's a real mint for this context, not that it equals a fixed string.
+  const args = call.args as { merchant_id: string; order_id: string };
+  expect(args.merchant_id).toBe("merchant-1");
+  expect(args.order_id).not.toBe("order-1");
+  expect(TEST_MINTER.isServerIssued(args.order_id, `merchant-1|${RESOURCE}`)).toBe(true);
 
   expect(evidence.length).toBe(1);
   expect(evidence[0]).toMatchObject({
@@ -142,7 +155,7 @@ test("pays a 402, retries with X-PAYMENT, returns 200 with settle response heade
     resource: RESOURCE,
     scid: SCID,
     merchantId: "merchant-1",
-    orderId: "order-1",
+    orderId: args.order_id,
     amountAtomic: "500",
     txid: TXID,
     payer: PAYER,
@@ -151,7 +164,7 @@ test("pays a 402, retries with X-PAYMENT, returns 200 with settle response heade
 
 test("policy denial throws before any wallet call", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ secret: 42 })
   );
   const { invoke, calls } = makeWalletInvoke();
@@ -167,7 +180,7 @@ test("policy denial throws before any wallet call", async () => {
 
 test("per-request cap denial throws before any wallet call", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const { invoke, calls } = makeWalletInvoke();
@@ -183,7 +196,7 @@ test("per-request cap denial throws before any wallet call", async () => {
 
 test("failed wallet payment releases the reservation (budget is not burned)", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const policy = new SpendPolicy({
@@ -212,7 +225,7 @@ test("failed wallet payment releases the reservation (budget is not burned)", as
 
 test("concurrent requests for the same order share one payment", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts("order-shared")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-shared")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const { calls } = makeWalletInvoke();
@@ -239,7 +252,7 @@ test("402 after payment throws X402PaymentRejectedError instead of paying again"
     settle: async () => ({ success: false, error: "unreachable" }),
   };
   const guarded = withX402(
-    { facilitator: rejectingFacilitator, accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: rejectingFacilitator, accepts: [makeAccepts()], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const { invoke, calls } = makeWalletInvoke();
@@ -270,7 +283,7 @@ test("settlement lag: keeps replaying the SAME payment until confirmations land,
     }),
   };
   const guarded = withX402(
-    { facilitator: lagging, accepts: [makeAccepts("order-lag")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: lagging, accepts: [makeAccepts("order-lag")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const { invoke, calls } = makeWalletInvoke();
@@ -321,7 +334,7 @@ test("402 with no matching rail throws X402UnpayableError by default, passes thr
 test("replays a POST body on the paid retry", async () => {
   const received: string[] = [];
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts("order-post")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-post")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async (req) => {
       received.push(await req.text());
       return Response.json({ ok: 1 });
@@ -347,7 +360,7 @@ const CRED_ROOT = "c".repeat(64);
 
 test("createPayingFetch pays through a verified CredentialPolicy", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const { invoke, calls } = makeWalletInvoke();
@@ -373,7 +386,7 @@ test("createPayingFetch pays through a verified CredentialPolicy", async () => {
 
 test("an attenuated credential's tighter cap blocks the wallet call through createPayingFetch", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred2")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred2")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const { invoke, calls } = makeWalletInvoke();
@@ -396,7 +409,7 @@ test("an attenuated credential's tighter cap blocks the wallet call through crea
 
 test("a resource-prefix caveat blocks payment for an out-of-scope resource", async () => {
   const guarded = withX402(
-    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred3")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY },
+    { facilitator: okFacilitator(), accepts: [makeAccepts("order-cred3")], resource: RESOURCE, facilitatorPublicKey: FACILITATOR_PUBLIC_KEY, orderIdMinter: TEST_MINTER },
     async () => Response.json({ ok: 1 })
   );
   const { invoke, calls } = makeWalletInvoke();

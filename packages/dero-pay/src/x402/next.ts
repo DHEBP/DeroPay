@@ -58,11 +58,13 @@ export interface WithX402Options {
    * a 402 since no on-chain payment can exist for a brand-new nonce. Stateless,
    * so it survives multi-instance/serverless without a shared map.
    *
-   * Left UNSET, the static accepts[].extra.orderId is used verbatim — safe ONLY
-   * when the server issues that orderId out-of-band per unit of work; a fixed
-   * literal is a free-riding hazard on a public chain.
+   * Required: without it, the static accepts[].extra.orderId is used verbatim,
+   * which makes the tool's on-chain slot a one-time payment (the contract
+   * PANICs on a second Pay) whose world-readable tuple then replays for any
+   * caller within the receipt TTL — a plain ordinary retry (no attacker
+   * needed) can hit an already-occupied slot.
    */
-  orderIdMinter?: OrderIdMinter;
+  orderIdMinter: OrderIdMinter;
 }
 
 /** Best-effort read of the claimed orderId from a base64 X-PAYMENT header. */
@@ -81,6 +83,13 @@ export function withX402(
   opts: WithX402Options,
   handler: (req: Request) => Promise<Response>,
 ): (req: Request) => Promise<Response> {
+  if (!opts.orderIdMinter) {
+    throw new Error(
+      "withX402 requires orderIdMinter — a fixed accepts[].extra.orderId lets a plain retry " +
+        "replay a world-readable payment tuple, or hit a contract slot that PANICs on reuse. " +
+        "Pass createOrderIdMinter(secret).",
+    );
+  }
   const ledger = opts.consumedLedger;
   return async (req: Request) => {
     // Resolve the resource PER REQUEST. For a static string this is the same
@@ -90,15 +99,13 @@ export function withX402(
     // BOTH the receipt resource check and the ledger key below.
     const resource = typeof opts.resource === "function" ? opts.resource(req) : opts.resource;
     const header = req.headers.get("X-PAYMENT");
-    // SERVER-AUTHORITATIVE order id (O19). When a minter is configured, the
-    // orderId bound into the challenge and forwarded to the facilitator is a
-    // fresh HMAC-authenticated id (or the caller's claimed id ONLY if it
-    // validates for this merchant|resource context). This overrides every
-    // accepts[].extra.orderId so a caller cannot pin the on-chain lookup key to
-    // a permanent, world-readable static order. Without a minter the static
-    // orderId is used verbatim (safe only if issued out-of-band per unit).
+    // SERVER-AUTHORITATIVE order id (O19). The orderId bound into the
+    // challenge and forwarded to the facilitator is a fresh HMAC-authenticated
+    // id (or the caller's claimed id ONLY if it validates for this
+    // merchant|resource context). This overrides every accepts[].extra.orderId
+    // so a caller cannot pin the on-chain lookup key to a permanent,
+    // world-readable static order.
     const applyOrderId = (a: PaymentRequirements): PaymentRequirements => {
-      if (!opts.orderIdMinter) return { ...a, resource };
       const claimed = claimedOrderIdFromHeader(header);
       const context = `${a.extra.merchantId}|${resource}`;
       return {

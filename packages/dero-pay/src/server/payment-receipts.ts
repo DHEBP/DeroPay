@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { DeroChainId, Invoice } from "../core/types.js";
 
 type PaymentReceiptHeader = {
@@ -38,10 +38,22 @@ export type VerifyReceiptOptions = {
 export type IssueReceiptOptions = {
   resource: string;
   secret: string;
+  /** @deprecated Receipts have a fixed 600-second lifetime. This value is ignored. */
   ttlSeconds?: number;
   network?: DeroChainId;
   keyId?: string;
 };
+
+/** Receipt entitlement is fixed and anchored to invoice completion. */
+export const PAYMENT_RECEIPT_TTL_SECONDS = 600;
+export const PAYMENT_RECEIPT_ACCEPTED_HEADER = "X-DeroPay-Receipt-Accepted";
+
+export class PaymentReceiptWindowExpiredError extends Error {
+  constructor() {
+    super("The completed invoice receipt window has expired");
+    this.name = "PaymentReceiptWindowExpiredError";
+  }
+}
 
 function encodeBase64Url(input: string): string {
   return Buffer.from(input, "utf8").toString("base64url");
@@ -132,14 +144,15 @@ export function verifyPaymentReceipt(
       !/^[1-9]\d*$/.test(claims.amountAtomic) ||
       !Number.isSafeInteger(claims.confirmations) ||
       claims.confirmations < 0 ||
-      !Number.isFinite(claims.issuedAt) ||
-      !Number.isFinite(claims.expiresAt)
+      !Number.isSafeInteger(claims.issuedAt) ||
+      !Number.isSafeInteger(claims.expiresAt) ||
+      claims.expiresAt <= claims.issuedAt
     ) {
       return null;
     }
 
     const now = options?.nowMs ?? Date.now();
-    if (claims.expiresAt <= now) return null;
+    if (claims.issuedAt > now || claims.expiresAt <= now) return null;
 
     if (options?.resource && claims.resource !== options.resource) return null;
     if (options?.network && claims.network !== options.network) return null;
@@ -172,19 +185,25 @@ export function issueReceiptFromInvoice(
   }
 
   const now = Date.now();
-  const ttlSeconds = options.ttlSeconds ?? 600;
-  const expiresAt = now + ttlSeconds * 1000;
+  const issuedAt = Date.parse(invoice.completedAt ?? "");
+  if (!Number.isSafeInteger(issuedAt) || issuedAt > now) {
+    throw new Error("Completed invoice is missing a valid completedAt timestamp");
+  }
+  const expiresAt = issuedAt + PAYMENT_RECEIPT_TTL_SECONDS * 1000;
+  if (expiresAt <= now) {
+    throw new PaymentReceiptWindowExpiredError();
+  }
   const confirmedPayment = invoice.payments.find((p) => p.status === "confirmed");
 
   const claims: Omit<PaymentReceiptClaims, "v"> = {
-    jti: randomUUID(),
+    jti: `invoice:${invoice.id}`,
     invoiceId: invoice.id,
     resource: options.resource,
     asset: "DERO",
     network: options.network ?? "dero-mainnet",
     amountAtomic: invoice.amountReceived.toString(),
     confirmations: invoice.requiredConfirmations,
-    issuedAt: now,
+    issuedAt,
     expiresAt,
     paymentTxid: confirmedPayment?.txid,
   };

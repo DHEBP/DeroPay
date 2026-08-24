@@ -170,6 +170,41 @@ test("pays a challenge, replays with the invoice id, and returns the paid result
   });
 });
 
+test("O7: concurrent identical calls share one payment, not two", async () => {
+  const server = makeMcpServer();
+  const { payer, calls } = makeToolPayer(server);
+  const caller = makeCaller(server, payer);
+
+  // Before the dedup fix, each concurrent call independently probed, got its
+  // own fresh invoice (the mock engine mints one per createInvoice call), and
+  // paid separately — the guard's own single-use replay protection (see
+  // "single-use" test above) only stops REUSING an invoice, it does nothing
+  // for two DIFFERENT invoices minted for the same logical call.
+  const [a, b] = await Promise.all([
+    caller("echo", { q: "same" }),
+    caller("echo", { q: "same" }),
+  ]);
+
+  expect(a.isError).toBeUndefined();
+  expect(b.isError).toBeUndefined();
+  expect(calls.length).toBe(1);
+});
+
+test("O7: concurrent calls with different args pay separately (dedup is per-call, not global)", async () => {
+  const server = makeMcpServer();
+  const { payer, calls } = makeToolPayer(server);
+  const caller = makeCaller(server, payer);
+
+  const [a, b] = await Promise.all([
+    caller("echo", { q: "one" }),
+    caller("echo", { q: "two" }),
+  ]);
+
+  expect(a.isError).toBeUndefined();
+  expect(b.isError).toBeUndefined();
+  expect(calls.length).toBe(2);
+});
+
 test("policy denial throws before any wallet call", async () => {
   const server = makeMcpServer();
   const { payer, calls } = makeToolPayer(server);

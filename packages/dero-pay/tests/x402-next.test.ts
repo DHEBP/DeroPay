@@ -3,10 +3,21 @@ import { generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 import { withX402 } from "../src/x402/next";
 import { ConsumedReceiptLedger, type X402ReceiptPayload, type X402SignedReceipt } from "../src/x402/receipt";
 import type { VerifySettleClient } from "../src/x402/server";
+import { createOrderIdMinter } from "../src/x402/order-id";
+
+// Required config field (O11): a fixed accepts[].extra.orderId lets a plain
+// retry replay a world-readable payment tuple or hit a contract slot that
+// PANICs on reuse. Tests not specifically exercising minting share one.
+const TEST_MINTER = createOrderIdMinter("test-order-id-hmac-secret");
 
 const SCID = "1".repeat(64);
 const AGENT = "deto1qy" + "z".repeat(58);
 const RESOURCE = "https://api/x";
+// A minter is now mandatory (O11), so a hardcoded literal orderId no longer
+// validates as server-issued — middleware would mint a fresh one and every
+// static-receipt fixture below would order_mismatch. Mint the id these
+// fixtures actually need to survive the minter's resolve() unchanged.
+const ORDER_ID = TEST_MINTER.mint(`shop-1|${RESOURCE}`);
 
 // A throwaway Ed25519 keypair standing in for the facilitator. We sign
 // receipts here the same way apps/facilitator/src/receipts/sign.ts does
@@ -43,7 +54,7 @@ function receipt(over: Partial<X402ReceiptPayload> = {}): X402SignedReceipt {
     paidAtHeight: 1_000_000,
     resource: RESOURCE,
     merchantId: "shop-1",
-    orderId: "ord-42",
+    orderId: ORDER_ID,
     expiresAt: Math.floor(Date.now() / 1000) + 900,
     ...over,
   });
@@ -85,7 +96,7 @@ function realisticFacilitator(): VerifySettleClient {
 const accepts = [{
   scheme: "dero-exact", network: "dero-mainnet", asset: "DERO",
   payTo: SCID, maxAmountRequired: "1000", resource: RESOURCE,
-  extra: { merchantId: "shop-1", orderId: "ord-42" },
+  extra: { merchantId: "shop-1", orderId: ORDER_ID },
 }] as const;
 
 function header(): string {
@@ -95,7 +106,7 @@ function header(): string {
     network: "dero-mainnet",
     payload: {
       txHash: "a".repeat(64), scid: SCID, merchantId: "shop-1",
-      orderId: "ord-42", payer: AGENT, amount: "1500",
+      orderId: ORDER_ID, payer: AGENT, amount: "1500",
     },
   })).toString("base64");
 }
@@ -106,6 +117,7 @@ test("withX402 returns 402 when X-PAYMENT is missing", async () => {
     accepts: [...accepts],
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const res = await handler(new Request(RESOURCE));
@@ -120,6 +132,7 @@ test("withX402 serves content when the receipt is validly signed and resource-bo
     accepts: [...accepts],
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const res = await handler(new Request(RESOURCE, { headers: { "X-PAYMENT": header() } }));
@@ -136,6 +149,7 @@ test("withX402 rejects settle.success with an unsigned/garbage receipt", async (
     accepts: [...accepts],
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const res = await handler(new Request(RESOURCE, { headers: { "X-PAYMENT": header() } }));
@@ -152,6 +166,7 @@ test("withX402 rejects a receipt bound to a different resource", async () => {
     accepts: [...accepts],
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const res = await handler(new Request(RESOURCE, { headers: { "X-PAYMENT": header() } }));
@@ -167,6 +182,7 @@ test("withX402 rejects an expired receipt", async () => {
     accepts: [...accepts],
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const res = await handler(new Request(RESOURCE, { headers: { "X-PAYMENT": header() } }));
@@ -185,6 +201,7 @@ test("withX402 rejects a replayed receipt (one-time use)", async () => {
     accepts: [...accepts],
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
     consumedLedger: ledger,
   }, async () => new Response("paid content"));
 
@@ -212,6 +229,7 @@ test("withX402 binds the receipt to the per-request resolved resource", async ()
     accepts: [...accepts],
     resource: resolver,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const btcResource = `${RESOURCE}?symbol=BTC`;
@@ -229,6 +247,7 @@ test("withX402 binds the receipt to the per-request resolved resource", async ()
     accepts: [...accepts],
     resource: resolver,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
   const wrong = await wrongHandler(new Request(`${RESOURCE}?symbol=ETH`, { headers: { "X-PAYMENT": header() } }));
   expect(wrong.status).toBe(402);
@@ -246,6 +265,7 @@ test("withX402 forwards the resolved resource to the facilitator (no DoS on reso
     accepts: [...accepts], // accepts[].resource === RESOURCE (the STATIC value)
     resource: () => distinctResource, // resolver returns a DIFFERENT value
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const ok = await handler(new Request(distinctResource, { headers: { "X-PAYMENT": header() } }));
@@ -262,6 +282,7 @@ test("O18: withX402 rejects a receipt whose amount is below the served tier pric
     accepts: expensiveAccepts,
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const res = await handler(new Request(RESOURCE, { headers: { "X-PAYMENT": header() } }));
@@ -277,6 +298,7 @@ test("O18: withX402 serves when the receipt amount covers the tier price", async
     accepts: [{ ...accepts[0], maxAmountRequired: "1500" }],
     resource: RESOURCE,
     facilitatorPublicKey,
+    orderIdMinter: TEST_MINTER,
   }, async () => new Response("paid content"));
 
   const res = await handler(new Request(RESOURCE, { headers: { "X-PAYMENT": header() } }));

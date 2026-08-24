@@ -25,11 +25,12 @@ import type {
 } from "@medusajs/framework/types";
 import { BigNumber, MedusaError } from "@medusajs/framework/utils";
 import { GatewayClient } from "dero-pay/gateway";
+import { timingSafeEqual } from "node:crypto";
 
 type DeroPayOptions = {
   gatewayUrl: string;
   apiKey: string;
-  webhookSecret?: string;
+  webhookSecret: string;
 };
 
 type InjectedDependencies = {
@@ -41,7 +42,7 @@ class DeroPayPaymentService extends AbstractPaymentProvider<DeroPayOptions> {
 
   protected logger_: Logger;
   protected client: GatewayClient;
-  protected webhookSecret_?: string;
+  protected webhookSecret_: string;
 
   constructor(container: InjectedDependencies, options: DeroPayOptions) {
     super(container, options);
@@ -64,6 +65,15 @@ class DeroPayPaymentService extends AbstractPaymentProvider<DeroPayOptions> {
       throw new MedusaError(
         MedusaError.Types.INVALID_DATA,
         "DeroPay: apiKey is required"
+      );
+    }
+    // Required, not optional: without it, getWebhookActionAndData cannot
+    // verify who sent a webhook, so an unauthenticated POST could mark an
+    // order paid with no real on-chain payment.
+    if (!options.webhookSecret) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "DeroPay: webhookSecret is required — without it, webhook payloads cannot be authenticated"
       );
     }
   }
@@ -235,47 +245,53 @@ class DeroPayPaymentService extends AbstractPaymentProvider<DeroPayOptions> {
   ): Promise<WebhookActionResult> {
     const { data, rawData, headers } = payload;
 
-    // Verify HMAC-SHA256 signature if a webhook secret is configured
-    if (this.webhookSecret_) {
-      const signature = (headers as Record<string, string>)["x-deropay-signature"] ?? "";
-      if (!signature) {
-        throw new MedusaError(
-          MedusaError.Types.UNAUTHORIZED,
-          "DeroPay webhook: missing X-DeroPay-Signature header"
-        );
-      }
-
-      const body =
-        typeof rawData === "string"
-          ? rawData
-          : Buffer.isBuffer(rawData)
-          ? rawData.toString("utf-8")
-          : JSON.stringify(data);
-
-      const secret = this.webhookSecret_;
-      const encoder = new TextEncoder();
-      const keyMaterial = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(secret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
+    // Verify HMAC-SHA256 signature. webhookSecret is required (validateOptions
+    // enforces it), so this check can never be skipped by a missing config.
+    const signature = (headers as Record<string, string>)["x-deropay-signature"] ?? "";
+    if (!signature) {
+      throw new MedusaError(
+        MedusaError.Types.UNAUTHORIZED,
+        "DeroPay webhook: missing X-DeroPay-Signature header"
       );
-      const sigBuffer = await crypto.subtle.sign(
-        "HMAC",
-        keyMaterial,
-        encoder.encode(body)
-      );
-      const expected = Array.from(new Uint8Array(sigBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+    }
 
-      if (expected !== signature) {
-        throw new MedusaError(
-          MedusaError.Types.UNAUTHORIZED,
-          "DeroPay webhook: invalid signature"
-        );
-      }
+    const body =
+      typeof rawData === "string"
+        ? rawData
+        : Buffer.isBuffer(rawData)
+        ? rawData.toString("utf-8")
+        : JSON.stringify(data);
+
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(this.webhookSecret_),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sigBuffer = await crypto.subtle.sign(
+      "HMAC",
+      keyMaterial,
+      encoder.encode(body)
+    );
+    const expected = Array.from(new Uint8Array(sigBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    // Constant-time comparison — a plain !== short-circuits on the first
+    // mismatched byte, which is a timing side-channel for the signature.
+    const expectedBytes = Buffer.from(expected);
+    const signatureBytes = Buffer.from(signature);
+    const signatureValid =
+      expectedBytes.length === signatureBytes.length &&
+      timingSafeEqual(expectedBytes, signatureBytes);
+
+    if (!signatureValid) {
+      throw new MedusaError(
+        MedusaError.Types.UNAUTHORIZED,
+        "DeroPay webhook: invalid signature"
+      );
     }
 
     try {

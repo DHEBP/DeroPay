@@ -95,17 +95,20 @@ test("rate card validation rejects an operation priced above its reservation", (
 });
 
 test("production auth rejects the public development secret", () => {
-  const nodeEnv = process.env.NODE_ENV;
-  const jwtSecret = process.env.DERO_AUTH_JWT_SECRET;
-  process.env.NODE_ENV = "production";
-  delete process.env.DERO_AUTH_JWT_SECRET;
+  // process.env.NODE_ENV is typed read-only; go through the untyped env
+  // record to flip it for this test, same as the getter above already reads.
+  const env = process.env as Record<string, string | undefined>;
+  const nodeEnv = env.NODE_ENV;
+  const jwtSecret = env.DERO_AUTH_JWT_SECRET;
+  env.NODE_ENV = "production";
+  delete env.DERO_AUTH_JWT_SECRET;
   try {
     expect(() => challengeHandler(new Request("http://localhost/api/auth/challenge"))).toThrow(
       "DERO_AUTH_JWT_SECRET must be a non-default secret",
     );
   } finally {
-    process.env.NODE_ENV = nodeEnv;
-    if (jwtSecret === undefined) delete process.env.DERO_AUTH_JWT_SECRET;
-    else process.env.DERO_AUTH_JWT_SECRET = jwtSecret;
+    env.NODE_ENV = nodeEnv;
+    if (jwtSecret === undefined) delete env.DERO_AUTH_JWT_SECRET;
+    else env.DERO_AUTH_JWT_SECRET = jwtSecret;
   }
 });
